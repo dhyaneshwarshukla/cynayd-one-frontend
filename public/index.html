@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYNAYD One - Authentication Portal</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        .status {
+            color: #28a745;
+            font-weight: bold;
+            margin: 1rem 0;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #5a6fd8;
+        }
+        .api-status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">CYNAYD One</div>
+        <div class="status">✅ Application Deployed Successfully!</div>
+        
+        <div class="info">
+            <strong>Welcome to CYNAYD One Authentication Portal</strong><br>
+            Your application is now running on AWS serverless infrastructure.
+        </div>
+
+        <div>
+            <a href="/auth/login" class="btn">Login</a>
+            <a href="/auth/register" class="btn">Register</a>
+        </div>
+
+        <div class="info">
+            <strong>API Status:</strong><br>
+            <span id="api-status">Checking API connection...</span>
+        </div>
+
+        <div class="info">
+            <strong>Deployment Info:</strong><br>
+            • Platform: AWS Lambda + API Gateway<br>
+            • Region: ap-south-1<br>
+            • Database: PostgreSQL (3.109.94.129)<br>
+            • Status: Production Ready
+        </div>
+    </div>
+
+    <script>
+        // Check API status
+        async function checkApiStatus() {
+            try {
+                const response = await fetch('https://pvzv54m8ej.execute-api.ap-south-1.amazonaws.com/prod/api/health');
+                if (response.ok) {
+                    document.getElementById('api-status').innerHTML = 
+                        '<span class="success">✅ API is responding correctly</span>';
+                } else {
+                    document.getElementById('api-status').innerHTML = 
+                        '<span class="error">⚠️ API returned status: ' + response.status + '</span>';
+                }
+            } catch (error) {
+                document.getElementById('api-status').innerHTML = 
+                    '<span class="error">❌ API connection failed: ' + error.message + '</span>';
+            }
+        }
+
+        // Check API status on page load
+        checkApiStatus();
+    </script>
+</body>
+</html>
