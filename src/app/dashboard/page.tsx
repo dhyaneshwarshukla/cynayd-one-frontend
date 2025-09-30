@@ -39,23 +39,20 @@ export default function DashboardPage() {
     return null;
   }
 
-  // Debug logging to see what's happening
+  // Determine user role for dashboard routing (case-insensitive)
+  const userRole = user?.role?.toUpperCase();
+  const isSuperAdmin = userRole === 'SUPER_ADMIN';
+  const isAdmin = userRole === 'ADMIN';
+  const isRegularUser = userRole === 'USER';
+
+  // Debug logging
   console.log('=== DASHBOARD DEBUG ===');
   console.log('User:', user);
-  console.log('User Role:', user?.role);
-  console.log('Is Authenticated:', isAuthenticated);
-  console.log('User Role Type:', typeof user?.role);
-
-  // Determine user role for dashboard routing
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-  const isAdmin = user?.role === 'ADMIN';
-  const isRegularUser = user?.role === 'USER';
-
+  console.log('User Role (original):', user?.role);
+  console.log('User Role (uppercase):', userRole);
   console.log('Is Super Admin:', isSuperAdmin);
   console.log('Is Admin:', isAdmin);
   console.log('Is Regular User:', isRegularUser);
-  console.log('Will show Admin Dashboard:', isAdmin || isSuperAdmin);
-  console.log('Will show User Dashboard:', isRegularUser);
   console.log('========================');
 
   // Get role-specific welcome message
@@ -90,7 +87,7 @@ export default function DashboardPage() {
       variant="dashboard"
     >
       {/* Route to appropriate dashboard based on user role */}
-        {isSuperAdmin ? (
+      {isSuperAdmin ? (
         <SuperAdminDashboard user={user} />
       ) : isAdmin ? (
         <AdminDashboard user={user} />

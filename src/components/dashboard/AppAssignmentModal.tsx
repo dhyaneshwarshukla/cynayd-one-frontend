@@ -65,7 +65,7 @@ export const AppAssignmentModal: React.FC<AppAssignmentModalProps> = ({
       console.log('App:', app);
       console.log('===============================');
       
-      // Load users based on current user's role and organization
+      // Load users and assignments based on current user's role
       let orgUsers: User[] = [];
       let userAppAccess: any[] = [];
       
@@ -80,8 +80,8 @@ export const AppAssignmentModal: React.FC<AppAssignmentModalProps> = ({
         // Admin can only see users in their organization
         console.log('Loading data for ADMIN with org:', currentUser.organizationId, '- showing organization users only');
         [orgUsers, userAppAccess] = await Promise.all([
-          apiClient.getUsers(),
-          apiClient.getAllUserAppAccess()
+          apiClient.getUsersForOrganization(currentUser.organizationId, currentUser.role, currentUser.organizationId),
+          apiClient.getAllUserAppAccess() // Backend now filters by organization
         ]);
       } else {
         // Regular users cannot assign apps

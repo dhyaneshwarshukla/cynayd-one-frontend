@@ -79,8 +79,28 @@ export const RegisterForm: React.FC = () => {
   return (
     <Card className="w-full max-w-4xl mx-auto p-8">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Register Your Organization</h2>
-        <p className="text-gray-600">Join thousands of enterprises already using CYNAYD</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Create Your Organization Account</h2>
+        <p className="text-gray-600">Join the complete business ecosystem with CYNAYD One</p>
+        <div className="mt-4 flex justify-center items-center space-x-6 text-sm text-gray-500">
+          <div className="flex items-center">
+            <svg className="w-4 h-4 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Free 30-day trial
+          </div>
+          <div className="flex items-center">
+            <svg className="w-4 h-4 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            No credit card required
+          </div>
+          <div className="flex items-center">
+            <svg className="w-4 h-4 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Setup in minutes
+          </div>
+        </div>
       </div>
       
       {error && (
@@ -138,13 +158,15 @@ export const RegisterForm: React.FC = () => {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         {/* Personal Information Section */}
-        <div className="bg-gray-50 rounded-lg p-6">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
             Personal Information
           </h3>
           <div className="grid md:grid-cols-2 gap-4">
@@ -180,11 +202,13 @@ export const RegisterForm: React.FC = () => {
         </div>
 
         {/* Organization Information Section */}
-        <div className="bg-blue-50 rounded-lg p-6">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
+            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-3">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
             Organization Details
           </h3>
           <div className="grid md:grid-cols-2 gap-4">
@@ -276,11 +300,13 @@ export const RegisterForm: React.FC = () => {
         </div>
 
         {/* Security Section */}
-        <div className="bg-green-50 rounded-lg p-6">
+        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
             Account Security
           </h3>
           <div className="grid md:grid-cols-2 gap-4">
@@ -303,7 +329,7 @@ export const RegisterForm: React.FC = () => {
         </div>
 
         {/* Terms and Submit */}
-        <div className="bg-gray-50 rounded-lg p-6">
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-6 border border-amber-100">
           <div className="flex items-start space-x-3 mb-6">
             <input
               type="checkbox"
@@ -324,15 +350,25 @@ export const RegisterForm: React.FC = () => {
             </label>
           </div>
 
+          <div className="bg-white rounded-lg p-4 mb-6">
+            <h4 className="font-semibold text-gray-900 mb-2">What happens next?</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Your organization account will be created instantly</li>
+              <li>• You'll receive a verification email to activate your account</li>
+              <li>• Access all CYNAYD One apps and features immediately</li>
+              <li>• Start with a 30-day free trial, no credit card required</li>
+            </ul>
+          </div>
+
           <Button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
             disabled={isLoading}
           >
             {isLoading ? (
               <div className="flex items-center justify-center">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Creating Organization Account...
+                Creating Your Organization...
               </div>
             ) : (
               <div className="flex items-center justify-center">

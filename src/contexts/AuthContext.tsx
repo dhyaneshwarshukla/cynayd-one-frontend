@@ -41,8 +41,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        console.log('=== AUTH CONTEXT INITIALIZATION ===');
         console.log('AuthContext - Initializing auth...');
         console.log('AuthContext - API Client authenticated:', apiClient.isAuthenticated());
+        console.log('AuthContext - Auth token exists:', !!apiClient.getAuthToken());
         
         // Try to get user data - this will work with both localStorage tokens and cookies
         try {
@@ -50,8 +52,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           const userData = await apiClient.getCurrentUser();
           console.log('AuthContext - User data received:', userData);
           setUser(userData);
+          console.log('AuthContext - User state updated');
         } catch (error) {
           console.log('AuthContext - No valid authentication found:', error);
+          console.log('AuthContext - Error details:', error.message);
           // Only logout if we have a token but it's invalid
           if (apiClient.getAuthToken()) {
             console.log('AuthContext - Clearing invalid token');
@@ -63,13 +67,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         // Clear invalid token
         apiClient.logout();
       } finally {
-        console.log('AuthContext - Setting loading to false');
-        setIsLoading(false);
+        console.log('AuthContext - Initialization completed');
+        console.log('AuthContext - Current user state:', user);
+        console.log('AuthContext - Current loading state:', isLoading);
       }
     };
 
     initializeAuth();
   }, []);
+
+  // Set loading to false after user state has been updated
+  useEffect(() => {
+    if (user !== null || !apiClient.getAuthToken()) {
+      console.log('AuthContext - Setting loading to false (user state updated)');
+      setIsLoading(false);
+    }
+  }, [user]);
 
   // Refresh user data
   const refreshUser = async () => {

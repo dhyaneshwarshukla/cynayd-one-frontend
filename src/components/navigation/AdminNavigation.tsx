@@ -5,8 +5,23 @@ import { useAuth } from '../../contexts/AuthContext';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 // Define helper functions locally
-const canSeeNavigationItem = (userRole: string, requiredRoles: string[]): boolean => {
-  return requiredRoles.includes(userRole);
+const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): boolean => {
+  // Map permissions to roles that can access them
+  const permissionToRoles: { [key: string]: string[] } = {
+    'apps': ['ADMIN', 'SUPER_ADMIN'],
+    'organizations': ['ADMIN', 'SUPER_ADMIN'],
+    'users': ['ADMIN', 'SUPER_ADMIN'],
+    'audit': ['ADMIN', 'SUPER_ADMIN'],
+    'security': ['ADMIN', 'SUPER_ADMIN'],
+    'roles': ['ADMIN', 'SUPER_ADMIN'],
+    'settings': ['ADMIN', 'SUPER_ADMIN']
+  };
+
+  // Check if user's role has any of the required permissions
+  return requiredPermissions.some(permission => {
+    const allowedRoles = permissionToRoles[permission] || [];
+    return allowedRoles.includes(userRole);
+  });
 };
 
 const getRoleDisplayName = (role: string): string => {

@@ -3,9 +3,90 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Card } from '@/components/common/Card';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+interface ProfileStats {
+  products: number;
+  lastActive: string;
+  activity: string;
+  memberSince: Date;
+  totalApps: number;
+  recentActivity: number;
+}
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  confirmPassword: z.string().min(1, 'Please confirm your new password'),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
 
 export default function ProfilePage() {
   const { user, isAuthenticated } = useAuth();
+  const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    watch
+  } = useForm<ChangePasswordFormData>({
+    resolver: zodResolver(changePasswordSchema),
+  });
+
+  useEffect(() => {
+    const fetchProfileStats = async () => {
+      try {
+        const stats = await apiClient.getUserProfileStats();
+        setProfileStats(stats);
+      } catch (error) {
+        console.error('Failed to fetch profile stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    if (isAuthenticated && user) {
+      fetchProfileStats();
+    }
+  }, [isAuthenticated, user]);
+
+  const onSubmitPasswordChange = async (data: ChangePasswordFormData) => {
+    try {
+      setIsChangingPassword(true);
+      setPasswordMessage(null);
+      
+      await apiClient.changePassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
+      
+      setPasswordMessage({ type: 'success', text: 'Password changed successfully!' });
+      setShowChangePassword(false);
+      reset();
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      setPasswordMessage({ 
+        type: 'error', 
+        text: error.message || 'Failed to change password. Please try again.' 
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   if (!isAuthenticated || !user) {
     return (
@@ -24,7 +105,7 @@ export default function ProfilePage() {
       subtitle="Manage your personal information and account settings"
       variant="dashboard"
     >
-      <div className="max-w-2xl">
+      <div className="w-full">
         <Card className="p-6">
           <div className="space-y-6">
             {/* Profile Header */}
@@ -112,7 +193,9 @@ export default function ProfilePage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-500">Products</p>
-                      <p className="text-2xl font-bold text-gray-900">12</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {isLoadingStats ? '...' : profileStats?.products || 0}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -125,7 +208,9 @@ export default function ProfilePage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-500">Last Active</p>
-                      <p className="text-sm font-bold text-gray-900">Now</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {isLoadingStats ? '...' : profileStats?.lastActive || 'Unknown'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -138,26 +223,110 @@ export default function ProfilePage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-500">Activity</p>
-                      <p className="text-sm font-bold text-gray-900">High</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {isLoadingStats ? '...' : profileStats?.activity || 'None'}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Change Password Section */}
             <div className="border-t pt-6">
-              <div className="flex space-x-4">
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
-                  Save Changes
-                </button>
-                <button className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors">
-                  Cancel
-                </button>
-                <button className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors">
-                  Change Password
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Change Password</h3>
+                <button
+                  onClick={() => {
+                    setShowChangePassword(!showChangePassword);
+                    setPasswordMessage(null);
+                    reset();
+                  }}
+                  className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  {showChangePassword ? 'Cancel' : 'Change Password'}
                 </button>
               </div>
+
+              {passwordMessage && (
+                <div className={`mb-4 p-3 rounded-md ${
+                  passwordMessage.type === 'success' 
+                    ? 'bg-green-50 text-green-800 border border-green-200' 
+                    : 'bg-red-50 text-red-800 border border-red-200'
+                }`}>
+                  {passwordMessage.text}
+                </div>
+              )}
+
+              {showChangePassword && (
+                <form onSubmit={handleSubmit(onSubmitPasswordChange)} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Password
+                    </label>
+                    <input
+                      type="password"
+                      {...register('currentPassword')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter your current password"
+                    />
+                    {errors.currentPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.currentPassword.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      {...register('newPassword')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter your new password"
+                    />
+                    {errors.newPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.newPassword.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      {...register('confirmPassword')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Confirm your new password"
+                    />
+                    {errors.confirmPassword && (
+                      <p className="mt-1 text-sm text-red-600">{errors.confirmPassword.message}</p>
+                    )}
+                  </div>
+
+                  <div className="flex space-x-4">
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isChangingPassword ? 'Changing...' : 'Update Password'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowChangePassword(false);
+                        setPasswordMessage(null);
+                        reset();
+                      }}
+                      className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </Card>

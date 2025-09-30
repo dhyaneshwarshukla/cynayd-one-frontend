@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { StatsCard } from '@/components/dashboard/StatsCard';
-import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
-import { QuickActions } from '@/components/dashboard/QuickActions';
-import { ProductCard } from '@/components/dashboard/ProductCard';
-import { ProductAccessModal } from '@/components/dashboard/ProductAccessModal';
-import { Button } from '@/components/common/Button';
+import { apiClient } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
+import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 
-// Define interfaces locally
 interface Product {
   id: string;
   name: string;
@@ -24,22 +17,6 @@ interface Product {
   url?: string;
   domain?: string;
   isActive: boolean;
-}
-
-interface UserProductAccess {
-  id: string;
-  userId: string;
-  productId: string;
-  permissions: string[];
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-  assignedAt: string;
-  usedQuota: number;
-}
-
-interface ProductWithAccess extends Product {
-  userAccess?: UserProductAccess;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,18 +64,13 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState('user');
   
   // Product-related state
-  const [products, setProducts] = useState<ProductWithAccess[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState<DashboardUser[]>([]);
-  const [showProductAccessModal, setShowProductAccessModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<ProductWithAccess | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -150,7 +122,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         setStats(prevStats => ({
           ...prevStats,
           totalProducts: productsData.length,
-          activeProductAccess: productsData.filter(p => p.userAccess).length
+          activeProductAccess: productsData.filter(p => p.isActive).length
         }));
       } catch (productErr) {
         console.warn('Failed to fetch products:', productErr);
@@ -163,6 +135,15 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       } catch (userErr) {
         console.warn('Failed to fetch users:', userErr);
       }
+
+      // Fetch security alerts
+      try {
+        const alertsData = await apiClient.getSecurityEvents({ limit: 10 });
+        setSecurityAlerts(alertsData);
+      } catch (alertsErr) {
+        console.warn('Failed to fetch security alerts:', alertsErr);
+        setSecurityAlerts([]);
+      }
     } catch (err) {
       setError('Failed to load dashboard data');
       console.error('Dashboard data fetch error:', err);
@@ -171,368 +152,362 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     }
   };
 
-  const handleInviteUser = async () => {
-    if (!inviteEmail.trim() || !inviteName.trim()) {
-      setError('Email and name are required');
-      return;
-    }
 
+  const fetchProducts = async (): Promise<Product[]> => {
     try {
-      setError(null);
-      setInviteEmail('');
-      setInviteName('');
-      setInviteRole('user');
-      setShowInviteModal(false);
-      
-      alert('User invitation sent successfully! (Feature in development)');
-    } catch (err) {
-      setError('Failed to send invitation');
-      console.error('Invite user error:', err);
+      // Fetch real products from API
+      const productsData = await apiClient.getApps();
+      return productsData.map(app => ({
+        id: app.id,
+        name: app.name,
+        slug: app.slug,
+        description: app.description || 'No description available',
+        icon: app.icon || '📱',
+        color: app.color || '#3B82F6',
+        isActive: app.isActive,
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt
+      }));
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      return [];
     }
-  };
-
-  // Product-related functions
-  const fetchProducts = async (): Promise<ProductWithAccess[]> => {
-    // Mock data for admin products
-    const mockProducts: ProductWithAccess[] = [
-      {
-        id: '1',
-        name: 'HR Management',
-        slug: 'hr',
-        description: 'Manage employees, payroll, and HR processes',
-        icon: '👥',
-        color: '#3B82F6',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userAccess: undefined // Admin sees all products without user access
-      },
-      {
-        id: '2',
-        name: 'Drive',
-        slug: 'drive',
-        description: 'Secure file storage and sharing',
-        icon: '💾',
-        color: '#10B981',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userAccess: undefined
-      },
-      {
-        id: '3',
-        name: 'Connect',
-        slug: 'connect',
-        description: 'Team communication and collaboration',
-        icon: '💬',
-        color: '#8B5CF6',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userAccess: undefined
-      },
-      {
-        id: '4',
-        name: 'Mail',
-        slug: 'mail',
-        description: 'Professional email and calendar',
-        icon: '📧',
-        color: '#F59E0B',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        userAccess: undefined
-      }
-    ];
-
-    return mockProducts;
   };
 
   const fetchUsers = async (): Promise<DashboardUser[]> => {
-    // Mock data for admin users
-    return [
-      { id: '1', name: 'John Doe', email: 'john@example.com' },
-      { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
-      { id: '3', name: 'Bob Johnson', email: 'bob@example.com' }
-    ];
-  };
-
-  const handleProductAccess = async (product: ProductWithAccess) => {
     try {
-      console.log('Accessing product:', product.name);
-      
-      // Get SSO token from localStorage
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        alert('Please log in to access products');
-        return;
-      }
-
-      // Generate SSO token for the app
-      const response = await fetch(`/api/apps/${product.slug}/sso-token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate SSO token');
-      }
-
-      const { ssoToken } = await response.json();
-      
-      // Redirect to the app with SSO token
-      const appUrl = `${window.location.origin}/${product.slug}?sso_token=${ssoToken}`;
-      window.open(appUrl, '_blank');
-      
+      // Fetch real users from API
+      const usersData = await apiClient.getUsers();
+      return usersData.map(user => ({
+        id: user.id,
+        name: user.name || 'Unknown User',
+        email: user.email
+      }));
     } catch (error) {
-      console.error('Error accessing product:', error);
-      alert(`Failed to access ${product.name}. Please try again.`);
+      console.error('Error fetching users:', error);
+      return [];
     }
   };
 
-  const handleManageProductAccess = (product: ProductWithAccess) => {
-    setSelectedProduct(product);
-    setShowProductAccessModal(true);
-  };
-
-  const handleViewProductUsage = (product: ProductWithAccess) => {
-    console.log('Viewing usage for:', product.name);
-    alert(`Usage details for ${product.name}... (Feature in development)`);
-  };
-
-  const handleAssignProductAccess = async (userId: string, quota?: number, expiresAt?: string) => {
-    console.log('Assigning access:', { userId, quota, expiresAt });
-    alert('Product access assigned successfully! (Feature in development)');
-  };
-
-  const handleRevokeProductAccess = async (userId: string) => {
-    console.log('Revoking access for user:', userId);
-    alert('Product access revoked successfully! (Feature in development)');
-  };
-
-  const handleUpdateProductQuota = async (userId: string, quota: number) => {
-    console.log('Updating quota:', { userId, quota });
-    alert('Product quota updated successfully! (Feature in development)');
-  };
-
-  // Quick actions configuration for admin
-  const quickActions = [
-    {
-      id: 'invite-user',
-      title: 'Invite User',
-      description: 'Send invitation to new member',
-      icon: '📧',
-      action: () => setShowInviteModal(true)
-    },
-    {
-      id: 'view-reports',
-      title: 'View Reports',
-      description: 'Access analytics and reports',
-      icon: '📊',
-      action: () => alert('Reports feature coming soon!')
-    },
-    {
-      id: 'security-settings',
-      title: 'Security Settings',
-      description: 'Manage security preferences',
-      icon: '🛡️',
-      action: () => console.log('Security settings')
-    }
-  ];
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      {/* Debug indicator */}
-      <div className="bg-purple-100 border border-purple-300 rounded-lg p-4 mb-6">
-        <div className="flex items-center space-x-2">
-          <span className="text-2xl">👑</span>
-          <div>
-            <h3 className="text-lg font-semibold text-purple-900">ADMIN DASHBOARD ACTIVE</h3>
-            <p className="text-sm text-purple-700">This is the admin-specific dashboard for administrators and super admins</p>
-          </div>
-        </div>
-      </div>
-
       {error && (
         <Alert variant="error" className="mb-6">
           {error}
         </Alert>
       )}
 
-      {/* Admin Stats Overview */}
-      <ResponsiveContainer maxWidth="full" className="mb-8">
-        <div className="space-y-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <span className="text-2xl">👑</span>
-            <h2 className="text-xl font-semibold text-gray-900">Organization Overview</h2>
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-8 border border-blue-200">
+        <div className="flex items-center space-x-4">
+          <div className="p-4 bg-blue-100 rounded-2xl">
+            <span className="text-4xl">🛡️</span>
           </div>
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap="md">
-            <StatsCard
-              title="Total Users"
-              value={stats.activeUsers}
-              icon="👤"
-              change={{ value: 12, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200"
-            />
-            <StatsCard
-              title="Active Users"
-              value={stats.activeUsers}
-              icon="👤"
-              change={{ value: 5, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-green-50 to-green-100 border-green-200"
-            />
-            <StatsCard
-              title="Total Products"
-              value={stats.totalProducts}
-              icon="📦"
-              loading={isLoading}
-              className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200"
-            />
-            <StatsCard
-              title="Active Access"
-              value={stats.activeProductAccess}
-              icon="🔓"
-              loading={isLoading}
-              className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200"
-            />
-          </ResponsiveGrid>
-          
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap="md">
-            <StatsCard
-              title="Security Events"
-              value={stats.securityEvents}
-              icon="🛡️"
-              change={{ 
-                value: stats.securityEvents > 0 ? 0 : 100, 
-                type: stats.securityEvents > 0 ? 'increase' : 'neutral' 
-              }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-red-50 to-red-100 border-red-200"
-            />
-            <StatsCard
-              title="Recent Logins"
-              value={stats.recentLogins}
-              icon="🔐"
-              loading={isLoading}
-              className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200"
-            />
-            <StatsCard
-              title="Pending Invites"
-              value={stats.pendingInvitations}
-              icon="📧"
-              loading={isLoading}
-              className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200"
-            />
-            <StatsCard
-              title="Organizations"
-              value={stats.totalOrganizations}
-              icon="🏢"
-              loading={isLoading}
-              className="bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200"
-            />
-          </ResponsiveGrid>
-        </div>
-      </ResponsiveContainer>
-
-      {/* Main Content */}
-      <ResponsiveContainer maxWidth="full" className="mb-8">
-        <ResponsiveGrid cols={{ xs: 1, lg: 2 }} gap="lg">
-          {/* Admin Quick Actions */}
-          <div className="space-y-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <span className="text-xl">⚡</span>
-              <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('User Management coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <span className="text-xl">👤</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Manage Users</h4>
-                    <p className="text-sm text-gray-600">Add and manage users</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setShowInviteModal(true)}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <span className="text-xl">📧</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Invite User</h4>
-                    <p className="text-sm text-gray-600">Add new members</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('Product Management coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <span className="text-xl">📦</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Manage Products</h4>
-                    <p className="text-sm text-gray-600">Configure access</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('Security Settings coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-red-100 rounded-lg">
-                    <span className="text-xl">🛡️</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Security</h4>
-                    <p className="text-sm text-gray-600">Monitor events</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </div>
-
-          {/* Recent Activity */}
           <div>
-            <div className="flex items-center space-x-2 mb-4">
-              <span className="text-xl">📊</span>
-              <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-            </div>
-            <ActivityFeed
-              activities={recentActivity}
-              loading={isLoading}
-              maxItems={6}
-            />
+            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p className="text-lg text-gray-600 mt-2">
+              Manage your organization's products, users, and settings
+            </p>
           </div>
-        </ResponsiveGrid>
-      </ResponsiveContainer>
+        </div>
+      </div>
 
-      {/* Products Section */}
-      <ResponsiveContainer maxWidth="full" className="mt-8">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-br from-blue-100 to-purple-100 rounded-lg">
-              <span className="text-2xl">📦</span>
+            <div className="p-3 bg-blue-500 rounded-lg">
+              <span className="text-2xl text-white">👤</span>
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Product Management</h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage product access and quotas across your organization
-              </p>
+              <p className="text-sm font-medium text-gray-600">Total Users</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
             </div>
           </div>
-          
-          <div className="flex flex-wrap gap-3">
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-green-500 rounded-lg">
+              <span className="text-2xl text-white">📦</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Products</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-purple-500 rounded-lg">
+              <span className="text-2xl text-white">🔓</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active Access</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.activeProductAccess}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-red-500 rounded-lg">
+              <span className="text-2xl text-white">🛡️</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Security Events</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.securityEvents}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
+          <div className="text-center">
+            <div className="p-4 bg-blue-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">👤</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Manage Users</h3>
+            <p className="text-sm text-gray-600">Add and manage users</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
+          <div className="text-center">
+            <div className="p-4 bg-green-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">👥</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Manage Teams</h3>
+            <p className="text-sm text-gray-600">Team management</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/apps'}>
+          <div className="text-center">
+            <div className="p-4 bg-purple-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">📦</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Manage Apps</h3>
+            <p className="text-sm text-gray-600">Configure access</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/security'}>
+          <div className="text-center">
+            <div className="p-4 bg-red-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">🛡️</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Security</h3>
+            <p className="text-sm text-gray-600">Monitor events</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Admin Analytics & Reports */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Usage Reports */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <span className="text-xl">📊</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Usage Reports</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Total Users</p>
+                <p className="text-sm text-gray-600">Active in organization</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-gray-900">{stats.activeUsers}</p>
+                <p className="text-sm text-green-600">Active</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Total Products</p>
+                <p className="text-sm text-gray-600">Available apps</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-gray-900">{stats.totalProducts}</p>
+                <p className="text-sm text-blue-600">Configured</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Active Access</p>
+                <p className="text-sm text-gray-600">User-product assignments</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-gray-900">{stats.activeProductAccess}</p>
+                <p className="text-sm text-purple-600">Active</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Security Events</p>
+                <p className="text-sm text-gray-600">Last 24 hours</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-gray-900">{stats.securityEvents}</p>
+                <p className="text-sm text-red-600">Events</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* System Health */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <span className="text-xl">💚</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">System Health</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="font-medium text-gray-900">API Server</span>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-600">Online</p>
+                <p className="text-xs text-green-600">healthy</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="font-medium text-gray-900">Database</span>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-600">Connected</p>
+                <p className="text-xs text-green-600">healthy</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="font-medium text-gray-900">Authentication</span>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-600">Active</p>
+                <p className="text-xs text-green-600">healthy</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span className="font-medium text-gray-900">Security Monitoring</span>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-600">Monitoring</p>
+                <p className="text-xs text-blue-600">active</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Recent Activity & Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Activity */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <span className="text-xl">📊</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+          </div>
+          {recentActivity.length > 0 ? (
+            <div className="space-y-3">
+              {recentActivity.slice(0, 6).map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                  <div className={`p-2 rounded-lg ${
+                    activity.type === 'security' ? 'bg-red-100' :
+                    activity.type === 'system' ? 'bg-blue-100' : 'bg-green-100'
+                  }`}>
+                    <span className="text-lg">
+                      {activity.type === 'security' ? '🛡️' :
+                       activity.type === 'system' ? '⚙️' : '👤'}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{activity.action}</p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(activity.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <span className="text-4xl mb-4 block">📊</span>
+              <p className="text-gray-600">No recent activity to display</p>
+            </div>
+          )}
+        </Card>
+
+        {/* Security Alerts */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <span className="text-xl">🚨</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Security Alerts</h3>
+          </div>
+          <div className="space-y-3">
+            {securityAlerts.length > 0 ? (
+              securityAlerts.slice(0, 4).map((alert, index) => (
+                <div key={index} className={`p-3 rounded-lg border-l-4 ${
+                  alert.severity === 'high' || alert.severity === 'critical' ? 'bg-red-50 border-red-400' :
+                  alert.severity === 'medium' ? 'bg-yellow-50 border-yellow-400' :
+                  alert.severity === 'low' ? 'bg-blue-50 border-blue-400' :
+                  'bg-green-50 border-green-400'
+                }`}>
+                  <p className="font-medium text-gray-900">{alert.details}</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(alert.timestamp).toLocaleString()}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <span className="text-4xl mb-4 block">🚨</span>
+                <p className="text-gray-600">No security alerts to display</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Apps Section */}
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">App Management</h2>
+            <p className="text-gray-600 mt-1">Manage app access and quotas across your organization</p>
+          </div>
+          <div className="flex space-x-3">
             <Button
-              onClick={() => alert('Create new product feature coming soon!')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+              onClick={() => window.location.href = '/apps'}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <span className="mr-2">➕</span>
-              Add Product
+              Add App
             </Button>
             <Button
               variant="outline"
@@ -544,234 +519,124 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </Button>
           </div>
         </div>
-        
-        {isLoading ? (
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, lg: 4 }} gap="md">
-            {[1, 2, 3, 4].map((i) => (
-              <Card key={i} className="p-6">
-                <div className="animate-pulse">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="h-12 w-12 bg-gray-200 rounded-lg"></div>
-                    <div className="flex-1">
-                      <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-full"></div>
-                    </div>
+
+        {products.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {products.map((product) => (
+              <Card key={product.id} className="p-6 hover:shadow-lg transition-shadow group">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div 
+                    className="h-12 w-12 rounded-lg flex items-center justify-center text-2xl"
+                    style={{ 
+                      backgroundColor: product.color + '15', 
+                      color: product.color
+                    }}
+                  >
+                    {product.icon}
                   </div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                  <div className="h-8 bg-gray-200 rounded w-full"></div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                      {product.name}
+                    </h3>
+                    <p className="text-sm text-gray-600 line-clamp-2">
+                      {product.description}
+                    </p>
+                  </div>
+                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    product.isActive
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {product.isActive ? 'Active' : 'Inactive'}
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Button
+                    onClick={() => window.location.href = `/apps/${product.id}`}
+                    className="w-full"
+                  >
+                    <span className="mr-2">⚙️</span>
+                    Manage Access
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => alert(`View usage for ${product.name} coming soon!`)}
+                    className="w-full"
+                  >
+                    <span className="mr-2">📊</span>
+                    View Usage
+                  </Button>
                 </div>
               </Card>
             ))}
-          </ResponsiveGrid>
-        ) : products.length > 0 ? (
-          <div className="space-y-6">
-            {/* Product Filter/Search for Admin */}
-            <div className="flex flex-col sm:flex-row gap-4 p-4 bg-gray-50 rounded-lg">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex gap-2">
-                <select className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>All Products</option>
-                  <option>Active</option>
-                  <option>Inactive</option>
-                </select>
-                <select className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>All Users</option>
-                  <option>With Access</option>
-                  <option>Without Access</option>
-                </select>
-              </div>
-            </div>
-            
-            {/* Products Grid */}
-            <ResponsiveGrid cols={{ xs: 1, sm: 2, lg: 4 }} gap="md">
-              {products.map((product) => (
-                <div key={product.id} className="group">
-                  <ProductCard
-                    product={product}
-                    isAdmin={true}
-                    onAccess={handleProductAccess}
-                    onManageAccess={handleManageProductAccess}
-                    onViewUsage={handleViewProductUsage}
-                    className="group-hover:shadow-xl transition-all duration-300 transform group-hover:-translate-y-1"
-                  />
-                </div>
-              ))}
-            </ResponsiveGrid>
-            
-            {/* Product Summary for Admin */}
-            <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{products.length}</div>
-                    <div className="text-sm text-gray-600">Total Products</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{stats.activeProductAccess}</div>
-                    <div className="text-sm text-gray-600">Active Access</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">{users.length}</div>
-                    <div className="text-sm text-gray-600">Total Users</div>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => alert('Export data coming soon!')}
-                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                >
-                  <span className="mr-2">📊</span>
-                  Export Data
-                </Button>
-              </div>
-            </div>
           </div>
         ) : (
           <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
             <div className="text-6xl mb-4">📦</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No products configured
+              No apps configured
             </h3>
             <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Add products to your organization to start managing access and quotas for your users.
+              Add apps to your organization to start managing access and quotas for your users.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
-                onClick={() => alert('Create new product feature coming soon!')}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                onClick={() => window.location.href = '/apps'}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 <span className="mr-2">➕</span>
-                Add Your First Product
+                Add Your First App
               </Button>
               <Button
                 variant="outline"
-                onClick={() => alert('Import products coming soon!')}
+                onClick={() => alert('Import apps coming soon!')}
                 className="border-gray-300 text-gray-700 hover:bg-gray-50"
               >
                 <span className="mr-2">📥</span>
-                Import Products
+                Import Apps
               </Button>
             </div>
           </Card>
         )}
-      </ResponsiveContainer>
+      </div>
 
       {/* Getting Started Section */}
-      <ResponsiveContainer maxWidth="full" className="mt-8">
-        <Card className="p-8 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
-          <div className="text-center">
-            <div className="text-4xl mb-4">👑</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Admin Quick Start</h2>
-            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              As an administrator, you have full control over your organization. Set up products, 
-              manage user access, and monitor security across all teams.
-            </p>
-            <ResponsiveGrid cols={{ xs: 1, sm: 3 }} gap="md" className="max-w-3xl mx-auto">
-              <Button
-                onClick={() => alert('User Management coming soon!')}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-              >
-                <span className="mr-2">👤</span>
-                Manage Users
-              </Button>
-              <Button
-                onClick={() => setShowInviteModal(true)}
-                className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white"
-              >
-                <span className="mr-2">📧</span>
-                Invite Users
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => alert('Product setup coming soon!')}
-                className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
-              >
-                <span className="mr-2">📦</span>
-                Setup Products
-              </Button>
-            </ResponsiveGrid>
-          </div>
-        </Card>
-      </ResponsiveContainer>
-
-      {/* Invite User Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Invite User</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter email address"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter full name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="user">User</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-400 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleInviteUser}
-                className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                Send Invitation
-              </button>
-            </div>
+      <Card className="p-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🛡️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Admin Quick Start</h2>
+          <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+            As an administrator, you have full control over your organization. Set up products, 
+            manage user access, and monitor security across all teams.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <Button
+              onClick={() => window.location.href = '/users'}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <span className="mr-2">👤</span>
+              Manage Users
+            </Button>
+            <Button
+              onClick={() => window.location.href = '/users'}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              <span className="mr-2">👥</span>
+              Manage Users
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.location.href = '/apps'}
+              className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+            >
+              <span className="mr-2">📦</span>
+              Setup Apps
+            </Button>
           </div>
         </div>
-      )}
+      </Card>
 
-      {/* Product Access Modal */}
-      {showProductAccessModal && selectedProduct && (
-        <ProductAccessModal
-          isOpen={showProductAccessModal}
-          onClose={() => {
-            setShowProductAccessModal(false);
-            setSelectedProduct(null);
-          }}
-          product={selectedProduct}
-          users={users}
-          onAssignAccess={handleAssignProductAccess}
-          onRevokeAccess={handleRevokeProductAccess}
-          onUpdateQuota={handleUpdateProductQuota}
-        />
-      )}
     </div>
   );
 }

@@ -77,6 +77,7 @@ export default function AppsPage() {
     avgUsage: 0
   });
   const [showAddAppModal, setShowAddAppModal] = useState(false);
+  const hasFetchedRef = useRef(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline'>('online');
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -120,16 +121,130 @@ export default function AppsPage() {
     }
   }, [isAuthenticated, connectionStatus]);
 
+  const fetchAppsInline = useCallback(async () => {
+    if (!user) return;
+    
+    console.log('🚀 Fetching apps for user:', user.email, 'Role:', user.role);
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      let userApps;
+      
+      if (user?.role === 'SUPER_ADMIN') {
+        console.log('🔍 SUPER_ADMIN: Fetching all apps...');
+        const allApps = await apiClient.getApps();
+        console.log('📦 All apps received:', allApps.length);
+        userApps = allApps
+          .filter(app => app.isActive !== false) // Default to true if not specified
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+        console.log('✅ Active apps processed:', userApps.length);
+      } else if (user?.role === 'ADMIN') {
+        console.log('🔍 ADMIN: Fetching system and assigned apps...');
+        const [allApps, assignedApps] = await Promise.all([
+          apiClient.getApps(),
+          apiClient.getUserApps()
+        ]);
+
+        const systemApps = allApps
+          .filter(app => app.systemApp && app.isActive !== false)
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+
+        const organizationApps = allApps
+          .filter(app => app.organizationId === user.organizationId && app.isActive !== false)
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+
+        const assignedActiveApps = assignedApps
+          .filter(app => app.isActive !== false)
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+
+        const allUserApps = [...systemApps, ...organizationApps, ...assignedActiveApps];
+        userApps = allUserApps.filter((app, index, self) =>
+          index === self.findIndex(a => a.id === app.id)
+        );
+        console.log('✅ Admin apps processed:', userApps.length);
+      } else {
+        console.log('🔍 USER: Fetching assigned apps...');
+        const assignedApps = await apiClient.getUserApps();
+        userApps = assignedApps
+          .filter(app => app.isActive !== false)
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+        console.log('✅ User apps processed:', userApps.length);
+      }
+      
+      console.log('🎯 Final apps to set:', userApps.length);
+      setApps(userApps);
+    } catch (err) {
+      console.error('Apps fetch error:', err);
+      setError('Failed to load apps. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
+    // If we have a user and are authenticated, fetch apps (only once)
+    if (user && isAuthenticated && !hasFetchedRef.current) {
+      console.log('✅ Authenticated with user, fetching apps...');
+      hasFetchedRef.current = true;
+      fetchAppsInline();
+      return;
+    }
+    
+    // Don't redirect while auth is still loading
+    if (isLoading) {
+      return;
+    }
+    
     // Redirect to login if not authenticated
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !isLoading) {
       router.push('/auth/login');
       return;
     }
-    fetchApps();
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, isLoading, user, router, fetchAppsInline]);
 
   const fetchApps = useCallback(async (showRefreshIndicator = false, retryCount = 0) => {
+    console.log('🚀 fetchApps called with:', { showRefreshIndicator, retryCount });
     const maxRetries = 3;
     const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
     
@@ -141,40 +256,33 @@ export default function AppsPage() {
       }
       setError(null);
       
-      // Debug: Check if user is authenticated
-      console.log('=== APPS PAGE DEBUG ===');
-      console.log('User role:', user?.role);
-      console.log('API Client authenticated:', apiClient.isAuthenticated());
-      console.log('Auth token:', apiClient.getAuthToken() ? 'Present' : 'Missing');
-      console.log('Connection status:', connectionStatus);
-      console.log('Retry attempt:', retryCount);
-      console.log('========================');
-      
       let userApps;
       
-      // Super admins should see all apps, admins see system apps + their assigned apps, regular users see only assigned apps
+      // Implement consistent app visibility logic
       if (user?.role === 'SUPER_ADMIN') {
+        // Super admins see all active apps
         const allApps = await apiClient.getApps();
-        // Convert to the expected format with access info
-        userApps = allApps.map(app => ({
-          ...app,
-          access: {
-            assignedAt: new Date().toISOString(),
-            expiresAt: null,
-            quota: null,
-            usedQuota: 0
-          }
-        }));
+        userApps = allApps
+          .filter(app => app.isActive !== false) // Only show active apps
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
       } else if (user?.role === 'ADMIN') {
-        // Admins see system apps (read-only) + organization apps + their assigned apps
+        // Admins see: system apps (if enabled) + organization apps + assigned apps
         const [allApps, assignedApps] = await Promise.all([
           apiClient.getApps(),
           apiClient.getUserApps()
         ]);
         
-        // Get system apps with read-only access
+        // Get system apps (read-only, only if active)
         const systemApps = allApps
-          .filter(app => app.systemApp)
+          .filter(app => app.systemApp && app.isActive !== false)
           .map(app => ({
             ...app,
             access: {
@@ -185,9 +293,9 @@ export default function AppsPage() {
             }
           }));
         
-        // Get organization-specific apps (created by this admin's organization)
-        const organizationApps = assignedApps
-          .filter(app => app.organizationId === user.organizationId)
+        // Get organization apps (only active ones)
+        const organizationApps = allApps
+          .filter(app => app.organizationId === user.organizationId && app.isActive !== false)
           .map(app => ({
             ...app,
             access: {
@@ -198,19 +306,43 @@ export default function AppsPage() {
             }
           }));
         
-        // Get other assigned apps (not system, not organization-specific)
-        const otherAssignedApps = assignedApps.filter(app => 
-          !app.systemApp && app.organizationId !== user.organizationId
+        // Get assigned apps (only active ones)
+        const assignedActiveApps = assignedApps
+          .filter(app => app.isActive !== false)
+          .map(app => ({
+            ...app,
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+        
+        // Combine and deduplicate
+        const allUserApps = [...systemApps, ...organizationApps, ...assignedActiveApps];
+        const uniqueApps = allUserApps.filter((app, index, self) => 
+          index === self.findIndex(a => a.id === app.id)
         );
         
-        userApps = [...systemApps, ...organizationApps, ...otherAssignedApps];
+        userApps = uniqueApps;
       } else {
-        // Regular users see only their assigned apps
+        // Regular users see only their assigned active apps
         try {
-          userApps = await apiClient.getUserApps();
+          const assignedApps = await apiClient.getUserApps();
+          userApps = assignedApps
+            .filter(app => app.isActive !== false)
+            .map(app => ({
+              ...app,
+              access: {
+                assignedAt: new Date().toISOString(),
+                expiresAt: null,
+                quota: null,
+                usedQuota: 0
+              }
+            }));
         } catch (apiError) {
           console.error('Failed to fetch user apps:', apiError);
-          // If API call fails, don't logout - just show empty state
           userApps = [];
           setError('Failed to load your assigned apps. Please try again.');
         }
@@ -249,11 +381,8 @@ export default function AppsPage() {
         if (err.message.includes('Network Error') || err.message.includes('fetch')) {
           setError('Network connection failed. Please check your internet connection and try again.');
         } else if (err.message.includes('401') || err.message.includes('Unauthorized')) {
-          setError('Your session has expired. Please log in again.');
-          // Redirect to login after a short delay
-          setTimeout(() => {
-            router.push('/auth/login');
-          }, 2000);
+          setError('Your session has expired. Please refresh the page and try again.');
+          // Don't auto-redirect, let user decide
         } else if (err.message.includes('403') || err.message.includes('Forbidden')) {
           setError('You do not have permission to access this resource.');
         } else {
@@ -279,11 +408,22 @@ export default function AppsPage() {
       setIsAccessing(appId);
       
       // Generate SSO token for the specific app
-      const { ssoToken } = await apiClient.generateSSOToken(appId);
+      const { ssoToken } = await apiClient.generateSSOToken(appSlug);
       
-      // Redirect to app with SSO token
-      const appUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/${appSlug}?sso_token=${ssoToken}`;
-      window.open(appUrl, '_blank');
+      // Get the actual app URL from the API
+      const appDetails = await apiClient.getAppBySlug(appSlug);
+      
+      if (appDetails && appDetails.url) {
+        // Redirect directly to the actual app URL with SSO token
+        const appUrl = `${appDetails.url}?sso_token=${ssoToken}`;
+        console.log(`Redirecting to actual app URL: ${appUrl}`);
+        window.open(appUrl, '_blank');
+      } else {
+        // Fallback: redirect to the portal page if no URL is configured
+        const appUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/${appSlug}?sso_token=${ssoToken}`;
+        console.log(`No app URL configured, redirecting to portal: ${appUrl}`);
+        window.open(appUrl, '_blank');
+      }
       
       // Add success notification
       const app = apps.find(a => a.id === appId);
@@ -357,6 +497,13 @@ export default function AppsPage() {
     
     return matchesSearch && matchesFilter;
   });
+
+  // Debug logging
+  console.log('🔍 Debug - Total apps:', apps.length);
+  console.log('🔍 Debug - Filtered apps:', filteredApps.length);
+  console.log('🔍 Debug - Search term:', searchTerm);
+  console.log('🔍 Debug - Filter status:', filterStatus);
+  console.log('🔍 Debug - Apps array:', apps);
 
   const getUsagePercentage = (app: AppWithAccess) => {
     if (!app.access?.quota) return 0;

@@ -1,43 +1,11 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { StatsCard } from '@/components/dashboard/StatsCard';
-import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
-import { QuickActions } from '@/components/dashboard/QuickActions';
-import { ProductCard } from '@/components/dashboard/ProductCard';
-import { ProductAccessModal } from '@/components/dashboard/ProductAccessModal';
-import { Button } from '@/components/common/Button';
+import { apiClient } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
+import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
-
-// Define interfaces locally
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  url?: string;
-  domain?: string;
-  isActive: boolean;
-}
-
-interface UserProductAccess {
-  id: string;
-  userId: string;
-  productId: string;
-  permissions: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface ProductWithAccess extends Product {
-  userAccess?: UserProductAccess;
-}
 
 interface DashboardStats {
   totalUsers: number;
@@ -84,6 +52,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
   const [users, setUsers] = useState<DashboardUser[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,13 +69,13 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
       const statsData = await apiClient.getDashboardStats();
       setStats(prevStats => ({
         ...prevStats,
-        totalUsers: statsData.activeUsers || 0, // Use activeUsers instead of totalUsers
-        totalOrganizations: 0, // Not available in API response
-        totalApps: 0, // Not available in API response
+        totalUsers: statsData.activeUsers || 0,
+        totalOrganizations: 0,
+        totalApps: 0,
         securityEvents: statsData.securityEvents || 0,
-        recentLogins: 0, // Not available in API response
-        pendingInvitations: 0, // Not available in API response
-        systemHealth: 100 // Default value
+        recentLogins: 0,
+        pendingInvitations: 0,
+        systemHealth: 100
       }));
 
       // Fetch recent activity
@@ -116,10 +85,10 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
         action: log.action,
         timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
         user: undefined,
-        organization: undefined, // organizationId not available in AuditLog
+        organization: undefined,
         type: log.action.toLowerCase().includes('security') ? 'security' : 
               log.action.toLowerCase().includes('system') ? 'system' : 
-              'user', // organization type not supported by ActivityItem
+              'user',
         details: log.details ? JSON.stringify(log.details) : undefined
       })));
 
@@ -138,6 +107,15 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
       } catch (userErr) {
         console.warn('Failed to fetch users:', userErr);
       }
+
+      // Fetch security alerts
+      try {
+        const alertsData = await apiClient.getSecurityEvents({ limit: 10 });
+        setSecurityAlerts(alertsData);
+      } catch (alertsErr) {
+        console.warn('Failed to fetch security alerts:', alertsErr);
+        setSecurityAlerts([]);
+      }
     } catch (err) {
       setError('Failed to load dashboard data');
       console.error('Dashboard data fetch error:', err);
@@ -147,230 +125,382 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
   };
 
   const fetchUsers = async (): Promise<DashboardUser[]> => {
-    // Mock data for super admin users
-    return [
-      { id: '1', name: 'John Doe', email: 'john@example.com', organization: 'Acme Corp', role: 'ADMIN' },
-      { id: '2', name: 'Jane Smith', email: 'jane@example.com', organization: 'Tech Solutions', role: 'USER' },
-      { id: '3', name: 'Bob Johnson', email: 'bob@example.com', organization: 'Acme Corp', role: 'USER' },
-      { id: '4', name: 'Alice Brown', email: 'alice@example.com', organization: 'Global Systems', role: 'ADMIN' }
-    ];
+    try {
+      // Fetch real users from API
+      const usersData = await apiClient.getUsers();
+      return usersData.map(user => ({
+        id: user.id,
+        name: user.name || 'Unknown User',
+        email: user.email,
+        organization: 'Unknown Organization', // TODO: Get organization name
+        role: user.role
+      }));
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
   };
 
-  // Quick actions configuration for super admin
-  const quickActions = [
-    {
-      id: 'create-organization',
-      title: 'Create Organization',
-      description: 'Add new organization to the system',
-      icon: '🏢',
-      action: () => alert('Create organization feature coming soon!')
-    },
-    {
-      id: 'system-settings',
-      title: 'System Settings',
-      description: 'Configure global system settings',
-      icon: '⚙️',
-      action: () => alert('System settings feature coming soon!')
-    },
-    {
-      id: 'user-management',
-      title: 'User Management',
-      description: 'Manage users across all organizations',
-      icon: '👥',
-      action: () => alert('User management feature coming soon!')
-    }
-  ];
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      {/* Super Admin indicator */}
-      <div className="bg-gradient-to-r from-purple-100 to-blue-100 border border-purple-300 rounded-lg p-4 mb-6">
-        <div className="flex items-center space-x-2">
-          <span className="text-2xl">👑</span>
-          <div>
-            <h3 className="text-lg font-semibold text-purple-900">SUPER ADMIN DASHBOARD</h3>
-            <p className="text-sm text-purple-700">Full system access - manage all organizations, users, and global settings</p>
-          </div>
-        </div>
-      </div>
-
       {error && (
         <Alert variant="error" className="mb-6">
           {error}
         </Alert>
       )}
 
-      {/* Super Admin Stats Overview */}
-      <ResponsiveContainer maxWidth="full" className="mb-8">
-        <div className="space-y-6">
-          <div className="flex items-center space-x-2 mb-4">
-            <span className="text-2xl">👑</span>
-            <h2 className="text-xl font-semibold text-gray-900">System Overview</h2>
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl p-8 border border-purple-200">
+        <div className="flex items-center space-x-4">
+          <div className="p-4 bg-purple-100 rounded-2xl">
+            <span className="text-4xl">👑</span>
           </div>
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap="md">
-            <StatsCard
-              title="Total Organizations"
-              value={stats.totalOrganizations}
-              icon="🏢"
-              change={{ value: 2, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200"
-            />
-            <StatsCard
-              title="Total Users"
-              value={stats.totalUsers}
-              icon="👤"
-              change={{ value: 15, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-green-50 to-green-100 border-green-200"
-            />
-            <StatsCard
-              title="Total Apps"
-              value={stats.totalApps}
-              icon="📦"
-              change={{ value: 3, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200"
-            />
-            <StatsCard
-              title="System Health"
-              value={`${stats.systemHealth}%`}
-              icon="💚"
-              change={{ value: 0, type: 'neutral' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200"
-            />
-          </ResponsiveGrid>
-          
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap="md">
-            <StatsCard
-              title="Security Events"
-              value={stats.securityEvents}
-              icon="🛡️"
-              change={{ 
-                value: stats.securityEvents > 0 ? 0 : 100, 
-                type: stats.securityEvents > 0 ? 'increase' : 'neutral' 
-              }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-red-50 to-red-100 border-red-200"
-            />
-            <StatsCard
-              title="Recent Logins"
-              value={stats.recentLogins}
-              icon="🔐"
-              loading={isLoading}
-              className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200"
-            />
-            <StatsCard
-              title="Pending Invites"
-              value={stats.pendingInvitations}
-              icon="📧"
-              loading={isLoading}
-              className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200"
-            />
-            <StatsCard
-              title="Active Sessions"
-              value="142"
-              icon="🔄"
-              change={{ value: 8, type: 'increase' }}
-              loading={isLoading}
-              className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200"
-            />
-          </ResponsiveGrid>
-        </div>
-      </ResponsiveContainer>
-
-      {/* Main Content */}
-      <ResponsiveContainer maxWidth="full" className="mb-8">
-        <ResponsiveGrid cols={{ xs: 1, lg: 2 }} gap="lg">
-          {/* Super Admin Quick Actions */}
-          <div className="space-y-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <span className="text-xl">⚡</span>
-              <h3 className="text-lg font-semibold text-gray-900">System Management</h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('Organization Management coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <span className="text-xl">🏢</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Manage Organizations</h4>
-                    <p className="text-sm text-gray-600">Create and manage organizations</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('Global User Management coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <span className="text-xl">👥</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Global Users</h4>
-                    <p className="text-sm text-gray-600">Manage all users</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('System Settings coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <span className="text-xl">⚙️</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">System Settings</h4>
-                    <p className="text-sm text-gray-600">Global configuration</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => alert('Security Monitoring coming soon!')}>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-red-100 rounded-lg">
-                    <span className="text-xl">🛡️</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Security Monitor</h4>
-                    <p className="text-sm text-gray-600">System-wide security</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </div>
-
-          {/* Recent Activity */}
           <div>
-            <div className="flex items-center space-x-2 mb-4">
-              <span className="text-xl">📊</span>
-              <h3 className="text-lg font-semibold text-gray-900">System Activity</h3>
-            </div>
-            <ActivityFeed
-              activities={recentActivity}
-              loading={isLoading}
-              maxItems={6}
-            />
+            <h1 className="text-3xl font-bold text-gray-900">Super Admin Dashboard</h1>
+            <p className="text-lg text-gray-600 mt-2">
+              Full system access - manage all organizations, users, and global settings
+            </p>
           </div>
-        </ResponsiveGrid>
-      </ResponsiveContainer>
+        </div>
+      </div>
 
-      {/* Organizations Overview */}
-      <ResponsiveContainer maxWidth="full" className="mt-8">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-br from-blue-100 to-purple-100 rounded-lg">
-              <span className="text-2xl">🏢</span>
+            <div className="p-3 bg-blue-500 rounded-lg">
+              <span className="text-2xl text-white">🏢</span>
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage all organizations in the system
-              </p>
+              <p className="text-sm font-medium text-gray-600">Total Organizations</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalOrganizations}</p>
             </div>
           </div>
-          
-          <div className="flex flex-wrap gap-3">
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-green-500 rounded-lg">
+              <span className="text-2xl text-white">👤</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Users</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-purple-500 rounded-lg">
+              <span className="text-2xl text-white">📦</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Apps</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalApps}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 bg-emerald-500 rounded-lg">
+              <span className="text-2xl text-white">💚</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">System Health</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.systemHealth}%</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/organizations'}>
+          <div className="text-center">
+            <div className="p-4 bg-blue-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">🏢</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Manage Organizations</h3>
+            <p className="text-sm text-gray-600">Create and manage organizations</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
+          <div className="text-center">
+            <div className="p-4 bg-green-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">👥</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Global Users</h3>
+            <p className="text-sm text-gray-600">Manage all users</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/settings'}>
+          <div className="text-center">
+            <div className="p-4 bg-purple-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">⚙️</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">System Settings</h3>
+            <p className="text-sm text-gray-600">Global configuration</p>
+          </div>
+        </Card>
+
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/security'}>
+          <div className="text-center">
+            <div className="p-4 bg-red-100 rounded-2xl mx-auto w-fit mb-4">
+              <span className="text-3xl">🛡️</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Security Monitor</h3>
+            <p className="text-sm text-gray-600">System-wide security</p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Global Analytics & Monitoring */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Global Metrics */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <span className="text-xl">🌍</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Global Metrics</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Total Organizations</p>
+                <p className="text-sm text-gray-600">Active organizations</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{organizations.length}</p>
+                <p className="text-sm text-green-600">Active</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Total Users</p>
+                <p className="text-sm text-gray-600">Registered users</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.totalUsers}</p>
+                <p className="text-sm text-blue-600">Users</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                <p className="font-medium text-gray-900">System Health</p>
+                <p className="text-sm text-gray-600">Overall status</p>
+                </div>
+                <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.systemHealth}%</p>
+                <p className="text-sm text-green-600">Healthy</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Security Events</p>
+                <p className="text-sm text-gray-600">Last 24 hours</p>
+                </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.securityEvents}</p>
+                <p className="text-sm text-red-600">Events</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* System Performance */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <span className="text-xl">⚡</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Performance</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">API Response</p>
+                <p className="text-sm text-green-600">excellent</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">Online</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Database</p>
+                <p className="text-sm text-green-600">connected</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">Active</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                <p className="font-medium text-gray-900">Authentication</p>
+                <p className="text-sm text-green-600">operational</p>
+                </div>
+                <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">Running</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Security</p>
+                <p className="text-sm text-blue-600">monitoring</p>
+                </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">Active</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Security Overview */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <span className="text-xl">🛡️</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Security</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Security Events</p>
+                <p className="text-sm text-red-600">last 24h</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.securityEvents}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Active Users</p>
+                <p className="text-sm text-green-600">online</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.totalUsers}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                <p className="font-medium text-gray-900">Organizations</p>
+                <p className="text-sm text-blue-600">managed</p>
+                </div>
+                <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{organizations.length}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">System Status</p>
+                <p className="text-sm text-green-600">operational</p>
+                </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-gray-900">{stats.systemHealth}%</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* System Activity & Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* System Activity */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <span className="text-xl">📊</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">System Activity</h3>
+          </div>
+          {recentActivity.length > 0 ? (
+            <div className="space-y-3">
+              {recentActivity.slice(0, 6).map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                  <div className={`p-2 rounded-lg ${
+                    activity.type === 'security' ? 'bg-red-100' :
+                    activity.type === 'system' ? 'bg-blue-100' : 'bg-green-100'
+                  }`}>
+                    <span className="text-lg">
+                      {activity.type === 'security' ? '🛡️' :
+                       activity.type === 'system' ? '⚙️' : '👤'}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{activity.action}</p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(activity.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <span className="text-4xl mb-4 block">📊</span>
+              <p className="text-gray-600">No recent activity to display</p>
+            </div>
+          )}
+        </Card>
+
+        {/* Critical Alerts */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <span className="text-xl">🚨</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Critical Alerts</h3>
+          </div>
+          <div className="space-y-3">
+            {securityAlerts.length > 0 ? (
+              securityAlerts.slice(0, 5).map((alert, index) => (
+              <div key={index} className={`p-3 rounded-lg border-l-4 ${
+                  alert.severity === 'critical' || alert.severity === 'HIGH' ? 'bg-red-50 border-red-500' :
+                alert.severity === 'high' ? 'bg-orange-50 border-orange-400' :
+                  alert.severity === 'medium' || alert.severity === 'WARNING' ? 'bg-yellow-50 border-yellow-400' :
+                'bg-blue-50 border-blue-400'
+              }`}>
+                  <p className="font-medium text-gray-900">{alert.details}</p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(alert.timestamp).toLocaleString()}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <span className="text-4xl mb-4 block">🚨</span>
+                <p className="text-gray-600">No critical alerts to display</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Organizations Overview */}
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
+            <p className="text-gray-600 mt-1">Manage all organizations in the system</p>
+          </div>
+          <div className="flex space-x-3">
             <Button
               onClick={() => alert('Create organization feature coming soon!')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <span className="mr-2">➕</span>
               Add Organization
@@ -385,105 +515,201 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             </Button>
           </div>
         </div>
-        
-        {isLoading ? (
-          <ResponsiveGrid cols={{ xs: 1, sm: 2, lg: 3 }} gap="md">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="p-6">
-                <div className="animate-pulse">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="h-12 w-12 bg-gray-200 rounded-lg"></div>
-                    <div className="flex-1">
-                      <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-full"></div>
-                    </div>
-                  </div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                  <div className="h-8 bg-gray-200 rounded w-full"></div>
-                </div>
-              </Card>
-            ))}
-          </ResponsiveGrid>
-        ) : (
-          <div className="space-y-6">
-            {/* Organizations Grid */}
-            <ResponsiveGrid cols={{ xs: 1, sm: 2, lg: 3 }} gap="md">
-              {[
-                { id: '1', name: 'Acme Corporation', users: 45, apps: 8, status: 'Active' },
-                { id: '2', name: 'Tech Solutions', users: 23, apps: 5, status: 'Active' },
-                { id: '3', name: 'Global Systems', users: 67, apps: 12, status: 'Active' }
-              ].map((org) => (
-                <Card key={org.id} className="p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <span className="text-xl">🏢</span>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900">{org.name}</h3>
-                      <p className="text-sm text-gray-600">{org.status}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Users:</span>
-                      <span className="font-medium">{org.users}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Apps:</span>
-                      <span className="font-medium">{org.apps}</span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => alert(`Manage ${org.name} coming soon!`)}
-                  >
-                    Manage Organization
-                  </Button>
-                </Card>
-              ))}
-            </ResponsiveGrid>
-          </div>
-        )}
-      </ResponsiveContainer>
 
-      {/* Getting Started Section */}
-      <ResponsiveContainer maxWidth="full" className="mt-8">
-        <Card className="p-8 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
-          <div className="text-center">
-            <div className="text-4xl mb-4">👑</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Super Admin Quick Start</h2>
-            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              As a super administrator, you have complete control over the entire system. 
-              Manage organizations, users, and global settings across all tenants.
-            </p>
-            <ResponsiveGrid cols={{ xs: 1, sm: 3 }} gap="md" className="max-w-3xl mx-auto">
-              <Button
-                onClick={() => alert('Organization Management coming soon!')}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-              >
-                <span className="mr-2">🏢</span>
-                Manage Organizations
-              </Button>
-              <Button
-                onClick={() => alert('Global User Management coming soon!')}
-                className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white"
-              >
-                <span className="mr-2">👥</span>
-                Global Users
-              </Button>
+        {organizations.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {organizations.slice(0, 6).map((org) => (
+            <Card key={org.id} className="p-6 hover:shadow-lg transition-shadow">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <span className="text-xl">🏢</span>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">{org.name}</h3>
+                    <p className="text-sm text-gray-600">Active</p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Created:</span>
+                    <span className="font-medium">
+                      {new Date(org.createdAt).toLocaleDateString()}
+                    </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Slug:</span>
+                    <span className="font-medium">{org.slug}</span>
+                </div>
+              </div>
               <Button
                 variant="outline"
-                onClick={() => alert('System configuration coming soon!')}
-                className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                className="w-full"
+                  onClick={() => alert(`Manage ${org.name} feature coming soon!`)}
               >
-                <span className="mr-2">⚙️</span>
-                System Config
+                Manage Organization
               </Button>
-            </ResponsiveGrid>
+            </Card>
+          ))}
+        </div>
+        ) : (
+          <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
+            <div className="text-6xl mb-4">🏢</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No Organizations Found
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              No organizations are currently registered in the system.
+            </p>
+            <Button
+              onClick={() => alert('Create organization feature coming soon!')}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <span className="mr-2">➕</span>
+              Create First Organization
+            </Button>
+          </Card>
+        )}
+      </div>
+
+      {/* System Maintenance & Tools */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* System Status */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-orange-100 rounded-lg">
+              <span className="text-xl">🔧</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">System Status</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">API Server</p>
+                <p className="text-sm text-gray-600">Main API endpoint</p>
+              </div>
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                Online
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Database</p>
+                <p className="text-sm text-gray-600">Primary database</p>
+              </div>
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                Connected
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Authentication</p>
+                <p className="text-sm text-gray-600">User auth service</p>
+              </div>
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                Active
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                <p className="font-medium text-gray-900">Security Monitoring</p>
+                <p className="text-sm text-gray-600">Threat detection</p>
+              </div>
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                Monitoring
+              </div>
+                </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-medium text-gray-900">Audit Logging</p>
+                <p className="text-sm text-gray-600">Activity tracking</p>
+                </div>
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                Recording
+              </div>
+            </div>
           </div>
         </Card>
-      </ResponsiveContainer>
+
+        {/* System Tools */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <span className="text-xl">🛠️</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">System Tools</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              onClick={() => alert('System backup initiated!')}
+              className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+            >
+              <span className="mr-2">💾</span>
+              Backup Now
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => alert('Cache cleared successfully!')}
+              className="w-full border-green-300 text-green-700 hover:bg-green-50"
+            >
+              <span className="mr-2">🗑️</span>
+              Clear Cache
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => alert('System health check completed!')}
+              className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              <span className="mr-2">🔍</span>
+              Health Check
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => alert('Logs exported successfully!')}
+              className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+            >
+              <span className="mr-2">📋</span>
+              Export Logs
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      {/* Getting Started Section */}
+      <Card className="p-8 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+        <div className="text-center">
+          <div className="text-4xl mb-4">👑</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Super Admin Quick Start</h2>
+          <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+            As a super administrator, you have complete control over the entire system. 
+            Manage organizations, users, and global settings across all tenants.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <Button
+              onClick={() => window.location.href = '/organizations'}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <span className="mr-2">🏢</span>
+              Manage Organizations
+            </Button>
+            <Button
+              onClick={() => window.location.href = '/users'}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              <span className="mr-2">👥</span>
+              Global Users
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.location.href = '/settings'}
+              className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              <span className="mr-2">⚙️</span>
+              System Config
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

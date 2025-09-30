@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { Card } from '@/components/common/Card';
+import { Button } from '@/components/common/Button';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Alert } from '@/components/common/Alert';
 
-// Define ProductWithAccess interface locally
-interface Product {
+interface App {
   id: string;
   name: string;
   slug: string;
@@ -14,19 +17,40 @@ interface Product {
   url?: string;
   domain?: string;
   isActive: boolean;
-}
-
-interface UserProductAccess {
-  id: string;
-  userId: string;
-  productId: string;
-  permissions: string[];
   createdAt: string;
   updatedAt: string;
 }
 
-interface ProductWithAccess extends Product {
-  userAccess?: UserProductAccess;
+interface UserAppAccess {
+  id: string;
+  userId: string;
+  appId: string;
+  permissions: string[];
+  createdAt: string;
+  updatedAt: string;
+  isActive: boolean;
+  assignedAt: string;
+  usedQuota: number;
+  quota?: number;
+  expiresAt?: string;
+}
+
+interface AppWithAccess extends App {
+  userAccess?: UserAppAccess;
+}
+
+interface UserStats {
+  totalApps: number;
+  activeApps: number;
+  usedQuota: number;
+  totalQuota: number;
+}
+
+interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
 }
 
 interface UserDashboardProps {
@@ -34,69 +58,115 @@ interface UserDashboardProps {
 }
 
 export default function UserDashboard({ user }: UserDashboardProps) {
-  const [products, setProducts] = useState<ProductWithAccess[]>([]);
+  const [apps, setApps] = useState<AppWithAccess[]>([]);
+  const [stats, setStats] = useState<UserStats>({
+    totalApps: 0,
+    activeApps: 0,
+    usedQuota: 0,
+    totalQuota: 0
+  });
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProducts();
+    fetchDashboardData();
   }, []);
 
-  const fetchProducts = async () => {
+  const fetchDashboardData = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch products and user access
-      const productsData = await getProducts();
-      setProducts(productsData);
+      // Fetch organization details if user has organizationId
+      if (user?.organizationId) {
+        try {
+          const orgDetails = await apiClient.getOrganizationById(user.organizationId);
+          setOrganization(orgDetails);
+        } catch (orgError) {
+          console.warn('Failed to fetch organization details:', orgError);
+          // Fallback to showing organizationId if name fetch fails
+          setOrganization({ 
+            id: user.organizationId, 
+            name: user.organizationId,
+            slug: user.organizationId.toLowerCase().replace(/\s+/g, '-')
+          });
+        }
+      }
+
+      // Fetch apps and user access
+      const appsData = await getApps();
+      setApps(appsData);
+
+      // Calculate stats
+      const activeApps = appsData.filter(app => app.isActive).length;
+      const usedQuota = appsData.reduce((sum, app) => sum + (app.userAccess?.usedQuota || 0), 0);
+      const totalQuota = appsData.reduce((sum, app) => sum + (app.userAccess?.quota || 0), 0);
+      
+      console.log('Stats calculation:', {
+        totalApps: appsData.length,
+        activeApps,
+        appsData: appsData.map(app => ({ name: app.name, isActive: app.isActive }))
+      });
+
+      setStats({
+        totalApps: appsData.length,
+        activeApps,
+        usedQuota,
+        totalQuota
+      });
+
     } catch (err) {
-      setError('Failed to load products');
-      console.error('Products fetch error:', err);
+      setError('Failed to load dashboard data');
+      console.error('Dashboard fetch error:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Product-related functions
-  const getProducts = async (): Promise<ProductWithAccess[]> => {
+  const getApps = async (): Promise<AppWithAccess[]> => {
     try {
       // Fetch user's assigned apps from API
       const userApps = await apiClient.getUserApps();
       
       // Transform the API response to match the expected format
-      const products: ProductWithAccess[] = userApps.map((app, index) => ({
-        id: app.id,
-        name: app.name,
-        slug: app.slug,
-        description: app.description || 'No description available',
-        icon: getAppIcon(app.slug),
-        color: getAppColor(app.slug),
-        isActive: app.isActive,
-        createdAt: app.createdAt,
-        updatedAt: app.updatedAt,
-        userAccess: {
-          id: `${index + 1}`,
-          userId: user?.id || '',
-          productId: app.id,
-          isActive: true,
-          assignedAt: app.access?.assignedAt || new Date().toISOString(),
-          usedQuota: app.access?.usedQuota || 0,
-          permissions: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      }));
+      const apps: AppWithAccess[] = userApps.map((app, index) => {
+        const processedApp = {
+          id: app.id,
+          name: app.name,
+          slug: app.slug,
+          description: app.description || 'No description available',
+          icon: getAppIcon(app.slug),
+          color: getAppColor(app.slug),
+          isActive: true, // API doesn't include isActive field, but returns only accessible apps
+          createdAt: app.createdAt || new Date().toISOString(),
+          updatedAt: app.updatedAt || new Date().toISOString(),
+          userAccess: {
+            id: `${index + 1}`,
+            userId: user?.id || '',
+            appId: app.id,
+            isActive: true, // Since API already filters for active access
+            assignedAt: app.access?.assignedAt || new Date().toISOString(),
+            usedQuota: app.access?.usedQuota || 0,
+            quota: app.access?.quota,
+            expiresAt: app.access?.expiresAt,
+            permissions: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        };
+        
+        console.log(`App: ${app.name}, isActive: ${processedApp.isActive}, userAccess.isActive: ${processedApp.userAccess.isActive}`);
+        return processedApp;
+      });
 
-      return products;
+      return apps;
     } catch (error) {
       console.error('Error fetching user apps:', error);
-      // Return empty array if API call fails
       return [];
     }
   };
 
-  // Helper function to get app icon based on slug
   const getAppIcon = (slug: string): string => {
     const iconMap: { [key: string]: string } = {
       'hr-management': '👥',
@@ -111,7 +181,6 @@ export default function UserDashboard({ user }: UserDashboardProps) {
     return iconMap[slug] || '📱';
   };
 
-  // Helper function to get app color based on slug
   const getAppColor = (slug: string): string => {
     const colorMap: { [key: string]: string } = {
       'hr-management': '#3B82F6',
@@ -126,34 +195,15 @@ export default function UserDashboard({ user }: UserDashboardProps) {
     return colorMap[slug] || '#3B82F6';
   };
 
-  const handleProductAccess = async (product: ProductWithAccess) => {
+  const handleAppAccess = async (app: AppWithAccess) => {
     try {
-      console.log('Accessing product:', product.name);
+      console.log('Accessing app:', app.name);
       
-      // Get SSO token from localStorage
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        alert('Please log in to access products');
-        return;
-      }
-
-      // Generate SSO token for the app
-      const response = await fetch(`/api/apps/${product.slug}/sso-token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate SSO token');
-      }
-
-      const { ssoToken } = await response.json();
+      // Generate SSO token for the app using API client (goes to port 4000)
+      const { ssoToken } = await apiClient.generateSSOToken(app.slug);
       
       // Get the actual app URL from the API
-      const appDetails = await apiClient.getAppBySlug(product.slug);
+      const appDetails = await apiClient.getAppBySlug(app.slug);
       
       if (appDetails && appDetails.url) {
         // Redirect directly to the actual app URL with SSO token
@@ -162,251 +212,183 @@ export default function UserDashboard({ user }: UserDashboardProps) {
         window.open(appUrl, '_blank');
       } else {
         // Fallback: redirect to the portal page if no URL is configured
-        const appUrl = `${window.location.origin}/${product.slug}?sso_token=${ssoToken}`;
+        const appUrl = `${window.location.origin}/${app.slug}?sso_token=${ssoToken}`;
         console.log(`No app URL configured, redirecting to portal: ${appUrl}`);
         window.open(appUrl, '_blank');
       }
       
     } catch (error) {
-      console.error('Error accessing product:', error);
-      alert(`Failed to access ${product.name}. Please try again.`);
+      console.error('Error accessing app:', error);
+      alert(`Failed to access ${app.name}. Please try again.`);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
-      <div className="space-y-8 p-6">
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 shadow-sm">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-red-800">Error Loading Products</h3>
-                <p className="text-sm text-red-600">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
+    <div className="space-y-8">
+      {error && (
+        <Alert variant="error" className="mb-6">
+          {error}
+        </Alert>
+      )}
 
-        {/* Welcome Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg mb-6">
-            <span className="text-3xl">📦</span>
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-8 border border-blue-200">
+        <div className="flex items-center space-x-4">
+          <div className="p-4 bg-blue-100 rounded-2xl">
+            <span className="text-4xl">🚀</span>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome to Your Products
-          </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Access your assigned products and start collaborating with your team
-          </p>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Welcome to {organization?.name || 'Your'} Workspace
+            </h1>
+            <p className="text-lg text-gray-600 mt-2">
+              Access your assigned apps and collaborate with your team
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Apps Section */}
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Apps to Access</h2>
+            <p className="text-gray-600 mt-1">Access your assigned apps and tools</p>
+          </div>
         </div>
 
-        {/* Products Section */}
-        <div className="max-w-7xl mx-auto">
-          {/* Enhanced Header */}
-          <div className="relative mb-12">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-indigo-600/10 rounded-3xl blur-3xl"></div>
-            <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
-              <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-6 lg:space-y-0">
-                <div className="flex items-center space-x-6">
-                  <div className="relative">
-                    <div className="p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg">
-                      <span className="text-3xl">🚀</span>
-                    </div>
-                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                      <span className="text-xs text-white font-bold">{products.length}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <h2 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                      My Products
-                    </h2>
-                    <p className="text-lg text-gray-600 mt-2">
-                      Access your assigned products and tools
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Enhanced Stats */}
-                <div className="flex items-center space-x-8">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      {products.length}
-                    </div>
-                    <div className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                      Products Available
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                      {products.filter(p => p.isActive).length}
-                    </div>
-                    <div className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                      Active Services
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-white rounded-3xl p-8 shadow-lg border border-gray-100 animate-pulse">
-                  {/* Status Badge */}
-                  <div className="absolute top-4 right-4">
-                    <div className="h-6 w-16 bg-gray-200 rounded-full"></div>
-                  </div>
-                  
-                  {/* Product Icon */}
-                  <div className="mb-6">
-                    <div className="h-20 w-20 bg-gray-200 rounded-2xl"></div>
-                  </div>
-                  
-                  {/* Product Info */}
-                  <div className="mb-8">
-                    <div className="h-6 bg-gray-200 rounded w-3/4 mb-3"></div>
-                    <div className="space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-full"></div>
-                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                    </div>
-                  </div>
-                  
-                  {/* Access Button */}
-                  <div className="h-12 bg-gray-200 rounded-2xl"></div>
-                </div>
-              ))}
-            </div>
-          ) : products.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {products.map((product, index) => (
-                <div 
-                  key={product.id} 
-                  className="group relative"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  {/* Card Container */}
+        {apps.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {apps.map((app) => (
+              <Card 
+                key={app.id} 
+                className="p-6 hover:shadow-lg transition-shadow group cursor-pointer"
+                onClick={() => handleAppAccess(app)}
+              >
+                <div className="flex items-center space-x-4">
                   <div 
-                    className="relative bg-white rounded-3xl p-8 shadow-lg border border-gray-100 hover:shadow-2xl hover:border-blue-200 transition-all duration-500 transform hover:-translate-y-2 cursor-pointer overflow-hidden"
-                    onClick={() => handleProductAccess(product)}
+                    className="h-16 w-16 rounded-2xl flex items-center justify-center text-3xl"
+                    style={{ 
+                      backgroundColor: app.color + '15', 
+                      color: app.color
+                    }}
                   >
-                    {/* Background Gradient */}
-                    <div 
-                      className="absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity duration-500 rounded-3xl"
-                      style={{ background: `linear-gradient(135deg, ${product.color}20, ${product.color}40)` }}
-                    ></div>
-                    
-                    {/* Status Badge */}
-                    <div className="absolute top-4 right-4">
-                      <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        product.isActive 
-                          ? 'bg-green-100 text-green-700 border border-green-200' 
-                          : 'bg-gray-100 text-gray-600 border border-gray-200'
-                      }`}>
-                        {product.isActive ? 'Active' : 'Inactive'}
-                      </div>
+                    {app.icon}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                      {app.name}
+                    </h3>
+                    <p className="text-sm text-gray-600 line-clamp-2">
+                      {app.description}
+                    </p>
+                    <div className={`mt-2 px-3 py-1 rounded-full text-xs font-medium inline-block ${
+                      app.isActive
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {app.isActive ? 'Active' : 'Inactive'} 
+                      {/* Debug: {JSON.stringify({isActive: app.isActive, userAccess: app.userAccess?.isActive})} */}
                     </div>
-
-                    {/* Product Icon */}
-                    <div className="relative mb-6">
-                      <div 
-                        className="h-20 w-20 rounded-2xl flex items-center justify-center text-3xl shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-110"
-                        style={{ 
-                          backgroundColor: product.color + '15', 
-                          color: product.color,
-                          border: `2px solid ${product.color}20`
-                        }}
-                      >
-                        {product.icon}
-                      </div>
-                      {/* Icon Glow Effect */}
-                      <div 
-                        className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-300 blur-md"
-                        style={{ backgroundColor: product.color }}
-                      ></div>
-                    </div>
-
-                    {/* Product Info */}
-                    <div className="mb-8">
-                      <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors duration-300">
-                        {product.name}
-                      </h3>
-                      <p className="text-gray-600 leading-relaxed line-clamp-3">
-                        {product.description}
-                      </p>
-                    </div>
-
-                    {/* Access Button */}
-                    <button 
-                      className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl group-hover:shadow-2xl"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleProductAccess(product);
-                      }}
-                    >
-                      <div className="flex items-center justify-center space-x-3">
-                        <span className="text-lg">Access Product</span>
-                        <svg className="h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
-                      </div>
-                    </button>
-
-                    {/* Hover Effect Overlay */}
-                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/0 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
                   </div>
                 </div>
-              ))}
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
+            <div className="text-6xl mb-4">📦</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No Apps Assigned
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              You don't have any apps assigned yet. Contact your administrator to get access to the tools you need for your work.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={() => alert('Contact admin feature coming soon!')}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <span className="mr-2">📧</span>
+                Request Access
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => alert('Help center coming soon!')}
+                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                <span className="mr-2">❓</span>
+                Get Help
+              </Button>
             </div>
-          ) : (
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-gray-100/50 via-blue-100/30 to-purple-100/50 rounded-3xl blur-2xl"></div>
-              <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-16 text-center shadow-xl border border-white/20">
-                <div className="relative mb-8">
-                  <div className="inline-flex items-center justify-center w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl mb-6 shadow-lg">
-                    <span className="text-6xl">📦</span>
-                  </div>
-                  <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
-                    <span className="text-sm">!</span>
-                  </div>
-                </div>
-                
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-4">
-                  No Products Assigned
-                </h3>
-                <p className="text-gray-600 mb-10 max-w-lg mx-auto text-lg leading-relaxed">
-                  You don't have any products assigned yet. Contact your administrator to get access to the tools you need for your work.
-                </p>
-                
-                <div className="flex flex-col sm:flex-row gap-6 justify-center">
-                  <button
-                    onClick={() => alert('Contact admin feature coming soon!')}
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="text-xl">📧</span>
-                      <span>Request Access</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => alert('Help center coming soon!')}
-                    className="border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 font-semibold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="text-xl">❓</span>
-                      <span>Get Help</span>
-                    </div>
-                  </button>
-                </div>
-              </div>
+          </Card>
+        )}
+      </div>
+
+      {/* Analytics Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Usage Analytics */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <span className="text-xl">📊</span>
             </div>
-          )}
-        </div>
+            <h3 className="text-lg font-semibold text-gray-900">Usage Analytics</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-1">Active Apps</h4>
+              <p className="text-2xl font-bold text-blue-600">{stats.activeApps}</p>
+              <p className="text-sm text-gray-600">Currently accessible</p>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-1">Total Apps</h4>
+              <p className="text-2xl font-bold text-green-600">{stats.totalApps}</p>
+              <p className="text-sm text-gray-600">Assigned to you</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <span className="text-xl">⚡</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
+          </div>
+          <div className="space-y-3">
+            <Button
+              onClick={() => window.location.href = '/dashboard/profile'}
+              className="w-full justify-start bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+            >
+              <span className="mr-3">👤</span>
+              Update Profile
+            </Button>
+            <Button
+              onClick={() => window.location.href = '/dashboard/settings'}
+              className="w-full justify-start bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+            >
+              <span className="mr-3">⚙️</span>
+              Settings
+            </Button>
+            <Button
+              onClick={() => window.location.href = '/dashboard/help'}
+              className="w-full justify-start bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200"
+            >
+              <span className="mr-3">❓</span>
+              Get Help
+            </Button>
+          </div>
+        </Card>
       </div>
     </div>
   );

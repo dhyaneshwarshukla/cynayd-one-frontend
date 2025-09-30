@@ -573,6 +573,28 @@ class ApiClient {
     return this.request('/api/dashboard/stats');
   }
 
+  // User profile endpoints
+  async getUserProfileStats(): Promise<{
+    products: number;
+    lastActive: string;
+    activity: string;
+    memberSince: Date;
+    totalApps: number;
+    recentActivity: number;
+  }> {
+    return this.request('/api/user/profile-stats');
+  }
+
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ message: string }> {
+    return this.request('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getAuditLogs(options?: {
     startDate?: Date;
     endDate?: Date;
@@ -928,8 +950,8 @@ class ApiClient {
     });
   }
 
-  async generateSSOToken(appId: string): Promise<{ ssoToken: string }> {
-    return this.request<{ ssoToken: string }>(`/api/apps/${appId}/sso-token`, {
+  async generateSSOToken(appSlug: string): Promise<{ ssoToken: string }> {
+    return this.request<{ ssoToken: string }>(`/api/apps/${appSlug}/sso-token`, {
       method: 'POST',
     });
   }
