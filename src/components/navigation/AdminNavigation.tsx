@@ -9,12 +9,12 @@ const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): 
   // Map permissions to roles that can access them
   const permissionToRoles: { [key: string]: string[] } = {
     'apps': ['ADMIN', 'SUPER_ADMIN'],
-    'organizations': ['ADMIN', 'SUPER_ADMIN'],
+    'organizations': ['SUPER_ADMIN'],
     'users': ['ADMIN', 'SUPER_ADMIN'],
-    'audit': ['ADMIN', 'SUPER_ADMIN'],
-    'security': ['ADMIN', 'SUPER_ADMIN'],
-    'roles': ['ADMIN', 'SUPER_ADMIN'],
-    'settings': ['ADMIN', 'SUPER_ADMIN']
+    'audit': ['SUPER_ADMIN'],
+    'security': ['SUPER_ADMIN'],
+    'roles': ['SUPER_ADMIN'],
+    'settings': ['SUPER_ADMIN']
   };
 
   // Check if user's role has any of the required permissions
@@ -68,7 +68,6 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
   // Separate navigation items by category for better organization
   const mainNavigation = [
     { name: "Dashboard", href: "/dashboard", icon: HomeIcon, permission: null },
-    { name: "Admin Dashboard", href: "/admin/dashboard", icon: ShieldCheckIcon, permission: null },
   ];
 
   const managementNavigation = [

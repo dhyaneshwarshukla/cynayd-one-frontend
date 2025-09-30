@@ -86,9 +86,8 @@ export default function SecurityPage() {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
 
-  // Determine user role
-  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const isManager = user?.role === 'ADMIN';
+  // Determine user role - only SUPER_ADMIN can access security features
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -295,7 +294,7 @@ export default function SecurityPage() {
     return matchesSeverity && matchesType;
   });
 
-  if (!isAdmin && !isManager) {
+  if (!isSuperAdmin) {
     return (
       <UnifiedLayout
         title="Access Denied"
@@ -305,7 +304,7 @@ export default function SecurityPage() {
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h3>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
-            You need administrator or manager privileges to access security monitoring.
+            You need Super Administrator privileges to access security monitoring.
           </p>
           <Button
             variant="outline"
@@ -333,21 +332,7 @@ export default function SecurityPage() {
               <span className="mr-2">📊</span>
               Export Report
             </Button>
-            <Button
-              onClick={async () => {
-                try {
-                  const result = await apiClient.createSampleSecurityEvents();
-                  alert(`Created ${result.count} sample security events!`);
-                  fetchSecurityData();
-                } catch (err) {
-                  alert('Failed to create sample events');
-                }
-              }}
-              className="border-green-300 text-green-700 hover:bg-green-50"
-            >
-              <span className="mr-2">🧪</span>
-              Create Sample Data
-            </Button>
+           
             <Button
               variant="outline"
               onClick={fetchSecurityData}

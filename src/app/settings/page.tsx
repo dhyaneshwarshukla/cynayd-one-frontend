@@ -98,13 +98,13 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [showMFASetup, setShowMFASetup] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchSettings();
-      setIsAdmin(user?.role === 'admin');
+      setIsSuperAdmin(user?.role === 'SUPER_ADMIN');
     }
   }, [isAuthenticated, user]);
 
@@ -209,7 +209,7 @@ export default function SettingsPage() {
     { id: 'privacy', label: 'Privacy', icon: '🔒' },
     { id: 'security', label: 'Security', icon: '🛡️' },
     { id: 'preferences', label: 'Preferences', icon: '⚙️' },
-    ...(isAdmin ? [{ id: 'system', label: 'System', icon: '🏢' }] : [])
+    ...(isSuperAdmin ? [{ id: 'system', label: 'System', icon: '🏢' }] : [])
   ];
 
   const renderProfileSettings = () => (

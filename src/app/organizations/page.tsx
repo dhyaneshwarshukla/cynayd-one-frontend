@@ -66,14 +66,14 @@ export default function OrganizationsPage() {
   const [selectedOrgs, setSelectedOrgs] = useState<Set<string>>(new Set());
   const [showBulkActions, setShowBulkActions] = useState(false);
 
-  // Determine user role
-  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
+  // Determine user role - only SUPER_ADMIN can access organizations
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
-    if (isAuthenticated && isAdmin) {
+    if (isAuthenticated && isSuperAdmin) {
       fetchOrganizations();
     }
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, isSuperAdmin]);
 
   const fetchOrganizations = async () => {
     // Prevent multiple simultaneous requests
@@ -451,7 +451,7 @@ export default function OrganizationsPage() {
     }
   };
 
-  if (!isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <UnifiedLayout
         title="Access Denied"
@@ -462,7 +462,7 @@ export default function OrganizationsPage() {
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h3>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
-            You need administrator privileges to access organization management.
+            You need Super Administrator privileges to access organization management.
           </p>
           <Button
             variant="outline"
@@ -483,13 +483,7 @@ export default function OrganizationsPage() {
       variant="dashboard"
       actions={
         <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-          >
-            <span className="mr-2">➕</span>
-            Create Organization
-          </Button>
+          
           <Button
             variant="outline"
             onClick={() => setShowBulkActions(!showBulkActions)}

@@ -612,11 +612,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
             <Button
-              onClick={() => window.location.href = '/users'}
+              onClick={() => window.location.href = '/dashboard/profile'}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             >
               <span className="mr-2">👤</span>
-              Manage Users
+              Profile
             </Button>
             <Button
               onClick={() => window.location.href = '/users'}

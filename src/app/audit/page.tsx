@@ -123,9 +123,8 @@ export default function AuditPage() {
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const liveUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Determine user role
-  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
-  const isManager = user?.role === 'ADMIN'; // ADMIN role can access audit logs
+  // Determine user role - only SUPER_ADMIN can access audit logs
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   // Connection status monitoring
   useEffect(() => {
@@ -349,7 +348,7 @@ export default function AuditPage() {
     return 'text-blue-600';
   };
 
-  if (!isAdmin && !isManager) {
+  if (!isSuperAdmin) {
     return (
       <UnifiedLayout
         title="Access Denied"
@@ -359,7 +358,7 @@ export default function AuditPage() {
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h3>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
-            You need administrator or manager privileges to access audit logs.
+            You need Super Administrator privileges to access audit logs.
           </p>
           <Button
             variant="outline"
