@@ -303,13 +303,13 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
         </Card>
 
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/security'}>
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/dashboard/settings'}>
           <div className="text-center">
             <div className="p-4 bg-red-100 rounded-2xl mx-auto w-fit mb-4">
               <span className="text-3xl">🛡️</span>
             </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Security</h3>
-            <p className="text-sm text-gray-600">Monitor events</p>
+            <h3 className="font-semibold text-gray-900 mb-2">Settings</h3>
+            <p className="text-sm text-gray-600">Configure organization settings</p>
           </div>
         </Card>
       </div>
@@ -494,112 +494,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </Card>
       </div>
 
-      {/* Apps Section */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">App Management</h2>
-            <p className="text-gray-600 mt-1">Manage app access and quotas across your organization</p>
-          </div>
-          <div className="flex space-x-3">
-            <Button
-              onClick={() => window.location.href = '/apps'}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <span className="mr-2">➕</span>
-              Add App
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => alert('Bulk management coming soon!')}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              <span className="mr-2">📊</span>
-              Bulk Manage
-            </Button>
-          </div>
-        </div>
-
-        {products.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {products.map((product) => (
-              <Card key={product.id} className="p-6 hover:shadow-lg transition-shadow group">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div 
-                    className="h-12 w-12 rounded-lg flex items-center justify-center text-2xl"
-                    style={{ 
-                      backgroundColor: product.color + '15', 
-                      color: product.color
-                    }}
-                  >
-                    {product.icon}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                      {product.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {product.description}
-                    </p>
-                  </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    product.isActive
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {product.isActive ? 'Active' : 'Inactive'}
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Button
-                    onClick={() => window.location.href = `/apps/${product.id}`}
-                    className="w-full"
-                  >
-                    <span className="mr-2">⚙️</span>
-                    Manage Access
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => alert(`View usage for ${product.name} coming soon!`)}
-                    className="w-full"
-                  >
-                    <span className="mr-2">📊</span>
-                    View Usage
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
-            <div className="text-6xl mb-4">📦</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No apps configured
-            </h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Add apps to your organization to start managing access and quotas for your users.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                onClick={() => window.location.href = '/apps'}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <span className="mr-2">➕</span>
-                Add Your First App
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => alert('Import apps coming soon!')}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                <span className="mr-2">📥</span>
-                Import Apps
-              </Button>
-            </div>
-          </Card>
-        )}
-      </div>
 
       {/* Getting Started Section */}
       <Card className="p-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
