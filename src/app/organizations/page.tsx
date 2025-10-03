@@ -86,30 +86,30 @@ export default function OrganizationsPage() {
       setIsRequestInProgress(true);
       organizationsActions.setLoading(true);
       
-      // Fetch organizations and stats from API in parallel
-      const [apiOrganizations, apiStats] = await Promise.all([
-        apiClient.getOrganizations(),
-        apiClient.getOrganizationStats()
-      ]);
+      // Fetch organizations with real user counts from API
+      const apiOrganizations = await apiClient.getOrganizations();
       
       // Transform API data to include additional fields for display
-      const extendedOrganizations: ExtendedOrganization[] = apiOrganizations.map(org => ({
+      const extendedOrganizations: ExtendedOrganization[] = apiOrganizations.map((org: any) => ({
         ...org,
-        userCount: Math.floor(Math.random() * 50) + 5, // TODO: Get real user count per organization
-        teamCount: 1, // Each organization is treated as a team
-        productCount: Math.floor(Math.random() * 5) + 1, // TODO: Get real product count per organization
+        userCount: org.userCount || 0,
+        teamCount: 1, // Each organization is treated as a team  
+        productCount: org.appCount || 0,
         isActive: org.settings?.isActive !== false // Use settings or default to true
       }));
 
       organizationsActions.setData(extendedOrganizations);
       
-      // Use real stats from API
+      // Calculate stats from the organizations data
+      const totalUsers = extendedOrganizations.reduce((sum, org) => sum + (org.userCount || 0), 0);
+      const totalProducts = extendedOrganizations.reduce((sum, org) => sum + (org.productCount || 0), 0);
+      
       setStats({
-        totalOrganizations: apiStats.totalOrganizations,
-        activeOrganizations: apiStats.activeOrganizations,
-        totalUsers: apiStats.totalUsers,
-        totalTeams: apiStats.totalTeams,
-        totalProducts: apiStats.totalProducts
+        totalOrganizations: extendedOrganizations.length,
+        activeOrganizations: extendedOrganizations.filter(org => org.isActive).length,
+        totalUsers: totalUsers,
+        totalTeams: extendedOrganizations.length, // Each org is a team
+        totalProducts: totalProducts
       });
     } catch (error) {
       console.error('Failed to fetch organizations:', error);

@@ -65,13 +65,28 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
       setIsLoading(true);
       setError(null);
 
+      // Fetch organizations first to get real counts
+      const orgsData = await apiClient.getOrganizations();
+      console.log('Fetched organizations:', orgsData); // Debug log
+      setOrganizations(orgsData);
+      
+      // Calculate totals from organizations data
+      const totalUsersFromOrgs = orgsData.reduce((sum, org) => sum + (org.userCount || 0), 0);
+      const totalAppsFromOrgs = orgsData.reduce((sum, org) => sum + (org.appCount || 0), 0);
+      
+      console.log('Dashboard stats calculated:', {
+        totalUsers: totalUsersFromOrgs,
+        totalOrganizations: orgsData.length,
+        totalApps: totalAppsFromOrgs
+      }); // Debug log
+
       // Fetch dashboard statistics
       const statsData = await apiClient.getDashboardStats();
       setStats(prevStats => ({
         ...prevStats,
-        totalUsers: statsData.activeUsers || 0,
-        totalOrganizations: 0,
-        totalApps: 0,
+        totalUsers: totalUsersFromOrgs,
+        totalOrganizations: orgsData.length,
+        totalApps: totalAppsFromOrgs,
         securityEvents: statsData.securityEvents || 0,
         recentLogins: 0,
         pendingInvitations: 0,
@@ -91,14 +106,6 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
               'user',
         details: log.details ? JSON.stringify(log.details) : undefined
       })));
-
-      // Fetch organizations
-      try {
-        const orgsData = await apiClient.getOrganizations();
-        setOrganizations(orgsData);
-      } catch (orgErr) {
-        console.warn('Failed to fetch organizations:', orgErr);
-      }
 
       // Fetch users
       try {

@@ -94,6 +94,8 @@ export interface Organization {
   settings?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
+  userCount?: number;
+  appCount?: number;
 }
 
 export interface Team {
