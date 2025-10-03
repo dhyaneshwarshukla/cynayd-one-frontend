@@ -323,7 +323,7 @@ export default function SecurityPage() {
       title="Security Center"
       subtitle="Monitor security events and manage security settings"
       actions={
-        isAdmin ? (
+        isSuperAdmin ? (
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => handleExportReport('pdf')}
