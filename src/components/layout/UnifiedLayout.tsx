@@ -28,24 +28,25 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
   const { user, isLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
   const isLanding = variant === 'landing';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'admin' || user?.role === 'super_admin';
   const shouldShowSidebar = !isLanding && isAdmin;
 
-  // For landing page, just show the header and content
+  // For landing page, show content immediately without waiting for auth
   if (isLanding) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <UniversalHeader variant="landing" />
         {children}
+      </div>
+    );
+  }
+
+  // For dashboard pages, show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

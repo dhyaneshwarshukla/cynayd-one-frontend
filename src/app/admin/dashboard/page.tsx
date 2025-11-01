@@ -12,6 +12,7 @@ import AppManagement from '@/components/admin/AppManagement';
 import OrganizationUserManagement from '@/components/admin/OrganizationUserManagement';
 import OrganizationAppManagement from '@/components/admin/OrganizationAppManagement';
 import OrganizationSettings from '@/components/admin/OrganizationSettings';
+import PlanManagement from '@/components/admin/PlanManagement';
 import { 
   UsersIcon, 
   Squares2X2Icon, 
@@ -238,6 +239,19 @@ export default function AdminDashboardPage() {
               <div className="flex items-center">
                 <ClockIcon className="w-5 h-5 mr-2" />
                 Activity
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                activeTab === 'plans'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <span className="mr-2">💎</span>
+                Plans & Billing
               </div>
             </button>
             <button
@@ -609,6 +623,27 @@ export default function AdminDashboardPage() {
               </div>
             </Card>
           </div>
+        )}
+
+        {activeTab === 'plans' && (
+          user?.organizationId ? (
+            <PlanManagement organizationId={user.organizationId} />
+          ) : (
+            <div className="space-y-6">
+              <Card className="p-6">
+                <div className="text-center py-12 text-gray-500">
+                  <span className="text-6xl mb-4 block">💎</span>
+                  <h3 className="text-lg font-medium mb-2">No Organization Access</h3>
+                  <p className="text-gray-600 mb-4">
+                    You need to be associated with an organization to manage plans.
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Contact your administrator to be added to an organization.
+                  </p>
+                </div>
+              </Card>
+            </div>
+          )
         )}
 
         {activeTab === 'settings' && (

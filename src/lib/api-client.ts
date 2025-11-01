@@ -43,6 +43,10 @@ export interface LoginCredentials {
 }
 
 export interface RegisterData {
+  paymentOrderId?: string;
+  paymentId?: string;
+  paymentSignature?: string;
+  pricingId?: string;
   email: string;
   password: string;
   name: string;
@@ -53,6 +57,7 @@ export interface RegisterData {
   industry?: string;
   phoneNumber?: string;
   jobTitle?: string;
+  planId?: string;
 }
 
 export interface AuthResponse {
@@ -96,6 +101,39 @@ export interface Organization {
   updatedAt: Date;
   userCount?: number;
   appCount?: number;
+  planId?: string;
+  plan?: Plan;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  isActive: boolean;
+  isDefault: boolean;
+  features?: string;
+  maxUsers?: number;
+  maxApps?: number;
+  maxStorage?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  pricings?: Pricing[];
+  _count?: {
+    organizations: number;
+  };
+}
+
+export interface Pricing {
+  id: string;
+  planId: string;
+  plan?: Plan;
+  billingPeriod: 'monthly' | 'quarterly' | 'yearly';
+  price: string;
+  currency: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Team {
@@ -881,6 +919,88 @@ class ApiClient {
     });
   }
 
+  // Plans and Pricing methods
+  async getPlans(activeOnly: boolean = false): Promise<Plan[]> {
+    const endpoint = activeOnly ? '/api/plans/active' : '/api/plans';
+    return this.request<Plan[]>(endpoint);
+  }
+
+  async getPlanById(id: string): Promise<Plan> {
+    return this.request<Plan>(`/api/plans/${id}`);
+  }
+
+  async getPlanBySlug(slug: string): Promise<Plan> {
+    return this.request<Plan>(`/api/plans/slug/${slug}`);
+  }
+
+  async getDefaultPlan(): Promise<Plan> {
+    return this.request<Plan>('/api/plans/default/get');
+  }
+
+  async getPricingsByPlanId(planId: string): Promise<Pricing[]> {
+    return this.request<Pricing[]>(`/api/plans/${planId}/pricing`);
+  }
+
+  async assignPlanToOrganization(organizationId: string, planId: string): Promise<Organization> {
+    return this.request<Organization>(`/api/organizations/${organizationId}/assign-plan`, {
+      method: 'POST',
+      body: JSON.stringify({ planId }),
+    });
+  }
+
+  async getOrganizationPlanDetails(organizationId: string): Promise<Organization> {
+    return this.request<Organization>(`/api/organizations/${organizationId}/plan-details`);
+  }
+
+  // Payment methods
+  async createPaymentOrder(data: {
+    organizationId?: string;
+    planId: string;
+    pricingId: string;
+    currency?: string;
+    notes?: Record<string, string>;
+  }): Promise<{
+    success: boolean;
+    order: {
+      id: string;
+      amount: number;
+      currency: string;
+      receipt: string;
+      status: string;
+    };
+  }> {
+    return this.request('/api/payments/create-order', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async verifyPayment(data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    payment?: any;
+  }> {
+    return this.request('/api/payments/verify', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getPaymentHistory(organizationId?: string): Promise<any[]> {
+    const endpoint = organizationId 
+      ? `/api/payments/history?organizationId=${organizationId}`
+      : '/api/payments/history';
+    return this.request<any[]>(endpoint);
+  }
+
+  async getPaymentById(paymentId: string): Promise<any> {
+    return this.request<any>(`/api/payments/${paymentId}`);
+  }
+
   // App assignment methods
   async assignAppToUser(appId: string, userId: string, quota?: number, expiresAt?: string): Promise<any> {
     return this.request(`/api/apps/${appId}/assign`, {
@@ -1058,6 +1178,59 @@ class ApiClient {
     hasSecret: boolean;
   }> {
     return this.request('/api/mfa/status');
+  }
+
+  // Support Ticket methods
+  async createSupportTicket(data: {
+    userId: string;
+    subject: string;
+    message: string;
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    category?: 'technical' | 'billing' | 'feature-request' | 'bug-report' | 'general';
+  }): Promise<any> {
+    return this.request('/api/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getSupportTickets(filters?: {
+    status?: string;
+    priority?: string;
+    category?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (filters?.status) queryParams.append('status', filters.status);
+    if (filters?.priority) queryParams.append('priority', filters.priority);
+    if (filters?.category) queryParams.append('category', filters.category);
+    
+    const query = queryParams.toString();
+    return this.request(`/api/support/tickets${query ? `?${query}` : ''}`);
+  }
+
+  async getSupportTicket(id: string): Promise<any> {
+    return this.request(`/api/support/tickets/${id}`);
+  }
+
+  async updateSupportTicket(id: string, data: {
+    status?: 'open' | 'in-progress' | 'resolved' | 'closed';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+  }): Promise<any> {
+    return this.request(`/api/support/tickets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createSupportResponse(ticketId: string, message: string): Promise<any> {
+    return this.request(`/api/support/tickets/${ticketId}/responses`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  async getSupportResponses(ticketId: string): Promise<any[]> {
+    return this.request(`/api/support/tickets/${ticketId}/responses`);
   }
 
   // Utility methods

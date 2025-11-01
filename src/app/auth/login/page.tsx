@@ -2,8 +2,13 @@
 
 import { LoginForm } from '@/components/auth/LoginForm';
 import { Shield, Lock, Users, Zap } from 'lucide-react';
+import { useEffect } from 'react';
 
 export default function LoginPage() {
+  useEffect(() => {
+    document.title = 'Login | CYNAYD One';
+  }, []);
+
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Branding & Visual */}

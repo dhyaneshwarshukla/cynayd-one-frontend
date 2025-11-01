@@ -7,7 +7,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, Plan } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { useApiState } from '@/hooks/useApiState';
 import { useToast } from '@/hooks/useToast';
@@ -29,6 +29,14 @@ interface ExtendedOrganization extends Organization {
   teamCount?: number;
   productCount?: number;
   isActive: boolean;
+  planId?: string;
+  plan?: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    isDefault: boolean;
+  };
 }
 
 interface OrganizationStats {
@@ -42,6 +50,11 @@ interface OrganizationStats {
 export default function OrganizationsPage() {
   const { user, isAuthenticated } = useAuth();
   const [toasts, toastActions] = useToast();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Organizations | CYNAYD One';
+  }, []);
   
   // Use API state for organizations with manual control
   const [organizationsState, organizationsActions] = useApiState<ExtendedOrganization[]>([]);
@@ -65,6 +78,8 @@ export default function OrganizationsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrgs, setSelectedOrgs] = useState<Set<string>>(new Set());
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showPlanChangeModal, setShowPlanChangeModal] = useState(false);
+  const [allPlans, setAllPlans] = useState<Plan[]>([]);
 
   // Determine user role - only SUPER_ADMIN can access organizations
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -72,8 +87,18 @@ export default function OrganizationsPage() {
   useEffect(() => {
     if (isAuthenticated && isSuperAdmin) {
       fetchOrganizations();
+      fetchAllPlans();
     }
   }, [isAuthenticated, isSuperAdmin]);
+
+  const fetchAllPlans = async () => {
+    try {
+      const plans = await apiClient.getPlans(true);
+      setAllPlans(plans);
+    } catch (error) {
+      console.error('Failed to fetch plans:', error);
+    }
+  };
 
   const fetchOrganizations = async () => {
     // Prevent multiple simultaneous requests
@@ -731,6 +756,12 @@ export default function OrganizationsPage() {
                   </div>
                   
                   <div className="text-sm text-gray-600 space-y-1">
+                    {org.plan && (
+                      <div className="flex items-center justify-between p-2 bg-blue-50 rounded border border-blue-200 mb-2">
+                        <span className="text-xs font-medium text-blue-700">Plan:</span>
+                        <span className="text-xs font-bold text-blue-900">{org.plan.name}</span>
+                      </div>
+                    )}
                     <p className="truncate">Created: {new Date(org.createdAt).toLocaleDateString()}</p>
                     <p className="truncate">Updated: {new Date(org.updatedAt).toLocaleDateString()}</p>
                   </div>
@@ -744,6 +775,17 @@ export default function OrganizationsPage() {
                     className="flex-1 min-w-0 border-blue-300 text-blue-700 hover:bg-blue-50"
                   >
                     View
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSelectedOrg(org);
+                      setShowPlanChangeModal(true);
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 min-w-0 border-purple-300 text-purple-700 hover:bg-purple-50"
+                  >
+                    Change Plan
                   </Button>
                   <Button
                     onClick={() => handleEditOrganization(org)}
@@ -1051,6 +1093,90 @@ export default function OrganizationsPage() {
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
               >
                 Edit Organization
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Plan Modal */}
+      {showPlanChangeModal && selectedOrg && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Change Plan for {selectedOrg.name}
+            </h3>
+            
+            {selectedOrg.plan && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-gray-600">Current Plan:</p>
+                <p className="text-lg font-bold text-blue-900">{selectedOrg.plan.name}</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {allPlans.map((plan) => (
+                <button
+                  key={plan.id}
+                  onClick={async () => {
+                    try {
+                      await apiClient.assignPlanToOrganization(selectedOrg.id, plan.id);
+                      
+                      // Update local state
+                      const currentOrgs = organizationsState.data || [];
+                      const updatedOrgs = currentOrgs.map(org =>
+                        org.id === selectedOrg.id
+                          ? { ...org, planId: plan.id, plan: { id: plan.id, name: plan.name, slug: plan.slug, description: plan.description, isDefault: plan.isDefault } }
+                          : org
+                      );
+                      organizationsActions.setData(updatedOrgs);
+                      
+                      setShowPlanChangeModal(false);
+                      setSelectedOrg(null);
+                      
+                      toastActions.showToast({
+                        type: 'success',
+                        title: 'Success',
+                        message: `Plan changed to ${plan.name} successfully!`
+                      });
+                    } catch (error) {
+                      toastActions.showToast({
+                        type: 'error',
+                        title: 'Failed to change plan',
+                        message: error instanceof Error ? error.message : 'Unknown error'
+                      });
+                    }
+                  }}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                    selectedOrg.planId === plan.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{plan.name}</h4>
+                      {plan.description && (
+                        <p className="text-sm text-gray-600">{plan.description}</p>
+                      )}
+                    </div>
+                    {selectedOrg.planId === plan.id && (
+                      <span className="text-blue-600 font-bold">✓</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowPlanChangeModal(false);
+                  setSelectedOrg(null);
+                }}
+                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-400 transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>

@@ -31,6 +31,10 @@ interface UserStats {
 }
 
 export default function UsersPage() {
+  // Set page title
+  useEffect(() => {
+    document.title = 'Users | CYNAYD One';
+  }, []);
   const { user, isAuthenticated } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [organization, setOrganization] = useState<{ id: string; name: string } | null>(null);

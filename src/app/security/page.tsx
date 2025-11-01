@@ -25,6 +25,7 @@ interface SecurityStats {
 
 interface SecuritySettings {
   mfaRequired: boolean;
+  mfaRequiredForAllDevices: boolean;
   passwordPolicy: {
     minLength: number;
     requireUppercase: boolean;
@@ -70,6 +71,7 @@ export default function SecurityPage() {
   const [threatAlerts, setThreatAlerts] = useState<ThreatAlert[]>([]);
   const [settings, setSettings] = useState<SecuritySettings>({
     mfaRequired: false,
+    mfaRequiredForAllDevices: false,
     passwordPolicy: {
       minLength: 8,
       requireUppercase: true,
@@ -86,8 +88,8 @@ export default function SecurityPage() {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
 
-  // Determine user role - only SUPER_ADMIN can access security features
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  // Determine user role - ADMIN and SUPER_ADMIN can access security features
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -270,6 +272,7 @@ export default function SecurityPage() {
     try {
       await apiClient.updateSecuritySettings({
         mfaRequired: settings.mfaRequired,
+        mfaRequiredForAllDevices: settings.mfaRequiredForAllDevices,
         passwordMinLength: settings.passwordPolicy.minLength,
         passwordRequireUppercase: settings.passwordPolicy.requireUppercase,
         passwordRequireLowercase: settings.passwordPolicy.requireLowercase,
@@ -294,7 +297,7 @@ export default function SecurityPage() {
     return matchesSeverity && matchesType;
   });
 
-  if (!isSuperAdmin) {
+  if (!isAdmin) {
     return (
       <UnifiedLayout
         title="Access Denied"
@@ -323,7 +326,7 @@ export default function SecurityPage() {
       title="Security Center"
       subtitle="Monitor security events and manage security settings"
       actions={
-        isSuperAdmin ? (
+        isAdmin ? (
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => handleExportReport('pdf')}
@@ -499,16 +502,18 @@ export default function SecurityPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => alert(`Block IP: ${event.ipAddress}`)}
-                          className="border-red-300 text-red-700 hover:bg-red-50"
+                          disabled
+                          onClick={() => {}}
+                          className="border-red-300 text-red-700 hover:bg-red-50 opacity-50 cursor-not-allowed"
                         >
                           Block IP
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => alert('Investigate event')}
-                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                          disabled
+                          onClick={() => {}}
+                          className="border-blue-300 text-blue-700 hover:bg-blue-50 opacity-50 cursor-not-allowed"
                         >
                           Investigate
                         </Button>
@@ -521,7 +526,7 @@ export default function SecurityPage() {
               <div className="text-center py-8">
                 <div className="text-4xl mb-2">🔍</div>
                 <p className="text-gray-600">No security events found</p>
-                <p className="text-sm text-gray-500 mt-2">Click "Create Sample Data" to generate test events</p>
+                <p className="text-sm text-gray-500 mt-2">Security events will appear here when they occur</p>
               </div>
             )}
           </Card>
@@ -734,6 +739,28 @@ export default function SecurityPage() {
                     />
                     <span className="text-sm text-gray-700">Require MFA for all users</span>
                   </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={settings.mfaRequiredForAllDevices}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          if (confirm('This will enable MFA for all devices across all users. Continue?')) {
+                            setSettings({...settings, mfaRequiredForAllDevices: true});
+                            alert('MFA will be enabled for all devices. This may require users to re-authenticate.');
+                            // TODO: Implement API call to enable MFA for all devices
+                          }
+                        } else {
+                          setSettings({...settings, mfaRequiredForAllDevices: false});
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">Enable MFA for all devices</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-2">
+                    When enabled, all users will be required to set up MFA on their devices. Existing sessions may be invalidated.
+                  </p>
                 </div>
               </div>
 
@@ -852,17 +879,19 @@ export default function SecurityPage() {
                     Export Security Report (JSON)
                   </Button>
                   <Button
-                    onClick={() => alert('All sessions terminated!')}
+                    onClick={() => alert('Terminate All Sessions functionality coming soon')}
                     variant="outline"
-                    className="w-full border-red-300 text-red-700 hover:bg-red-50"
+                    disabled
+                    className="w-full border-red-300 text-red-700 hover:bg-red-50 opacity-50 cursor-not-allowed"
                   >
                     <span className="mr-2">🚫</span>
                     Terminate All Sessions
                   </Button>
                   <Button
-                    onClick={() => alert('Security audit initiated!')}
+                    onClick={() => alert('Security Audit functionality coming soon')}
                     variant="outline"
-                    className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+                    disabled
+                    className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50 opacity-50 cursor-not-allowed"
                   >
                     <span className="mr-2">🔍</span>
                     Run Security Audit

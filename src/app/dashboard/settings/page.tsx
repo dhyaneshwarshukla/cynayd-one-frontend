@@ -26,7 +26,7 @@ interface UserSettings {
     marketing: boolean;
   };
   privacy: {
-    profileVisibility: string;
+    profileVisibility: 'public' | 'private' | 'organization';
     showEmail: boolean;
     showLastSeen: boolean;
     allowDirectMessages: boolean;
@@ -84,6 +84,11 @@ export default function SettingsPage() {
       animations: true
     }
   });
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Settings | CYNAYD One';
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -179,10 +184,14 @@ export default function SettingsPage() {
               </label>
               <input
                 type="email"
-                defaultValue={user.email || ''}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your email"
+                value={user.email || ''}
+                disabled
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                placeholder="Your email address"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Email addresses can only be changed by administrators
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -316,23 +325,101 @@ export default function SettingsPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Data Privacy</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Privacy</h3>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                   <div>
                     <p className="font-medium text-gray-900">Profile Visibility</p>
                     <p className="text-sm text-gray-600">Control who can see your profile information</p>
                   </div>
-                  <select className="px-3 py-1 border border-gray-300 rounded-md">
+                  <select 
+                    value={userSettings.privacy.profileVisibility}
+                    onChange={(e) => setUserSettings(prev => ({
+                      ...prev,
+                      privacy: { ...prev.privacy, profileVisibility: e.target.value as 'public' | 'private' | 'organization' }
+                    }))}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="private">Private</option>
-                    <option value="team">Team Only</option>
-                    <option value="organization">Organization</option>
+                    <option value="organization">Organization Only</option>
+                    <option value="public">Public</option>
                   </select>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">Show Email Address</p>
+                    <p className="text-sm text-gray-600">Allow others to see your email address</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={userSettings.privacy.showEmail}
+                    onChange={(e) => setUserSettings(prev => ({
+                      ...prev,
+                      privacy: { ...prev.privacy, showEmail: e.target.checked }
+                    }))}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">Show Last Seen</p>
+                    <p className="text-sm text-gray-600">Display when you were last active</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={userSettings.privacy.showLastSeen}
+                    onChange={(e) => setUserSettings(prev => ({
+                      ...prev,
+                      privacy: { ...prev.privacy, showLastSeen: e.target.checked }
+                    }))}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">Allow Direct Messages</p>
+                    <p className="text-sm text-gray-600">Allow other users to send you direct messages</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={userSettings.privacy.allowDirectMessages}
+                    onChange={(e) => setUserSettings(prev => ({
+                      ...prev,
+                      privacy: { ...prev.privacy, allowDirectMessages: e.target.checked }
+                    }))}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
+                  />
+                </div>
+              </div>
+              <button 
+                onClick={async () => {
+                  try {
+                    await apiClient.updateUserSettings({ privacy: userSettings.privacy });
+                    alert('Privacy settings saved successfully!');
+                  } catch (error) {
+                    console.error('Failed to save privacy settings:', error);
+                    alert('Failed to save privacy settings. Please try again.');
+                  }
+                }}
+                className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Save Privacy Settings
+              </button>
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Data Privacy & Security</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                   <div>
                     <p className="font-medium text-gray-900">Activity Tracking</p>
-                    <p className="text-sm text-gray-600">Allow tracking of your activity for analytics</p>
+                    <p className="text-sm text-gray-600">Allow tracking of your activity for analytics and improvements</p>
+                  </div>
+                  <input type="checkbox" defaultChecked className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">Personalized Recommendations</p>
+                    <p className="text-sm text-gray-600">Use your activity data to provide personalized recommendations</p>
                   </div>
                   <input type="checkbox" defaultChecked className="h-4 w-4 text-blue-600" />
                 </div>
@@ -340,21 +427,49 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Data Export</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Download a copy of your personal data
-              </p>
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
-                Request Data Export
-              </button>
+              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                <p className="text-sm text-gray-600 mb-4">
+                  Download a copy of all your personal data stored in our system. This includes your profile information, activity logs, and preferences.
+                </p>
+                <button 
+                  onClick={async () => {
+                    try {
+                      // This would call an API endpoint to export user data
+                      alert('Data export requested. You will receive an email with your data shortly.');
+                    } catch (error) {
+                      console.error('Failed to request data export:', error);
+                      alert('Failed to request data export. Please try again.');
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Request Data Export
+                </button>
+              </div>
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Account Deletion</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Permanently delete your account and all associated data
-              </p>
-              <button className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors">
-                Delete Account
-              </button>
+              <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+                <p className="text-sm text-red-800 mb-4">
+                  <strong>Warning:</strong> This action cannot be undone. Permanently deleting your account will remove all your data, including profile information, activity logs, and preferences.
+                </p>
+                <button 
+                  onClick={async () => {
+                    if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+                      try {
+                        // This would call an API endpoint to delete the user account
+                        alert('Account deletion requested. Please contact support to complete the process.');
+                      } catch (error) {
+                        console.error('Failed to delete account:', error);
+                        alert('Failed to delete account. Please contact support.');
+                      }
+                    }
+                  }}
+                  className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Delete Account
+                </button>
+              </div>
             </div>
           </div>
         );

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,6 +10,13 @@ import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
 import { useAuth } from '../../contexts/AuthContext';
 import { RegisterData } from '../../lib/api-client';
+import { apiClient, Plan } from '../../lib/api-client';
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -39,17 +46,77 @@ export const RegisterForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const { register: registerUser, isLoading } = useAuth();
-  const { register, handleSubmit, formState: { errors } } = useForm<RegisterFormData>({
+  const { register, handleSubmit, formState: { errors }, getValues } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   });
 
-  const onSubmit = async (data: RegisterFormData) => {
+  useEffect(() => {
+    fetchPlans();
+    loadRazorpay();
+  }, []);
+
+  const loadRazorpay = () => {
+    if (window.Razorpay) {
+      setRazorpayLoaded(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => {
+      setRazorpayLoaded(true);
+    };
+    script.onerror = () => {
+      setError('Failed to load payment gateway. Please refresh the page.');
+    };
+    document.body.appendChild(script);
+  };
+
+  const fetchPlans = async () => {
     try {
-      setError(null);
-      setSuccess(null);
-      setShowVerificationMessage(false);
-      
+      const activePlans = await apiClient.getPlans(true);
+      setPlans(activePlans);
+      // Auto-select free plan
+      const freePlan = activePlans.find(p => p.slug === 'free');
+      if (freePlan) setSelectedPlan(freePlan.id);
+    } catch (error) {
+      console.error('Failed to fetch plans:', error);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  const getPriceForPlan = (plan: Plan) => {
+    if (!plan.pricings || plan.pricings.length === 0) return null;
+    const pricing = plan.pricings.find(p => p.billingPeriod === selectedBillingPeriod);
+    return pricing;
+  };
+
+  const formatPrice = (price: string, currency: string = 'INR') => {
+    const numPrice = Number(price);
+    if (numPrice === 0) return 'Free';
+    
+    if (currency === 'INR') {
+      return `₹${Math.round(numPrice).toLocaleString('en-IN')}`;
+    }
+    return `$${numPrice.toLocaleString()}`;
+  };
+
+  const completeRegistration = async (data: RegisterFormData, paymentData?: {
+    paymentOrderId: string;
+    paymentId: string;
+    paymentSignature: string;
+    pricingId: string;
+  }) => {
+    try {
       const registerData: RegisterData = {
         email: data.email,
         password: data.password,
@@ -61,6 +128,11 @@ export const RegisterForm: React.FC = () => {
         industry: data.industry,
         phoneNumber: data.phoneNumber,
         jobTitle: data.jobTitle,
+        planId: selectedPlan || undefined,
+        pricingId: paymentData?.pricingId,
+        paymentOrderId: paymentData?.paymentOrderId,
+        paymentId: paymentData?.paymentId,
+        paymentSignature: paymentData?.paymentSignature,
       };
       
       const result = await registerUser(registerData);
@@ -71,8 +143,116 @@ export const RegisterForm: React.FC = () => {
       } else {
         setSuccess('Registration successful! You can now log in.');
       }
+      setProcessingPayment(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register');
+      setError(err instanceof Error ? err.message : 'Failed to complete registration');
+      setProcessingPayment(false);
+    }
+  };
+
+  const onSubmit = async (data: RegisterFormData) => {
+    try {
+      setError(null);
+      setSuccess(null);
+      setShowVerificationMessage(false);
+      
+      // Validate plan selection
+      if (!selectedPlan) {
+        setError('Please select a plan to continue');
+        return;
+      }
+
+      const selectedPlanObj = plans.find(p => p.id === selectedPlan);
+      const pricing = selectedPlanObj ? getPriceForPlan(selectedPlanObj) : null;
+      const isPaidPlan = pricing && Number(pricing.price) > 0;
+
+      // If free plan, register directly
+      if (!isPaidPlan || !pricing) {
+        await completeRegistration(data);
+        return;
+      }
+
+      // For paid plans, process payment first
+      if (!razorpayLoaded) {
+        setError('Payment gateway is loading. Please wait a moment and try again.');
+        return;
+      }
+
+      setProcessingPayment(true);
+
+      // Create payment order with user email for reconciliation
+      const orderResponse = await apiClient.createPaymentOrder({
+        planId: selectedPlan,
+        pricingId: pricing.id,
+        currency: pricing.currency || 'INR',
+        notes: {
+          organizationName: data.organizationName || '',
+          email: data.email,
+          userEmail: data.email, // Explicitly pass for reconciliation
+        },
+      });
+
+      if (!orderResponse.success || !orderResponse.order) {
+        throw new Error('Failed to create payment order');
+      }
+
+      // Open Razorpay checkout
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
+        amount: orderResponse.order.amount,
+        currency: orderResponse.order.currency,
+        name: 'CYNAYD One',
+        description: `${selectedPlanObj?.name} Plan`,
+        order_id: orderResponse.order.id,
+        handler: async (response: any) => {
+          try {
+            // Verify payment on backend
+            const verifyResponse = await apiClient.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+
+            if (!verifyResponse.success) {
+              throw new Error(verifyResponse.message || 'Payment verification failed');
+            }
+
+            // Complete registration with payment details
+            await completeRegistration(data, {
+              paymentOrderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              paymentSignature: response.razorpay_signature,
+              pricingId: pricing.id,
+            });
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Payment verification failed');
+            setProcessingPayment(false);
+          }
+        },
+        prefill: {
+          name: data.name,
+          email: data.email,
+          contact: data.phoneNumber || '',
+        },
+        theme: {
+          color: '#2563eb',
+        },
+        modal: {
+          ondismiss: () => {
+            setProcessingPayment(false);
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+      razorpay.on('payment.failed', (response: any) => {
+        setError(`Payment failed: ${response.error.description || 'Unknown error'}`);
+        setProcessingPayment(false);
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process registration');
+      setProcessingPayment(false);
     }
   };
 
@@ -179,10 +359,10 @@ export const RegisterForm: React.FC = () => {
             />
             <Input
               type="email"
-              label="Work Email"
+              label="Email Address"
               {...register('email')}
               error={errors.email?.message}
-              placeholder="Enter your work email address"
+              placeholder="Enter your email address"
             />
             <Input
               type="text"
@@ -299,6 +479,110 @@ export const RegisterForm: React.FC = () => {
           </div>
         </div>
 
+        {/* Plan Selection Section */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-6 border border-amber-100">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center mr-3">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            Choose Your Plan
+          </h3>
+
+          {loadingPlans ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+            </div>
+          ) : (
+            <>
+              {/* Billing Period Toggle */}
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex p-1 bg-white rounded-lg shadow-sm border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBillingPeriod('monthly')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      selectedBillingPeriod === 'monthly'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBillingPeriod('yearly')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      selectedBillingPeriod === 'yearly'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Yearly <span className="text-xs">(Save 20%)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Plans Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {plans.map((plan) => {
+                  const pricing = getPriceForPlan(plan);
+                  const isSelected = selectedPlan === plan.id;
+                  
+                  return (
+                    <div
+                      key={plan.id}
+                      onClick={() => setSelectedPlan(plan.id)}
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        isSelected
+                          ? 'border-amber-500 bg-amber-50 shadow-lg scale-105'
+                          : 'border-gray-200 bg-white hover:border-amber-300 hover:shadow-md'
+                      }`}
+                    >
+                      {plan.isDefault && (
+                        <div className="inline-block px-2 py-1 mb-2 bg-green-100 text-green-800 text-xs font-bold rounded">
+                          POPULAR
+                        </div>
+                      )}
+                      <h4 className="text-lg font-bold text-gray-900 mb-2">{plan.name}</h4>
+                      <div className="text-3xl font-extrabold text-gray-900 mb-1">
+                        {pricing ? formatPrice(pricing.price, pricing.currency || 'INR') : 'Contact Us'}
+                      </div>
+                      {pricing && (
+                        <div className="text-sm text-gray-600 mb-4">
+                          per {selectedBillingPeriod === 'monthly' ? 'month' : selectedBillingPeriod === 'yearly' ? 'year' : 'quarter'}
+                        </div>
+                      )}
+                      {plan.description && (
+                        <p className="text-sm text-gray-600 mb-4">{plan.description}</p>
+                      )}
+                      <div className="space-y-2">
+                        {plan.maxUsers && (
+                          <div className="text-xs text-gray-600">
+                            ✓ Up to {plan.maxUsers} users
+                          </div>
+                        )}
+                        {plan.maxApps && (
+                          <div className="text-xs text-gray-600">
+                            ✓ {plan.maxApps} apps
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!selectedPlan && (
+                <p className="text-red-600 text-sm mt-4 text-center">
+                  Please select a plan to continue
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Security Section */}
         <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -363,12 +647,12 @@ export const RegisterForm: React.FC = () => {
           <Button
             type="submit"
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
-            disabled={isLoading}
+            disabled={isLoading || processingPayment}
           >
-            {isLoading ? (
+            {(isLoading || processingPayment) ? (
               <div className="flex items-center justify-center">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Creating Your Organization...
+                {processingPayment ? 'Processing Payment...' : 'Creating Your Organization...'}
               </div>
             ) : (
               <div className="flex items-center justify-center">

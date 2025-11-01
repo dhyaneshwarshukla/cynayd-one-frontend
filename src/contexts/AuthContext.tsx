@@ -39,7 +39,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
   // Check if user is authenticated on mount
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
+
     const initializeAuth = async () => {
+      // Set a timeout to ensure loading never hangs forever
+      timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.warn('AuthContext - Initialization timeout, stopping loading state');
+          setIsLoading(false);
+        }
+      }, 5000); // 5 second timeout
+
       try {
         console.log('=== AUTH CONTEXT INITIALIZATION ===');
         console.log('AuthContext - Initializing auth...');
@@ -51,38 +62,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           console.log('AuthContext - Attempting to get current user...');
           const userData = await apiClient.getCurrentUser();
           console.log('AuthContext - User data received:', userData);
-          setUser(userData);
-          console.log('AuthContext - User state updated');
-        } catch (error) {
+          if (isMounted) {
+            clearTimeout(timeoutId);
+            setUser(userData);
+            setIsLoading(false);
+            console.log('AuthContext - User state updated');
+          }
+        } catch (error: any) {
           console.log('AuthContext - No valid authentication found:', error);
-          console.log('AuthContext - Error details:', error.message);
+          console.log('AuthContext - Error details:', error?.message);
           // Only logout if we have a token but it's invalid
           if (apiClient.getAuthToken()) {
             console.log('AuthContext - Clearing invalid token');
             apiClient.logout();
+          }
+          if (isMounted) {
+            clearTimeout(timeoutId);
+            setIsLoading(false);
           }
         }
       } catch (error) {
         console.warn('AuthContext - Failed to initialize auth:', error);
         // Clear invalid token
         apiClient.logout();
+        if (isMounted) {
+          clearTimeout(timeoutId);
+          setIsLoading(false);
+        }
       } finally {
         console.log('AuthContext - Initialization completed');
-        console.log('AuthContext - Current user state:', user);
-        console.log('AuthContext - Current loading state:', isLoading);
       }
     };
 
     initializeAuth();
-  }, []);
 
-  // Set loading to false after user state has been updated
-  useEffect(() => {
-    if (user !== null || !apiClient.getAuthToken()) {
-      console.log('AuthContext - Setting loading to false (user state updated)');
-      setIsLoading(false);
-    }
-  }, [user]);
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, []);
 
   // Refresh user data
   const refreshUser = async () => {

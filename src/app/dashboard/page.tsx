@@ -12,6 +12,11 @@ export default function DashboardPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
+  // Set page title
+  useEffect(() => {
+    document.title = 'Dashboard | CYNAYD One';
+  }, []);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {

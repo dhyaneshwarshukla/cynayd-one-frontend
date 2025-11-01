@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, Organization, Plan, Pricing } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -71,6 +71,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   // Product-related state
   const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState<DashboardUser[]>([]);
+  
+  // Plan-related state
+  const [organizationPlan, setOrganizationPlan] = useState<Organization | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -111,6 +114,16 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         setOrganizations(orgsData);
       } catch (orgErr) {
         console.warn('Failed to fetch organizations:', orgErr);
+      }
+
+      // Fetch organization plan details
+      try {
+        if (user?.organizationId) {
+          const planData = await apiClient.getOrganizationPlanDetails(user.organizationId);
+          setOrganizationPlan(planData);
+        }
+      } catch (planErr) {
+        console.warn('Failed to fetch organization plan details:', planErr);
       }
 
       // Fetch products and user access
@@ -271,6 +284,79 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </Card>
       </div>
 
+      {/* Plan Details */}
+      {organizationPlan?.plan && (
+        <Card className="p-6 mb-6 border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-3 bg-blue-500 rounded-lg">
+                  <span className="text-2xl text-white">💎</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Current Plan</h3>
+                  <p className="text-sm text-gray-600">{organizationPlan.plan.name}</p>
+                </div>
+              </div>
+              
+              {organizationPlan.plan.description && (
+                <p className="text-sm text-gray-700 mb-4">{organizationPlan.plan.description}</p>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                {organizationPlan.plan.maxUsers !== null && organizationPlan.plan.maxUsers !== undefined && (
+                  <div className="bg-white bg-opacity-70 rounded-lg p-3">
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Max Users</p>
+                    <p className="text-2xl font-bold text-blue-600">{organizationPlan.plan.maxUsers}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Current: {stats.activeUsers} active
+                    </p>
+                  </div>
+                )}
+                
+                {organizationPlan.plan.maxApps !== null && organizationPlan.plan.maxApps !== undefined && (
+                  <div className="bg-white bg-opacity-70 rounded-lg p-3">
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Max Apps</p>
+                    <p className="text-2xl font-bold text-green-600">{organizationPlan.plan.maxApps}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Current: {stats.totalProducts} apps
+                    </p>
+                  </div>
+                )}
+                
+                {organizationPlan.plan.maxStorage && (
+                  <div className="bg-white bg-opacity-70 rounded-lg p-3">
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Storage</p>
+                    <p className="text-2xl font-bold text-purple-600">{organizationPlan.plan.maxStorage}</p>
+                  </div>
+                )}
+              </div>
+
+              {organizationPlan.plan.pricings && organizationPlan.plan.pricings.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-blue-200">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Pricing</p>
+                  <div className="flex flex-wrap gap-2">
+                    {organizationPlan.plan.pricings.map((pricing: Pricing) => (
+                      <span key={pricing.id} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                        {pricing.billingPeriod}: {pricing.currency} {parseFloat(pricing.price).toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <Button
+              variant="outline"
+              onClick={() => window.location.href = '/settings?tab=plan'}
+              className="border-blue-500 text-blue-600 hover:bg-blue-50"
+            >
+              Manage Plan
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
@@ -363,58 +449,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <div className="text-right">
                 <p className="text-xl font-bold text-gray-900">{stats.securityEvents}</p>
                 <p className="text-sm text-red-600">Events</p>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* System Health */}
-        <Card className="p-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <span className="text-xl">💚</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900">System Health</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="font-medium text-gray-900">API Server</span>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-600">Online</p>
-                <p className="text-xs text-green-600">healthy</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="font-medium text-gray-900">Database</span>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-600">Connected</p>
-                <p className="text-xs text-green-600">healthy</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="font-medium text-gray-900">Authentication</span>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-600">Active</p>
-                <p className="text-xs text-green-600">healthy</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="font-medium text-gray-900">Security Monitoring</span>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-600">Monitoring</p>
-                <p className="text-xs text-blue-600">active</p>
               </div>
             </div>
           </div>

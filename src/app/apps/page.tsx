@@ -58,7 +58,7 @@ interface App {
 
 export default function AppsPage() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [apps, setApps] = useState<AppWithAccess[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -222,7 +222,32 @@ export default function AppsPage() {
     }
   }, [user]);
 
+  // Set page title
   useEffect(() => {
+    document.title = 'Applications | CYNAYD One';
+  }, []);
+
+  useEffect(() => {
+    // Check authentication and admin access
+    if (authLoading) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      router.push('/auth/login');
+      return;
+    }
+
+    // Check if user is admin (SUPER_ADMIN or ADMIN)
+    const userRole = user?.role?.toUpperCase();
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    
+    if (!isAdmin) {
+      // Redirect non-admin users to dashboard
+      router.push('/dashboard');
+      return;
+    }
+
     // If we have a user and are authenticated, fetch apps (only once)
     if (user && isAuthenticated && !hasFetchedRef.current) {
       console.log('✅ Authenticated with user, fetching apps...');
@@ -230,18 +255,7 @@ export default function AppsPage() {
       fetchAppsInline();
       return;
     }
-    
-    // Don't redirect while auth is still loading
-    if (isLoading) {
-      return;
-    }
-    
-    // Redirect to login if not authenticated
-    if (!isAuthenticated && !isLoading) {
-      router.push('/auth/login');
-      return;
-    }
-  }, [isAuthenticated, isLoading, user, router, fetchAppsInline]);
+  }, [isAuthenticated, authLoading, user, router, fetchAppsInline]);
 
   const fetchApps = useCallback(async (showRefreshIndicator = false, retryCount = 0) => {
     console.log('🚀 fetchApps called with:', { showRefreshIndicator, retryCount });
@@ -755,7 +769,36 @@ export default function AppsPage() {
 
   const stats = getStats();
 
-  if (isLoading) {
+  // Show access denied if user is not admin
+  if (!authLoading && isAuthenticated && user) {
+    const userRole = user?.role?.toUpperCase();
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    
+    if (!isAdmin) {
+      return (
+        <UnifiedLayout 
+          variant="dashboard" 
+          title="Access Denied"
+          subtitle="This page is only accessible to administrators"
+        >
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Card className="p-8 max-w-md text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+              <p className="text-gray-600 mb-6">
+                You need administrator privileges to access this page.
+              </p>
+              <Button onClick={() => router.push('/dashboard')}>
+                Go to Dashboard
+              </Button>
+            </Card>
+          </div>
+        </UnifiedLayout>
+      );
+    }
+  }
+
+  if (authLoading || isLoading) {
     return (
       <ResponsiveContainer className="p-6">
         <div className="flex items-center justify-center h-64">

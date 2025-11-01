@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
@@ -10,6 +11,8 @@ import { Alert } from '@/components/common/Alert';
 import { apiClient, UserSettings } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
+import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
+import PlanManagement from '@/components/admin/PlanManagement';
 
 // Define interfaces locally
 // Using UserSettings from UI package
@@ -36,8 +39,9 @@ interface SystemSettings {
   };
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const { user, isAuthenticated } = useAuth();
+  const searchParams = useSearchParams();
   const [userSettings, setUserSettings] = useState<UserSettings>({
     profile: {
       name: '',
@@ -99,14 +103,45 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [showMFASetup, setShowMFASetup] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [originalUserSettings, setOriginalUserSettings] = useState<UserSettings | null>(null);
+  const [originalSystemSettings, setOriginalSystemSettings] = useState<SystemSettings | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchSettings();
       setIsSuperAdmin(user?.role === 'SUPER_ADMIN');
+      setIsAdmin(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN');
     }
   }, [isAuthenticated, user]);
+
+  // Handle tab query parameter
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['profile', 'notifications', 'privacy', 'security', 'preferences', 'plan', 'system'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  // Listen for system theme changes when auto theme is enabled
+  useEffect(() => {
+    if (userSettings.preferences.theme === 'auto') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleThemeChange = (e: MediaQueryListEvent) => {
+        const root = document.documentElement;
+        if (e.matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      };
+
+      mediaQuery.addEventListener('change', handleThemeChange);
+      return () => mediaQuery.removeEventListener('change', handleThemeChange);
+    }
+  }, [userSettings.preferences.theme]);
 
   const fetchSettings = async () => {
     try {
@@ -120,6 +155,10 @@ export default function SettingsPage() {
         apiClient.getMFAStatus().catch(() => ({ enabled: false })) // Fallback if MFA status fails
       ]);
 
+      // Store original settings for reset functionality
+      setOriginalUserSettings(JSON.parse(JSON.stringify(apiUserSettings)));
+      setOriginalSystemSettings(JSON.parse(JSON.stringify(apiSystemSettings)));
+      
       setUserSettings(apiUserSettings);
       setSystemSettings(apiSystemSettings);
       
@@ -131,6 +170,9 @@ export default function SettingsPage() {
           mfaEnabled: mfaStatus.enabled
         }
       }));
+
+      // Apply preferences immediately
+      applyPreferences(apiUserSettings.preferences);
     } catch (err) {
       setError('Failed to load settings');
       console.error('Settings fetch error:', err);
@@ -139,14 +181,85 @@ export default function SettingsPage() {
     }
   };
 
+  // Apply preferences to the application
+  const applyPreferences = (preferences: UserSettings['preferences']) => {
+    // Apply theme
+    if (preferences.theme) {
+      const root = document.documentElement;
+      if (preferences.theme === 'dark') {
+        root.classList.add('dark');
+      } else if (preferences.theme === 'light') {
+        root.classList.remove('dark');
+      } else if (preferences.theme === 'auto') {
+        // Auto theme based on system preference
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      }
+      // Store theme in localStorage for persistence across sessions
+      localStorage.setItem('theme', preferences.theme);
+    }
+
+    // Apply other preferences
+    if (preferences.sidebarCollapsed !== undefined) {
+      localStorage.setItem('sidebarCollapsed', String(preferences.sidebarCollapsed));
+    }
+    
+    if (preferences.compactMode !== undefined) {
+      localStorage.setItem('compactMode', String(preferences.compactMode));
+      if (preferences.compactMode) {
+        document.body.classList.add('compact-mode');
+      } else {
+        document.body.classList.remove('compact-mode');
+      }
+    }
+
+    if (preferences.animations !== undefined) {
+      localStorage.setItem('animations', String(preferences.animations));
+      if (!preferences.animations) {
+        document.body.classList.add('no-animations');
+      } else {
+        document.body.classList.remove('no-animations');
+      }
+    }
+  };
+
   const handleSaveUserSettings = async () => {
     try {
       setError(null);
+      
+      // Validation
+      if (!userSettings.profile.name || !userSettings.profile.name.trim()) {
+        setError('Name is required');
+        return;
+      }
+      
+      if (!userSettings.profile.email || !userSettings.profile.email.trim()) {
+        setError('Email is required');
+        return;
+      }
+      
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(userSettings.profile.email)) {
+        setError('Please enter a valid email address');
+        return;
+      }
+      
       await apiClient.updateUserSettings(userSettings);
+      
+      // Apply preferences immediately after saving
+      applyPreferences(userSettings.preferences);
+      
+      // Update original settings after successful save
+      setOriginalUserSettings(JSON.parse(JSON.stringify(userSettings)));
+      
       setSuccess('User settings saved successfully!');
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      setError('Failed to save user settings');
+    } catch (err: any) {
+      setError(err.message || 'Failed to save user settings');
       console.error('Save user settings error:', err);
     }
   };
@@ -154,17 +267,56 @@ export default function SettingsPage() {
   const handleSaveSystemSettings = async () => {
     try {
       setError(null);
+      
+      // Validation
+      if (!systemSettings.organization.name || !systemSettings.organization.name.trim()) {
+        setError('Organization name is required');
+        return;
+      }
+      
+      if (!systemSettings.organization.slug || !systemSettings.organization.slug.trim()) {
+        setError('Organization slug is required');
+        return;
+      }
+      
+      // Slug validation (alphanumeric and hyphens only)
+      const slugRegex = /^[a-z0-9-]+$/;
+      if (!slugRegex.test(systemSettings.organization.slug)) {
+        setError('Slug must contain only lowercase letters, numbers, and hyphens');
+        return;
+      }
+      
       await apiClient.updateSystemSettings(systemSettings);
+      
+      // Update original settings after successful save
+      setOriginalSystemSettings(JSON.parse(JSON.stringify(systemSettings)));
+      
       setSuccess('System settings saved successfully!');
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      setError('Failed to save system settings');
+    } catch (err: any) {
+      setError(err.message || 'Failed to save system settings');
       console.error('Save system settings error:', err);
     }
   };
 
   const handleChangePassword = () => {
-    alert('Change password feature coming soon!');
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordChangeSuccess = () => {
+    setSuccess('Password changed successfully!');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleReset = () => {
+    if (activeTab === 'system' && originalSystemSettings) {
+      setSystemSettings(JSON.parse(JSON.stringify(originalSystemSettings)));
+      setSuccess('System settings reset to original values');
+    } else if (originalUserSettings) {
+      setUserSettings(JSON.parse(JSON.stringify(originalUserSettings)));
+      setSuccess('User settings reset to original values');
+    }
+    setTimeout(() => setSuccess(null), 3000);
   };
 
   const handleEnableMFA = async () => {
@@ -209,13 +361,17 @@ export default function SettingsPage() {
     { id: 'privacy', label: 'Privacy', icon: '🔒' },
     { id: 'security', label: 'Security', icon: '🛡️' },
     { id: 'preferences', label: 'Preferences', icon: '⚙️' },
-    ...(isSuperAdmin ? [{ id: 'system', label: 'System', icon: '🏢' }] : [])
+    ...(isAdmin ? [
+      { id: 'plan', label: 'Plan & Billing', icon: '💎' },
+      { id: 'system', label: 'System', icon: '🏢' }
+    ] : [])
   ];
 
   const renderProfileSettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Information</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Profile Information</h3>
+        <p className="text-sm text-gray-600 mb-4">Update your personal information and preferences</p>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
@@ -227,6 +383,8 @@ export default function SettingsPage() {
                 profile: { ...userSettings.profile, name: e.target.value }
               })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your full name"
+              required
             />
           </div>
           <div>
@@ -239,7 +397,12 @@ export default function SettingsPage() {
                 profile: { ...userSettings.profile, email: e.target.value }
               })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="your.email@example.com"
+              required
             />
+            {userSettings.profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userSettings.profile.email) && (
+              <p className="text-xs text-red-600 mt-1">Please enter a valid email address</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
@@ -301,7 +464,8 @@ export default function SettingsPage() {
   const renderNotificationSettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Preferences</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Notification Preferences</h3>
+        <p className="text-sm text-gray-600 mb-4">Control how and when you receive notifications</p>
         <div className="space-y-4">
           {Object.entries(userSettings.notifications).map(([key, value]) => (
             <div key={key} className="flex items-center justify-between">
@@ -340,7 +504,8 @@ export default function SettingsPage() {
   const renderPrivacySettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Privacy Settings</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Privacy Settings</h3>
+        <p className="text-sm text-gray-600 mb-4">Manage your privacy and visibility settings</p>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Profile Visibility</label>
@@ -391,7 +556,8 @@ export default function SettingsPage() {
   const renderSecuritySettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Security Settings</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Security Settings</h3>
+        <p className="text-sm text-gray-600 mb-4">Manage your account security and authentication</p>
         <div className="space-y-6">
           <div className="p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center justify-between mb-2">
@@ -484,16 +650,22 @@ export default function SettingsPage() {
   const renderPreferenceSettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">App Preferences</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">App Preferences</h3>
+        <p className="text-sm text-gray-600 mb-4">Customize your application experience</p>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Theme</label>
             <select
               value={userSettings.preferences.theme}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                preferences: { ...userSettings.preferences, theme: e.target.value as any }
-              })}
+              onChange={(e) => {
+                const newTheme = e.target.value as any;
+                setUserSettings({
+                  ...userSettings,
+                  preferences: { ...userSettings.preferences, theme: newTheme }
+                });
+                // Apply theme immediately
+                applyPreferences({ ...userSettings.preferences, theme: newTheme });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="light">Light</option>
@@ -517,10 +689,15 @@ export default function SettingsPage() {
                 <input
                   type="checkbox"
                   checked={value as boolean}
-                  onChange={(e) => setUserSettings({
-                    ...userSettings,
-                    preferences: { ...userSettings.preferences, [key]: e.target.checked }
-                  })}
+                  onChange={(e) => {
+                    const newPreferences = { ...userSettings.preferences, [key]: e.target.checked };
+                    setUserSettings({
+                      ...userSettings,
+                      preferences: newPreferences
+                    });
+                    // Apply preference immediately
+                    applyPreferences(newPreferences);
+                  }}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -535,7 +712,8 @@ export default function SettingsPage() {
   const renderSystemSettings = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Organization Settings</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Organization Settings</h3>
+        <p className="text-sm text-gray-600 mb-4">Configure your organization preferences and limits</p>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
@@ -554,12 +732,20 @@ export default function SettingsPage() {
             <input
               type="text"
               value={systemSettings.organization.slug}
-              onChange={(e) => setSystemSettings({
-                ...systemSettings,
-                organization: { ...systemSettings.organization, slug: e.target.value }
-              })}
+              onChange={(e) => {
+                // Convert to lowercase and replace spaces/special chars with hyphens
+                const slug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                setSystemSettings({
+                  ...systemSettings,
+                  organization: { ...systemSettings.organization, slug }
+                });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="organization-slug"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Only lowercase letters, numbers, and hyphens allowed
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -669,6 +855,33 @@ export default function SettingsPage() {
     </div>
   );
 
+  const renderPlanSettings = () => {
+    if (!user?.organizationId) {
+      return (
+        <div className="space-y-6">
+          <Card className="p-6">
+            <div className="text-center py-12 text-gray-500">
+              <span className="text-6xl mb-4 block">💎</span>
+              <h3 className="text-lg font-medium mb-2">No Organization Access</h3>
+              <p className="text-gray-600 mb-4">
+                You need to be associated with an organization to manage plans.
+              </p>
+              <p className="text-sm text-gray-500">
+                Contact your administrator to be added to an organization.
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <PlanManagement organizationId={user.organizationId} />
+      </div>
+    );
+  };
+
   const renderActiveTab = () => {
     switch (activeTab) {
       case 'profile': return renderProfileSettings();
@@ -676,6 +889,7 @@ export default function SettingsPage() {
       case 'privacy': return renderPrivacySettings();
       case 'security': return renderSecuritySettings();
       case 'preferences': return renderPreferenceSettings();
+      case 'plan': return renderPlanSettings();
       case 'system': return renderSystemSettings();
       default: return renderProfileSettings();
     }
@@ -687,16 +901,18 @@ export default function SettingsPage() {
       subtitle="Manage your account preferences and system configuration"
       actions={
         <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={activeTab === 'system' ? handleSaveSystemSettings : handleSaveUserSettings}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-          >
-            <span className="mr-2">💾</span>
-            Save Changes
-          </Button>
+          {activeTab !== 'plan' && (
+            <Button
+              onClick={activeTab === 'system' ? handleSaveSystemSettings : handleSaveUserSettings}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+            >
+              <span className="mr-2">💾</span>
+              Save Changes
+            </Button>
+          )}
           <Button
             variant="outline"
-            onClick={() => window.location.reload()}
+            onClick={handleReset}
             className="border-gray-300 text-gray-700 hover:bg-gray-50"
           >
             <span className="mr-2">🔄</span>
@@ -767,6 +983,21 @@ export default function SettingsPage() {
         onClose={() => setShowMFASetup(false)}
         onSuccess={handleMFASetupSuccess}
       />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        onSuccess={handlePasswordChangeSuccess}
+      />
     </UnifiedLayout>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner size="lg" />}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }

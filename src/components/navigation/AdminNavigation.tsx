@@ -11,10 +11,11 @@ const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): 
     'apps': ['ADMIN', 'SUPER_ADMIN'],
     'organizations': ['SUPER_ADMIN'],
     'users': ['ADMIN', 'SUPER_ADMIN'],
-    'audit': ['SUPER_ADMIN'],
-    'security': ['SUPER_ADMIN'],
+    'audit': ['ADMIN', 'SUPER_ADMIN'],
+    'security': ['ADMIN', 'SUPER_ADMIN'],
     'roles': ['SUPER_ADMIN'],
-    'settings': ['SUPER_ADMIN']
+    'settings': ['ADMIN', 'SUPER_ADMIN'],
+    'support': ['ADMIN', 'SUPER_ADMIN']
   };
 
   // Check if user's role has any of the required permissions
@@ -44,6 +45,8 @@ import {
   BuildingOfficeIcon,
   KeyIcon,
   ClipboardDocumentListIcon,
+  BanknotesIcon,
+  LifebuoyIcon,
 } from '@heroicons/react/24/outline';
 
 interface AdminNavigationProps {
@@ -77,9 +80,11 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
 
   const systemNavigation = [
     { name: "Organizations", href: "/organizations", icon: BuildingOfficeIcon, permission: 'organizations' },
+    { name: "Plans & Pricing", href: "/admin/plans", icon: BanknotesIcon, permission: 'organizations' },
     { name: "Roles & Permissions", href: "/roles", icon: KeyIcon, permission: 'roles' },
     { name: "Security", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
+    { name: "Support", href: "/admin/support", icon: LifebuoyIcon, permission: 'support' },
     { name: "Settings", href: "/settings", icon: CogIcon, permission: 'settings' },
   ];
 
