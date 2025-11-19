@@ -6,9 +6,10 @@ import { MFASetupModal } from '@/components/auth/MFASetupModal';
 import { PINSetupModal } from '@/components/auth/PINSetupModal';
 import { Button } from '@/components/common/Button';
 import { apiClient } from '@/lib/api-client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Card } from '@/components/common/Card';
 import { useSearchParams } from 'next/navigation';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 // Define UserSettings interface locally
 interface UserSettings {
@@ -47,7 +48,7 @@ interface UserSettings {
   };
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const { user, isAuthenticated } = useAuth();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('general');
@@ -194,6 +195,16 @@ export default function SettingsPage() {
   };
 
   const handlePINSetupSuccess = async () => {
+    // Refresh PIN status
+    await fetchPINStatus();
+    
+    // Update activity to unlock session if it was locked
+    try {
+      await apiClient.updateActivity();
+      localStorage.setItem('lastActivity', Date.now().toString());
+    } catch (error) {
+      console.error('Failed to update activity:', error);
+    }
     await fetchPINStatus();
     setShowPINSetup(false);
     setIsUpdatingPIN(false);
@@ -629,5 +640,19 @@ export default function SettingsPage() {
         isUpdate={isUpdatingPIN}
       />
     </UnifiedLayout>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <UnifiedLayout variant="dashboard" title="Settings" subtitle="Loading...">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingSpinner size="lg" />
+        </div>
+      </UnifiedLayout>
+    }>
+      <SettingsPageContent />
+    </Suspense>
   );
 }

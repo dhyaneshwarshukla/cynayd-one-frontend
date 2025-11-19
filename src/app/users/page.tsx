@@ -85,20 +85,6 @@ export default function UsersPage() {
   
   // Temporary: Always allow user management for debugging
   const canManageUsersDebug = true;
-  
-  // Debug logging
-  console.log('=== USER MANAGEMENT DEBUG ===');
-  console.log('User:', user);
-  console.log('User role (original):', user?.role);
-  console.log('User role (normalized):', userRole);
-  console.log('User role type:', typeof user?.role);
-  console.log('Role comparison - SUPER_ADMIN:', userRole === 'SUPER_ADMIN');
-  console.log('Role comparison - ADMIN:', userRole === 'ADMIN');
-  console.log('Is admin:', isAdmin);
-  console.log('Is manager:', isManager);
-  console.log('Can manage users:', canManageUsers);
-  console.log('Is authenticated:', isAuthenticated);
-  console.log('=============================');
 
   // Form validation functions
   const validateEmail = (email: string): string => {

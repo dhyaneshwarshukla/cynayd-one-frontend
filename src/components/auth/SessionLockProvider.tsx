@@ -4,6 +4,7 @@ import React, { useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInactivityLock } from '../../hooks/useInactivityLock';
 import { LockScreen } from './LockScreen';
+import { usePathname } from 'next/navigation';
 import apiClient from '../../lib/api-client';
 
 interface SessionLockProviderProps {
@@ -16,11 +17,15 @@ interface SessionLockProviderProps {
  */
 export function SessionLockProvider({ children }: SessionLockProviderProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const pathname = usePathname();
   const [isLocked, setIsLocked] = useState(false);
   const [pinStatus, setPinStatus] = useState<{ pinEnabled: boolean; hasPIN: boolean } | null>(null);
   const [checkingPinStatus, setCheckingPinStatus] = useState(true);
+  
+  // Check if current route is security settings page
+  const isSecuritySettingsPage = pathname?.includes('/dashboard/settings') || pathname?.includes('/settings');
 
-  // Check PIN status when user is authenticated
+  // Check PIN status when user is authenticated or when navigating to security settings
   useEffect(() => {
     const checkPINStatus = async () => {
       if (isAuthenticated && user) {
@@ -56,7 +61,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     };
 
     checkPINStatus();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, pathname, isSecuritySettingsPage]);
 
   // Handle inactivity lock - always lock after 5 minutes if authenticated
   const handleLock = () => {
@@ -140,12 +145,42 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     }
   }, [isAuthenticated, isLocked, checkingPinStatus]);
 
+  // Monitor PIN status when on security settings page and locked without PIN
+  useEffect(() => {
+    if (!pinStatus?.pinEnabled && isSecuritySettingsPage && isLocked && isAuthenticated) {
+      const interval = setInterval(async () => {
+        try {
+          const status = await apiClient.getPINStatus();
+          if (status.pinEnabled) {
+            // PIN was set up, update activity and unlock
+            await apiClient.updateActivity();
+            localStorage.setItem('lastActivity', Date.now().toString());
+            setPinStatus(status);
+            setIsLocked(false);
+            unlockInactivity();
+          }
+        } catch (error) {
+          console.error('Failed to check PIN status:', error);
+        }
+      }, 2000); // Check every 2 seconds while on security page
+      
+      return () => clearInterval(interval);
+    }
+  }, [pinStatus?.pinEnabled, isSecuritySettingsPage, isLocked, isAuthenticated, unlockInactivity]);
+
   // Don't show lock screen if:
   // - Still loading
   // - Not authenticated
   // - Checking PIN status
   // - Not locked
+  // - On security settings page and PIN not enabled (allow access to set up PIN)
   if (isLoading || !isAuthenticated || checkingPinStatus || !isLocked) {
+    return <>{children}</>;
+  }
+
+  // If locked but PIN not enabled, allow access to security settings page
+  if (!pinStatus?.pinEnabled && isSecuritySettingsPage) {
+    // Allow access to security settings page to set up PIN
     return <>{children}</>;
   }
 
