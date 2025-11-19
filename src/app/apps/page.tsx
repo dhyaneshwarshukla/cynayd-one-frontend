@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AddAppModal } from '@/components/dashboard/AddAppModal';
 import { AppAssignmentModal } from '@/components/dashboard/AppAssignmentModal';
 import { AppCreationModal } from '@/components/dashboard/AppCreationModal';
-import { apiClient, AppWithAccess } from '@/lib/api-client';
+import { apiClient, AppWithAccess, AuditLog } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { 
   PlayIcon,
@@ -90,6 +90,8 @@ export default function AppsPage() {
     read: boolean;
   }>>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [activityLogs, setActivityLogs] = useState<AuditLog[]>([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false);
 
   // Connection status monitoring
   useEffect(() => {
@@ -717,6 +719,128 @@ export default function AppsPage() {
       generateNotifications(apps);
     }
   }, [apps, generateNotifications]);
+
+  // Fetch activity logs when activity tab is active
+  const fetchActivityLogs = useCallback(async () => {
+    try {
+      setIsLoadingActivity(true);
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 1); // Last 24 hours
+      
+      const logs = await apiClient.getAuditLogs({
+        startDate,
+        endDate,
+        limit: 50,
+        offset: 0
+      });
+      
+      // Filter for app-related activities
+      const appRelatedLogs = logs.filter(log => 
+        log.resource?.toLowerCase().includes('app') ||
+        log.action?.toLowerCase().includes('app') ||
+        log.action?.toLowerCase().includes('access') ||
+        log.action?.toLowerCase().includes('assign') ||
+        log.resource?.toLowerCase().includes('application')
+      );
+      
+      setActivityLogs(appRelatedLogs);
+    } catch (err) {
+      console.error('Error fetching activity logs:', err);
+      setActivityLogs([]);
+    } finally {
+      setIsLoadingActivity(false);
+    }
+  }, []);
+
+  // Fetch activity logs when activity tab becomes active
+  useEffect(() => {
+    if (activeTab === 'activity' && isAuthenticated) {
+      fetchActivityLogs();
+      // Set up auto-refresh for activity tab
+      const activityInterval = setInterval(() => {
+        fetchActivityLogs();
+      }, 30000); // Refresh every 30 seconds
+      
+      return () => clearInterval(activityInterval);
+    }
+  }, [activeTab, isAuthenticated, fetchActivityLogs]);
+
+  // Utility function to calculate time ago dynamically
+  const getTimeAgo = (timestamp: Date | string): string => {
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffInSeconds = Math.floor((now.getTime() - past.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) {
+      return `${diffInSeconds} second${diffInSeconds !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) {
+      return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks < 4) {
+      return `${diffInWeeks} week${diffInWeeks !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffInMonths = Math.floor(diffInDays / 30);
+    return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`;
+  };
+
+  // Get app icon and color from activity log
+  const getAppFromActivity = (log: AuditLog) => {
+    // Try to find app by name in resource or details
+    const appName = log.resource || log.details?.appName || log.details?.name || 'Unknown App';
+    const app = apps.find(a => 
+      a.name.toLowerCase().includes(appName.toLowerCase()) ||
+      a.slug.toLowerCase().includes(appName.toLowerCase())
+    );
+    return app || null;
+  };
+
+  // Calculate most accessed apps from activity logs
+  const getMostAccessedApps = () => {
+    const appAccessCounts = new Map<string, { count: number; lastAccess: Date; app: AppWithAccess }>();
+    
+    activityLogs.forEach(log => {
+      const app = getAppFromActivity(log);
+      if (app) {
+        const existing = appAccessCounts.get(app.id);
+        const logDate = new Date(log.timestamp);
+        
+        if (existing) {
+          appAccessCounts.set(app.id, {
+            count: existing.count + 1,
+            lastAccess: logDate > existing.lastAccess ? logDate : existing.lastAccess,
+            app
+          });
+        } else {
+          appAccessCounts.set(app.id, {
+            count: 1,
+            lastAccess: logDate,
+            app
+          });
+        }
+      }
+    });
+    
+    return Array.from(appAccessCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  };
 
   // Calculate dynamic statistics with enhanced metrics
   const getStats = () => {
@@ -1481,79 +1605,237 @@ export default function AppsPage() {
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Recent Activity</h2>
-                <div className="flex items-center text-sm text-gray-500">
-                  <ClockIcon className="w-4 h-4 mr-1" />
-                  <span>Last 24 hours</span>
+                <div className="flex items-center space-x-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchActivityLogs}
+                    disabled={isLoadingActivity}
+                    className="flex items-center"
+                  >
+                    <ArrowPathIcon className={`w-4 h-4 mr-2 ${isLoadingActivity ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <ClockIcon className="w-4 h-4 mr-1" />
+                    <span>Last 24 hours</span>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-4">
-                {apps.slice(0, 5).map((app, index) => {
-                  const accessStatus = getAccessStatus(app);
-                  const usagePercentage = getUsagePercentage(app);
-                  const timeAgo = index === 0 ? '2 minutes ago' : 
-                                 index === 1 ? '1 hour ago' : 
-                                 index === 2 ? '3 hours ago' : 
-                                 index === 3 ? '1 day ago' : '2 days ago';
-                  
-                  return (
-                    <div key={app.id} className="flex items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div 
-                        className="w-10 h-10 rounded-full flex items-center justify-center mr-4 text-white text-sm shadow-md"
-                        style={{ backgroundColor: app.color || '#3b82f6' }}
-                      >
-                        {app.icon || '📱'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium text-gray-900">{app.name}</h3>
-                          <span className="text-xs text-gray-500">{timeAgo}</span>
+              {isLoadingActivity ? (
+                <div className="flex items-center justify-center py-12">
+                  <LoadingSpinner size="lg" />
+                  <span className="ml-3 text-gray-600">Loading activity...</span>
+                </div>
+              ) : activityLogs.length === 0 ? (
+                <div className="text-center py-12">
+                  <ClockIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Recent Activity</h3>
+                  <p className="text-gray-600 mb-4">No app-related activities found in the last 24 hours.</p>
+                  <Button variant="outline" onClick={fetchActivityLogs}>
+                    Refresh Activity
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activityLogs.slice(0, 10).map((log) => {
+                    const app = getAppFromActivity(log);
+                    const timeAgo = getTimeAgo(log.timestamp);
+                    const actionType = log.action?.toLowerCase() || '';
+                    
+                    // Determine icon and color based on action type
+                    let icon = '📱';
+                    let bgColor = '#3b82f6';
+                    let actionText = log.action || 'Activity';
+                    
+                    if (actionType.includes('access') || actionType.includes('login')) {
+                      icon = '🚀';
+                      bgColor = '#10b981';
+                      actionText = 'App Accessed';
+                    } else if (actionType.includes('assign') || actionType.includes('grant')) {
+                      icon = '👤';
+                      bgColor = '#3b82f6';
+                      actionText = 'App Assigned';
+                    } else if (actionType.includes('create')) {
+                      icon = '➕';
+                      bgColor = '#8b5cf6';
+                      actionText = 'App Created';
+                    } else if (actionType.includes('update') || actionType.includes('modify')) {
+                      icon = '✏️';
+                      bgColor = '#f59e0b';
+                      actionText = 'App Updated';
+                    } else if (actionType.includes('delete') || actionType.includes('remove')) {
+                      icon = '🗑️';
+                      bgColor = '#ef4444';
+                      actionText = 'App Removed';
+                    }
+                    
+                    // Use app's color and icon if available
+                    if (app) {
+                      bgColor = app.color || bgColor;
+                      icon = app.icon || icon;
+                    }
+                    
+                    return (
+                      <div key={log.id} className="flex items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center mr-4 text-white text-sm shadow-md"
+                          style={{ backgroundColor: bgColor }}
+                        >
+                          {icon}
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">Last accessed via SSO</p>
-                        <div className="flex items-center mt-2">
-                          <div className="flex-1 bg-gray-200 rounded-full h-1.5 mr-2">
-                            <div 
-                              className={`h-1.5 rounded-full transition-all duration-300 ${
-                                usagePercentage > 90 ? 'bg-red-500' :
-                                usagePercentage > 70 ? 'bg-yellow-500' :
-                                'bg-green-500'
-                              }`}
-                              style={{ width: `${usagePercentage}%` }}
-                            ></div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium text-gray-900">
+                              {app ? app.name : log.resource || 'Unknown App'}
+                            </h3>
+                            <span className="text-xs text-gray-500">{timeAgo}</span>
                           </div>
-                          <span className="text-xs text-gray-500">{usagePercentage}%</span>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {actionText}
+                            {log.user && (
+                              <span className="ml-1">by {log.user.name || log.user.email}</span>
+                            )}
+                          </p>
+                          {log.details && Object.keys(log.details).length > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {JSON.stringify(log.details).substring(0, 100)}
+                              {JSON.stringify(log.details).length > 100 ? '...' : ''}
+                            </p>
+                          )}
+                          {app && (
+                            <div className="flex items-center mt-2">
+                              <div className="flex-1 bg-gray-200 rounded-full h-1.5 mr-2">
+                                <div 
+                                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                                    getUsagePercentage(app) > 90 ? 'bg-red-500' :
+                                    getUsagePercentage(app) > 70 ? 'bg-yellow-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  style={{ width: `${getUsagePercentage(app)}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-xs text-gray-500">{getUsagePercentage(app)}%</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            actionType.includes('access') || actionType.includes('create') || actionType.includes('assign')
+                              ? 'bg-green-100 text-green-800'
+                              : actionType.includes('update')
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : actionType.includes('delete')
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {actionText}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          accessStatus.color === 'green' ? 'bg-green-100 text-green-800' :
-                          accessStatus.color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {accessStatus.text}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
 
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Usage Statistics</h2>
-                <div className="flex items-center text-sm text-gray-500">
-                  <ChartBarIcon className="w-4 h-4 mr-1" />
-                  <span>Real-time data</span>
+                <div className="flex items-center space-x-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchActivityLogs}
+                    disabled={isLoadingActivity}
+                    className="flex items-center"
+                  >
+                    <ArrowPathIcon className={`w-4 h-4 mr-2 ${isLoadingActivity ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <ChartBarIcon className="w-4 h-4 mr-1" />
+                    <span>Real-time data</span>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Most Used Apps</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Most Used Apps</h3>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setActiveTab('activity')}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        View All Activity
+                      </button>
+                    </div>
+                  </div>
                   <div className="space-y-3">
-                    {apps.slice(0, 3).map((app) => {
-                      const usagePercentage = getUsagePercentage(app);
-                      const accessStatus = getAccessStatus(app);
-                      return (
+                    {(() => {
+                      // Get most accessed apps from activity logs if available
+                      const mostAccessed = getMostAccessedApps();
+                      
+                      // If we have activity data, show most accessed apps
+                      if (mostAccessed.length > 0) {
+                        return mostAccessed.map(({ app, count, lastAccess }) => {
+                          const usagePercentage = getUsagePercentage(app);
+                          const accessStatus = getAccessStatus(app);
+                          const timeAgo = getTimeAgo(lastAccess);
+                          
+                          return (
+                            <div key={app.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                              <div 
+                                className="w-8 h-8 rounded flex items-center justify-center mr-3 text-white text-xs shadow-sm"
+                                style={{ backgroundColor: app.color || '#3b82f6' }}
+                              >
+                                {app.icon || '📱'}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between text-sm">
+                                  <span className="font-medium text-gray-900">{app.name}</span>
+                                  <span className="text-gray-500 font-semibold">{count} access{count !== 1 ? 'es' : ''}</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-xs text-gray-500">Last: {timeAgo}</span>
+                                  {usagePercentage > 0 && (
+                                    <span className="text-xs text-gray-500">{usagePercentage}% quota</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center mt-1">
+                                  <div className={`w-1.5 h-1.5 rounded-full mr-2 ${
+                                    accessStatus.color === 'green' ? 'bg-green-500' :
+                                    accessStatus.color === 'yellow' ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`}></div>
+                                  <span className="text-xs text-gray-400">{accessStatus.text}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      }
+                      
+                      // Fallback: Sort apps by usage percentage (highest first) and get top 5
+                      const sortedApps = [...apps]
+                        .map(app => ({
+                          app,
+                          usagePercentage: getUsagePercentage(app),
+                          accessStatus: getAccessStatus(app)
+                        }))
+                        .sort((a, b) => b.usagePercentage - a.usagePercentage)
+                        .slice(0, 5);
+                      
+                      if (sortedApps.length === 0) {
+                        return (
+                          <div className="text-center py-8 text-gray-500">
+                            <p className="text-sm">No apps with usage data</p>
+                          </div>
+                        );
+                      }
+                      
+                      return sortedApps.map(({ app, usagePercentage, accessStatus }) => (
                         <div key={app.id} className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                           <div 
                             className="w-8 h-8 rounded flex items-center justify-center mr-3 text-white text-xs shadow-sm"
@@ -1564,34 +1846,42 @@ export default function AppsPage() {
                           <div className="flex-1">
                             <div className="flex justify-between text-sm">
                               <span className="font-medium text-gray-900">{app.name}</span>
-                              <span className="text-gray-500">{usagePercentage}%</span>
+                              <span className="text-gray-500 font-semibold">{usagePercentage}%</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                               <div 
                                 className={`h-2 rounded-full transition-all duration-300 ${
                                   usagePercentage > 90 ? 'bg-red-500' :
                                   usagePercentage > 70 ? 'bg-yellow-500' :
-                                  'bg-green-500'
+                                  usagePercentage > 0 ? 'bg-green-500' :
+                                  'bg-gray-300'
                                 }`}
-                                style={{ width: `${usagePercentage}%` }}
+                                style={{ width: `${Math.max(usagePercentage, 2)}%` }}
                               ></div>
                             </div>
-                            <div className="flex items-center mt-1">
-                              <div className={`w-1.5 h-1.5 rounded-full mr-2 ${
-                                accessStatus.color === 'green' ? 'bg-green-500' :
-                                accessStatus.color === 'yellow' ? 'bg-yellow-500' :
-                                'bg-red-500'
-                              }`}></div>
-                              <span className="text-xs text-gray-400">{accessStatus.text}</span>
+                            <div className="flex items-center justify-between mt-1">
+                              <div className="flex items-center">
+                                <div className={`w-1.5 h-1.5 rounded-full mr-2 ${
+                                  accessStatus.color === 'green' ? 'bg-green-500' :
+                                  accessStatus.color === 'yellow' ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}></div>
+                                <span className="text-xs text-gray-400">{accessStatus.text}</span>
+                              </div>
+                              {app.access?.quota && (
+                                <span className="text-xs text-gray-500">
+                                  {app.access.usedQuota.toLocaleString()} / {app.access.quota.toLocaleString()}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
+                      ));
+                    })()}
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Access Status</h3>
+                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Access Status & Metrics</h3>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
                       <div className="flex items-center">
@@ -1599,7 +1889,7 @@ export default function AppsPage() {
                         <span className="text-sm font-medium text-gray-900">Active Apps</span>
                       </div>
                       <span className="text-lg font-bold text-green-600">
-                        {stats.activeApps}
+                        {stats.activeApps} / {stats.totalApps}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors">
@@ -1627,6 +1917,26 @@ export default function AppsPage() {
                       </div>
                       <span className="text-lg font-bold text-blue-600">
                         {stats.healthScore}%
+                      </span>
+                    </div>
+                    {stats.totalQuota > 0 && (
+                      <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors">
+                        <div className="flex items-center">
+                          <ChartBarIcon className="w-5 h-5 text-purple-600 mr-2" />
+                          <span className="text-sm font-medium text-gray-900">Total Quota Usage</span>
+                        </div>
+                        <span className="text-lg font-bold text-purple-600">
+                          {stats.quotaUtilization}%
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                      <div className="flex items-center">
+                        <ChartBarIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                        <span className="text-sm font-medium text-gray-900">Avg Usage</span>
+                      </div>
+                      <span className="text-lg font-bold text-indigo-600">
+                        {stats.avgUsage}%
                       </span>
                     </div>
                   </div>

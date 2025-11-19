@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider } from "../contexts/AuthContext";
+import { SessionLockProvider } from "../components/auth/SessionLockProvider";
 
 function AuthProviderWithNavigation({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -28,7 +29,9 @@ function AuthProviderWithNavigation({ children }: { children: ReactNode }) {
       onRegisterSuccess={handleRegisterSuccess}
       onLogoutSuccess={handleLogoutSuccess}
     >
-      {children}
+      <SessionLockProvider>
+        {children}
+      </SessionLockProvider>
     </AuthProvider>
   );
 }

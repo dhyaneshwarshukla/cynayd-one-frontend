@@ -27,9 +27,12 @@ export const LoginForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showResendOption, setShowResendOption] = useState(false);
+  const [showUnlockOption, setShowUnlockOption] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
+  const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
+  const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
   const [showMFA, setShowMFA] = useState(false);
   const [mfaData, setMfaData] = useState<{userId: string, email: string, password: string} | null>(null);
   const { login, isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
@@ -70,8 +73,40 @@ export const LoginForm: React.FC = () => {
         return;
       }
       
-      setError(errorMessage);
+      // Check if it's an account locked error FIRST (before setting generic error)
+      if (err.response?.data?.code === 'ACCOUNT_LOCKED' || errorMessage.toLowerCase().includes('account is locked') || errorMessage.toLowerCase().includes('locked until')) {
+        const lockedUntil = err.response?.data?.lockedUntil;
+        const userEmail = err.response?.data?.userEmail || data.email;
+        const lockMessage = lockedUntil 
+          ? `Account is locked until ${new Date(lockedUntil).toLocaleString()}.`
+          : errorMessage.includes('locked') ? errorMessage : 'Account is locked.';
+        setError(lockMessage);
+        // Always show unlock option if account is locked
+        setShowUnlockOption(true);
+        setUserEmail(userEmail);
+        console.log('Account locked - showing unlock option', { 
+          code: err.response?.data?.code, 
+          userEmail,
+          errorMessage,
+          responseData: err.response?.data 
+        });
+        return;
+      }
       
+      setError(errorMessage);
+
+      // Check if it's an invalid credentials error with attempt count
+      if (err.response?.data?.code === 'INVALID_CREDENTIALS') {
+        const attemptsRemaining = err.response.data.attemptsRemaining;
+        const errorMsg = err.response.data.message || errorMessage;
+        setError(errorMsg);
+        // Show warning if attempts are low
+        if (attemptsRemaining <= 3 && attemptsRemaining > 0) {
+          console.warn(`⚠️ Only ${attemptsRemaining} attempt${attemptsRemaining > 1 ? 's' : ''} remaining before account lock`);
+        }
+        return;
+      }
+
       // Check if it's an email verification error
       if (errorMessage.includes('verify your email') || errorMessage.includes('EMAIL_NOT_VERIFIED')) {
         setShowResendOption(true);
@@ -92,6 +127,21 @@ export const LoginForm: React.FC = () => {
       setResendMessage(err instanceof Error ? err.message : 'Failed to send verification email');
     } finally {
       setIsResending(false);
+    }
+  };
+
+  const handleRequestUnlockEmail = async () => {
+    try {
+      setIsRequestingUnlock(true);
+      setUnlockMessage(null);
+      const apiClient = (await import('../../lib/api-client')).apiClient;
+      await apiClient.requestUnlockEmail(userEmail);
+      setUnlockMessage('Unlock email sent successfully! Please check your inbox and click the unlock link.');
+      setShowUnlockOption(false);
+    } catch (err) {
+      setUnlockMessage(err instanceof Error ? err.message : 'Failed to send unlock email');
+    } finally {
+      setIsRequestingUnlock(false);
     }
   };
 
@@ -190,6 +240,50 @@ export const LoginForm: React.FC = () => {
                     </>
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showUnlockOption && (
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0">
+                <Shield className="w-5 h-5 text-orange-600 mt-0.5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-orange-800 mb-2">
+                  Account Locked
+                </h3>
+                <p className="text-sm text-orange-700 mb-3">
+                  Your account has been locked. Click the button below to receive an unlock link via email.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRequestUnlockEmail}
+                  disabled={isRequestingUnlock}
+                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-orange-700 bg-orange-100 hover:bg-orange-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRequestingUnlock ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-orange-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4 mr-2" />
+                      Send Unlock Email
+                    </>
+                  )}
+                </button>
+                {unlockMessage && (
+                  <p className={`text-sm mt-2 ${unlockMessage.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>
+                    {unlockMessage}
+                  </p>
+                )}
               </div>
             </div>
           </div>

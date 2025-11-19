@@ -3,10 +3,12 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
+import { PINSetupModal } from '@/components/auth/PINSetupModal';
 import { Button } from '@/components/common/Button';
 import { apiClient } from '@/lib/api-client';
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/common/Card';
+import { useSearchParams } from 'next/navigation';
 
 // Define UserSettings interface locally
 interface UserSettings {
@@ -47,8 +49,12 @@ interface UserSettings {
 
 export default function SettingsPage() {
   const { user, isAuthenticated } = useAuth();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('general');
   const [showMFASetup, setShowMFASetup] = useState(false);
+  const [showPINSetup, setShowPINSetup] = useState(false);
+  const [pinStatus, setPinStatus] = useState<{ pinEnabled: boolean; hasPIN: boolean } | null>(null);
+  const [isUpdatingPIN, setIsUpdatingPIN] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettings>({
     profile: {
       name: '',
@@ -90,6 +96,14 @@ export default function SettingsPage() {
     document.title = 'Settings | CYNAYD One';
   }, []);
 
+  // Handle tab query parameter
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['general', 'security', 'notifications', 'privacy', 'preferences'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     if (isAuthenticated && user) {
       // Fetch user settings or set defaults
@@ -104,6 +118,8 @@ export default function SettingsPage() {
       
       // Fetch real MFA status from backend
       fetchMFAStatus();
+      // Fetch PIN status
+      fetchPINStatus();
     }
   }, [isAuthenticated, user]);
 
@@ -142,6 +158,45 @@ export default function SettingsPage() {
     // Refresh MFA status from backend
     await fetchMFAStatus();
     setShowMFASetup(false);
+  };
+
+  const fetchPINStatus = async () => {
+    try {
+      const status = await apiClient.getPINStatus();
+      setPinStatus(status);
+    } catch (error) {
+      console.error('Failed to fetch PIN status:', error);
+    }
+  };
+
+  const handlePINSetup = () => {
+    setIsUpdatingPIN(false);
+    setShowPINSetup(true);
+  };
+
+  const handlePINUpdate = () => {
+    setIsUpdatingPIN(true);
+    setShowPINSetup(true);
+  };
+
+  const handlePINDisable = async () => {
+    if (!confirm('Are you sure you want to disable PIN? You will need to login again if the portal locks.')) {
+      return;
+    }
+
+    try {
+      await apiClient.disablePIN();
+      await fetchPINStatus();
+    } catch (error: any) {
+      console.error('Failed to disable PIN:', error);
+      alert(error.message || 'Failed to disable PIN');
+    }
+  };
+
+  const handlePINSetupSuccess = async () => {
+    await fetchPINStatus();
+    setShowPINSetup(false);
+    setIsUpdatingPIN(false);
   };
 
   if (!isAuthenticated || !user) {
@@ -270,6 +325,56 @@ export default function SettingsPage() {
                   >
                     {userSettings.security.mfaEnabled ? 'Disable' : 'Enable'} MFA
                   </Button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Portal Lock PIN</h3>
+              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-md">
+                <div>
+                  <p className="font-medium text-gray-900">Portal Lock PIN</p>
+                  <p className="text-sm text-gray-600">
+                    Set a PIN to unlock the portal after 5 minutes of inactivity
+                  </p>
+                  <div className="mt-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      pinStatus?.pinEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {pinStatus?.pinEnabled ? 'Enabled' : 'Not Set'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  {pinStatus?.pinEnabled ? (
+                    <>
+                      <Button
+                        onClick={handlePINUpdate}
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                      >
+                        Update PIN
+                      </Button>
+                      <Button
+                        onClick={handlePINDisable}
+                        variant="outline"
+                        size="sm"
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        Disable
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      onClick={handlePINSetup}
+                      variant="outline"
+                      size="sm"
+                      className="border-green-300 text-green-700 hover:bg-green-50"
+                    >
+                      Set Up PIN
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -513,6 +618,15 @@ export default function SettingsPage() {
         isOpen={showMFASetup}
         onClose={() => setShowMFASetup(false)}
         onSuccess={handleMFASetupSuccess}
+      />
+      <PINSetupModal
+        isOpen={showPINSetup}
+        onClose={() => {
+          setShowPINSetup(false);
+          setIsUpdatingPIN(false);
+        }}
+        onSuccess={handlePINSetupSuccess}
+        isUpdate={isUpdatingPIN}
       />
     </UnifiedLayout>
   );

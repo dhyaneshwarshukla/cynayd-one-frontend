@@ -202,6 +202,27 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     }
   };
 
+  const formatStorage = (storage: string | number | null | undefined): string => {
+    if (!storage) return 'Unlimited';
+    
+    // Handle BigInt strings or numbers
+    let storageStr: string;
+    if (typeof storage === 'object') {
+      const storageObj = storage as { toString?: () => string };
+      storageStr = storageObj && 'toString' in storageObj ? storageObj.toString() : String(storage);
+    } else {
+      storageStr = String(storage);
+    }
+    
+    const bytes = BigInt(storageStr);
+    const gb = Number(bytes) / (1024 ** 3);
+    
+    if (gb >= 1024) {
+      return `${(gb / 1024).toFixed(1)}TB`;
+    }
+    return `${gb.toFixed(0)}GB`;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -327,7 +348,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 {organizationPlan.plan.maxStorage && (
                   <div className="bg-white bg-opacity-70 rounded-lg p-3">
                     <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Storage</p>
-                    <p className="text-2xl font-bold text-purple-600">{organizationPlan.plan.maxStorage}</p>
+                    <p className="text-2xl font-bold text-purple-600">{formatStorage(organizationPlan.plan.maxStorage)}</p>
                   </div>
                 )}
               </div>

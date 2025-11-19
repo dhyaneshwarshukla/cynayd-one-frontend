@@ -1180,6 +1180,75 @@ class ApiClient {
     return this.request('/api/mfa/status');
   }
 
+  // PIN methods
+  async setupPIN(pin: string): Promise<{ message: string }> {
+    return this.request('/api/auth/pin/setup', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    });
+  }
+
+  async updatePIN(pin: string): Promise<{ message: string }> {
+    return this.request('/api/auth/pin/update', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    });
+  }
+
+  async verifyPIN(pin: string): Promise<{ message: string; verified: boolean }> {
+    try {
+      return await this.request<{ message: string; verified: boolean }>('/api/auth/pin/verify', {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+      });
+    } catch (error: any) {
+      // Re-throw with response data for better error handling
+      if (error.response?.data) {
+        const apiError = new Error(error.response.data.message || 'PIN verification failed') as any;
+        apiError.response = error.response;
+        throw apiError;
+      }
+      throw error;
+    }
+  }
+
+  async disablePIN(): Promise<{ message: string }> {
+    return this.request('/api/auth/pin/disable', {
+      method: 'POST',
+    });
+  }
+
+  async getPINStatus(): Promise<{ pinEnabled: boolean; hasPIN: boolean }> {
+    return this.request('/api/auth/pin/status');
+  }
+
+  async updateActivity(): Promise<{ message: string }> {
+    return this.request('/api/auth/activity', {
+      method: 'POST',
+    });
+  }
+
+  async unlockAccount(password: string): Promise<{ message: string }> {
+    return this.request('/api/auth/unlock-account', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  async requestUnlockEmail(email: string): Promise<{ message: string }> {
+    return this.request('/api/auth/request-unlock-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async unlockAccountWithToken(token: string): Promise<{ message: string; unlocked: boolean; alreadyUnlocked?: boolean }> {
+    return this.request('/api/auth/unlock-account-token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
   // Support Ticket methods
   async createSupportTicket(data: {
     userId: string;
