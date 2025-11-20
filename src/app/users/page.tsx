@@ -72,6 +72,12 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
+  
   // Bulk action states
   const [bulkAction, setBulkAction] = useState<'delete' | 'activate' | 'deactivate' | 'changeRole'>('activate');
   const [bulkRole, setBulkRole] = useState('user');
@@ -150,7 +156,7 @@ export default function UsersPage() {
       console.log('👤 Current user:', user);
       console.log('🔐 User role:', user?.role);
       console.log('✅ Can manage users:', canManageUsers);
-      fetchUsers();
+      fetchUsers(currentPage, pageSize);
       fetchAvailableRoles();
       
       // Fetch organizations for SuperAdmin users
@@ -158,7 +164,7 @@ export default function UsersPage() {
         fetchAvailableOrganizations();
       }
     }
-  }, [isAuthenticated, canManageUsersDebug, user, isSuperAdmin]);
+  }, [isAuthenticated, canManageUsersDebug, user, isSuperAdmin, currentPage, pageSize]);
 
   // Update bulkRole when availableRoles change
   useEffect(() => {
@@ -167,13 +173,35 @@ export default function UsersPage() {
     }
   }, [availableRoles, bulkRole]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (page: number = currentPage, limit: number = pageSize) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      // Fetch users from API - this will automatically filter by organization
-      const apiUsers = await apiClient.getUsers();
+      // Fetch users from API with pagination
+      const response = await apiClient.getUsers(page, limit);
+      
+      // Handle paginated response
+      let apiUsers: User[];
+      let paginationInfo: { page: number; limit: number; total: number; totalPages: number } | null = null;
+      
+      if (response && typeof response === 'object' && 'data' in response && 'pagination' in response) {
+        // Paginated response
+        apiUsers = (response as any).data;
+        paginationInfo = (response as any).pagination;
+        setCurrentPage(paginationInfo.page);
+        setTotalPages(paginationInfo.totalPages);
+        setTotalUsers(paginationInfo.total);
+      } else if (Array.isArray(response)) {
+        // Array response (backward compatibility)
+        apiUsers = response;
+        setTotalUsers(apiUsers.length);
+        setTotalPages(1);
+      } else {
+        apiUsers = [];
+        setTotalUsers(0);
+        setTotalPages(1);
+      }
       
       // Fetch organization details if user has organizationId
       if (user?.organizationId) {
@@ -188,7 +216,7 @@ export default function UsersPage() {
       }
       
       // Transform API users to match our interface
-      const transformedUsers: User[] = apiUsers.map(apiUser => ({
+      const transformedUsers: User[] = apiUsers.map((apiUser: any) => ({
         id: apiUser.id,
         name: apiUser.name,
         email: apiUser.email,
@@ -196,6 +224,7 @@ export default function UsersPage() {
         organizationId: apiUser.organizationId,
         emailVerified: apiUser.emailVerified || undefined,
         mfaEnabled: apiUser.mfaEnabled || false,
+        isActive: apiUser.isActive !== undefined ? apiUser.isActive : true,
         createdAt: new Date(apiUser.createdAt),
         updatedAt: new Date(apiUser.updatedAt),
         // lastLogin and teams properties not available in User interface
@@ -203,13 +232,14 @@ export default function UsersPage() {
 
       setUsers(transformedUsers);
       
-      // Calculate stats
+      // Calculate stats from all users (if we have pagination info, use total; otherwise use current page)
+      const activeUsers = transformedUsers.filter(u => (u as any).isActive !== false).length;
       const userStats: UserStats = {
-        totalUsers: transformedUsers.length,
-        activeUsers: transformedUsers.length, // All users are considered active
-        adminUsers: transformedUsers.filter(u => u.role === 'admin').length,
-        managerUsers: transformedUsers.filter(u => u.role === 'manager').length,
-        regularUsers: transformedUsers.filter(u => u.role === 'user').length,
+        totalUsers: paginationInfo ? paginationInfo.total : transformedUsers.length,
+        activeUsers: paginationInfo ? (paginationInfo.total - (transformedUsers.length - activeUsers)) : activeUsers,
+        adminUsers: transformedUsers.filter(u => u.role?.toLowerCase() === 'admin' || u.role === 'SUPER_ADMIN' || u.role === 'ADMIN').length,
+        managerUsers: transformedUsers.filter(u => u.role?.toLowerCase() === 'manager').length,
+        regularUsers: transformedUsers.filter(u => u.role?.toLowerCase() === 'user').length,
         recentLogins: 0 // lastLogin property not available
       };
       
@@ -368,18 +398,53 @@ export default function UsersPage() {
     try {
       setError(null);
       setSuccessMessage(null);
-      const updatedUser = await apiClient.updateUser(user.id, {
-        // isActive property not available in User interface
-      });
       
-    setUsers(users.map(u => 
-      u.id === user.id ? updatedUser : u
-    ));
-      setSuccessMessage(`User updated successfully!`);
+      const isCurrentlyActive = (user as any).isActive !== false;
+      const updatedUser = isCurrentlyActive 
+        ? await apiClient.deactivateUser(user.id)
+        : await apiClient.activateUser(user.id);
+      
+      setUsers(users.map(u => 
+        u.id === user.id ? { ...u, ...updatedUser, isActive: updatedUser.isActive !== undefined ? updatedUser.isActive : !isCurrentlyActive } : u
+      ));
+      
+      setSuccessMessage(`User ${isCurrentlyActive ? 'deactivated' : 'activated'} successfully!`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setError('Failed to update user status');
+      setError(`Failed to ${(user as any).isActive !== false ? 'deactivate' : 'activate'} user`);
       console.error('Update user status error:', err);
+    }
+  };
+  
+  const handleDeactivateUser = async (userId: string) => {
+    try {
+      setError(null);
+      setSuccessMessage(null);
+      const updatedUser = await apiClient.deactivateUser(userId);
+      setUsers(users.map(u => 
+        u.id === userId ? { ...u, ...updatedUser, isActive: false } : u
+      ));
+      setSuccessMessage('User deactivated successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError('Failed to deactivate user');
+      console.error('Deactivate user error:', err);
+    }
+  };
+  
+  const handleActivateUser = async (userId: string) => {
+    try {
+      setError(null);
+      setSuccessMessage(null);
+      const updatedUser = await apiClient.activateUser(userId);
+      setUsers(users.map(u => 
+        u.id === userId ? { ...u, ...updatedUser, isActive: true } : u
+      ));
+      setSuccessMessage('User activated successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError('Failed to activate user');
+      console.error('Activate user error:', err);
     }
   };
 
@@ -420,12 +485,12 @@ export default function UsersPage() {
               setUsers(users.filter(u => u.id !== userId));
               break;
             case 'activate':
-              await apiClient.updateUser(userId, {});
-              setUsers(users.map(u => u.id === userId ? u : u));
+              await apiClient.activateUser(userId);
+              setUsers(users.map(u => u.id === userId ? { ...u, isActive: true } : u));
               break;
             case 'deactivate':
-              await apiClient.updateUser(userId, {});
-              setUsers(users.map(u => u.id === userId ? u : u));
+              await apiClient.deactivateUser(userId);
+              setUsers(users.map(u => u.id === userId ? { ...u, isActive: false } : u));
               break;
             case 'changeRole':
               await apiClient.updateUser(userId, { role: bulkRole.toUpperCase() });
@@ -457,10 +522,13 @@ export default function UsersPage() {
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all'; // isActive property not available
+    const matchesRole = roleFilter === 'all' || user.role?.toLowerCase() === roleFilter.toLowerCase();
+    const isUserActive = (user as any).isActive !== false;
+    const matchesStatus = statusFilter === 'all' || 
+                         (statusFilter === 'active' && isUserActive) ||
+                         (statusFilter === 'inactive' && !isUserActive);
     
     return matchesSearch && matchesRole && matchesStatus;
   });
@@ -693,95 +761,163 @@ export default function UsersPage() {
             ))}
           </div>
         ) : filteredUsers.length > 0 ? (
-          <div className="space-y-4">
-            {/* Select All Header */}
-            <Card className="p-4 bg-gray-50">
-              <div className="flex items-center space-x-4">
-                <input
-                  type="checkbox"
-                  checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
-                  onChange={handleSelectAllUsers}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Select All ({selectedUsers.length} of {filteredUsers.length} selected)
-                </span>
-              </div>
-            </Card>
-            
-            {filteredUsers.map((user) => (
-              <Card key={user.id} className="p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedUsers.includes(user.id)}
-                      onChange={() => handleSelectUser(user.id)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <div className="h-12 w-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
-                      {user.name.charAt(0).toUpperCase()}
+          <>
+            <div className="space-y-4">
+              {/* Select All Header */}
+              <Card className="p-4 bg-gray-50">
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                    onChange={handleSelectAllUsers}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Select All ({selectedUsers.length} of {filteredUsers.length} selected)
+                  </span>
+                </div>
+              </Card>
+              
+              {filteredUsers.map((user) => {
+                const isActive = (user as any).isActive !== false;
+                return (
+                <Card key={user.id} className={`p-6 hover:shadow-md transition-shadow ${!isActive ? 'opacity-75 bg-gray-50' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedUsers.includes(user.id)}
+                        onChange={() => handleSelectUser(user.id)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <div className="h-12 w-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                        {user.name?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">{user.name || 'Unknown'}</h3>
+                        <p className="text-sm text-gray-600">{user.email}</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
+                            {user.role?.charAt(0).toUpperCase() + user.role?.slice(1) || 'User'}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {isActive ? 'Active' : 'Inactive'}
+                          </span>
+                          {user.emailVerified && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Verified
+                            </span>
+                          )}
+                          {user.mfaEnabled && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              MFA
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{user.name}</h3>
-                      <p className="text-sm text-gray-600">{user.email}</p>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
-                          {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                        </span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor()}`}>
-                          Active
-                        </span>
-                        {user.emailVerified && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            Verified
-                          </span>
+                    
+                    <div className="flex items-center space-x-2">
+                      <div className="text-right text-sm text-gray-600">
+                        <p>Last login: Never</p>
+                        <p>Joined: {new Date(user.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          onClick={() => handleEditUser(user)}
+                          variant="outline"
+                          size="sm"
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Edit
+                        </Button>
+                        {(user as any).isActive !== false ? (
+                          <Button
+                            onClick={() => handleDeactivateUser(user.id)}
+                            variant="outline"
+                            size="sm"
+                            className="border-red-300 text-red-700 hover:bg-red-50"
+                          >
+                            Deactivate
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => handleActivateUser(user.id)}
+                            variant="outline"
+                            size="sm"
+                            className="border-green-300 text-green-700 hover:bg-green-50"
+                          >
+                            Activate
+                          </Button>
                         )}
-                        {user.mfaEnabled && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            MFA
-                          </span>
-                        )}
+                        <Button
+                          onClick={() => handleDeleteUser(user)}
+                          variant="outline"
+                          size="sm"
+                          className="border-red-300 text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <div className="text-right text-sm text-gray-600">
-                      <p>Last login: Never</p>
-                      <p>Joined: {new Date(user.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        onClick={() => handleEditUser(user)}
-                        variant="outline"
-                        size="sm"
-                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        onClick={() => handleToggleUserStatus(user)}
-                        variant="outline"
-                        size="sm"
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Deactivate
-                      </Button>
-                      <Button
-                        onClick={() => handleDeleteUser(user)}
-                        variant="outline"
-                        size="sm"
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Card>
+                );
+              })}
+            </div>
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Items per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalUsers)} of {totalUsers} users
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  variant="outline"
+                  size="sm"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  variant="outline"
+                  size="sm"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+          </>
         ) : (
           <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
             <div className="text-6xl mb-4">👥</div>

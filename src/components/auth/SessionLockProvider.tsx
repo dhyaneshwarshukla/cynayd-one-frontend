@@ -25,6 +25,23 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
   // Check if current route is security settings page
   const isSecuritySettingsPage = pathname?.includes('/dashboard/settings') || pathname?.includes('/settings');
 
+  // Clear lock state and localStorage when user is not authenticated
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading) {
+      // Clear any stale lock state when user is not authenticated
+      setIsLocked(false);
+      setPinStatus(null);
+      setPinAttemptsRemaining(undefined);
+      setIsAccountLocked(false);
+      setLockedUntil(undefined);
+      
+      // Clear stale lastActivity from localStorage when not authenticated
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('lastActivity');
+      }
+    }
+  }, [isAuthenticated, isLoading]);
+
   // Check PIN status when user is authenticated or when navigating to security settings
   useEffect(() => {
     const checkPINStatus = async () => {
@@ -170,11 +187,16 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
 
   // Don't show lock screen if:
   // - Still loading
-  // - Not authenticated
+  // - Not authenticated (CRITICAL: never show lock screen for unauthenticated users)
   // - Checking PIN status
   // - Not locked
   // - On security settings page and PIN not enabled (allow access to set up PIN)
+  // Always prioritize authentication check - if not authenticated, never show lock screen
   if (isLoading || !isAuthenticated || checkingPinStatus || !isLocked) {
+    // Ensure isLocked is false when not authenticated (defensive programming)
+    if (!isAuthenticated && isLocked) {
+      setIsLocked(false);
+    }
     return <>{children}</>;
   }
 

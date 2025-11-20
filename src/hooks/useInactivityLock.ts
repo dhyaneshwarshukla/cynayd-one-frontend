@@ -61,7 +61,17 @@ export function useInactivityLock({
   }, [isLocked, resetTimer, enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // When disabled, ensure we're not locked and clear any timers
+      if (isLocked) {
+        setIsLocked(false);
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      return;
+    }
 
     // Restore last activity from localStorage
     if (typeof window !== 'undefined') {

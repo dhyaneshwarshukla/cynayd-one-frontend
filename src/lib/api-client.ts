@@ -116,12 +116,32 @@ export interface Plan {
   maxUsers?: number;
   maxApps?: number;
   maxStorage?: string;
+  pricingType?: 'flat' | 'per_user';
+  combinedLimits?: string;
   createdAt: Date;
   updatedAt: Date;
   pricings?: Pricing[];
   _count?: {
     organizations: number;
   };
+}
+
+export interface AddOn {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  category: string;
+  appId?: string;
+  planId?: string;
+  configuration: any;
+  pricing: any;
+  isActive: boolean;
+  isRecurring: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  app?: App;
+  plan?: Plan;
 }
 
 export interface Pricing {
@@ -487,8 +507,40 @@ class ApiClient {
     });
   }
 
-  async getUsers(): Promise<User[]> {
-    return this.request<User[]>('/api/users');
+  async getUsers(page?: number, limit?: number): Promise<User[] | { data: User[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+    const params = new URLSearchParams();
+    if (page !== undefined) params.append('page', page.toString());
+    if (limit !== undefined) params.append('limit', limit.toString());
+    
+    const queryString = params.toString();
+    const endpoint = queryString ? `/api/users?${queryString}` : '/api/users';
+    const response = await this.request<any>(endpoint);
+    
+    // Check if response is paginated (has data and pagination properties)
+    if (response && typeof response === 'object' && 'data' in response && 'pagination' in response) {
+      return response;
+    }
+    
+    // Fallback to array format for backward compatibility
+    return Array.isArray(response) ? response : [];
+  }
+  
+  async deactivateUser(userId: string): Promise<User> {
+    return this.request<User>(`/api/users/${userId}/deactivate`, {
+      method: 'PATCH',
+    });
+  }
+  
+  async activateUser(userId: string): Promise<User> {
+    return this.request<User>(`/api/users/${userId}/activate`, {
+      method: 'PATCH',
+    });
+  }
+  
+  async toggleUserStatus(userId: string): Promise<User> {
+    return this.request<User>(`/api/users/${userId}/toggle-status`, {
+      method: 'PATCH',
+    });
   }
 
   async createUser(data: Partial<User>): Promise<User> {
@@ -950,6 +1002,153 @@ class ApiClient {
 
   async getOrganizationPlanDetails(organizationId: string): Promise<Organization> {
     return this.request<Organization>(`/api/organizations/${organizationId}/plan-details`);
+  }
+
+  async createPlan(data: {
+    name: string;
+    slug: string;
+    description?: string;
+    isActive?: boolean;
+    isDefault?: boolean;
+    features?: string;
+    maxUsers?: number;
+    maxApps?: number;
+    maxStorage?: string | number;
+    pricingType?: 'flat' | 'per_user';
+    combinedLimits?: string;
+  }): Promise<Plan> {
+    return this.request<Plan>('/api/plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePlan(id: string, data: Partial<{
+    name: string;
+    slug: string;
+    description?: string;
+    isActive?: boolean;
+    isDefault?: boolean;
+    features?: string;
+    maxUsers?: number;
+    maxApps?: number;
+    maxStorage?: string | number;
+    pricingType?: 'flat' | 'per_user';
+    combinedLimits?: string;
+  }>): Promise<Plan> {
+    return this.request<Plan>(`/api/plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePlan(id: string): Promise<void> {
+    return this.request<void>(`/api/plans/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async createPricing(data: {
+    planId: string;
+    billingPeriod: 'monthly' | 'quarterly' | 'yearly';
+    price: number;
+    currency?: string;
+    isActive?: boolean;
+  }): Promise<Pricing> {
+    return this.request<Pricing>('/api/plans/pricing', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePricing(id: string, data: Partial<{
+    planId: string;
+    billingPeriod: 'monthly' | 'quarterly' | 'yearly';
+    price: number;
+    currency?: string;
+    isActive?: boolean;
+  }>): Promise<Pricing> {
+    return this.request<Pricing>(`/api/plans/pricing/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePricing(id: string): Promise<void> {
+    return this.request<void>(`/api/plans/pricing/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Add-on methods
+  async getAddOns(filters?: {
+    category?: string;
+    appId?: string;
+    planId?: string;
+    isActive?: boolean;
+  }): Promise<AddOn[]> {
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.appId) params.append('appId', filters.appId);
+    if (filters?.planId) params.append('planId', filters.planId);
+    if (filters?.isActive !== undefined) params.append('isActive', String(filters.isActive));
+    
+    const query = params.toString();
+    return this.request<AddOn[]>(`/api/addons${query ? `?${query}` : ''}`);
+  }
+
+  async getAddOnById(id: string): Promise<AddOn> {
+    return this.request<AddOn>(`/api/addons/${id}`);
+  }
+
+  async getAvailableAddOns(organizationId: string): Promise<AddOn[]> {
+    return this.request<AddOn[]>(`/api/addons/available/${organizationId}`);
+  }
+
+  async getOrganizationAddOns(organizationId: string): Promise<any[]> {
+    return this.request<any[]>(`/api/addons/organization/${organizationId}`);
+  }
+
+  async createAddOn(data: {
+    name: string;
+    slug: string;
+    description?: string;
+    category: string;
+    appId?: string;
+    planId?: string;
+    configuration: any;
+    pricing: any;
+    isActive?: boolean;
+    isRecurring?: boolean;
+  }): Promise<AddOn> {
+    return this.request<AddOn>('/api/addons', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAddOn(id: string, data: Partial<{
+    name: string;
+    slug: string;
+    description?: string;
+    category: string;
+    appId?: string;
+    planId?: string;
+    configuration: any;
+    pricing: any;
+    isActive?: boolean;
+    isRecurring?: boolean;
+  }>): Promise<AddOn> {
+    return this.request<AddOn>(`/api/addons/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAddOn(id: string): Promise<void> {
+    return this.request<void>(`/api/addons/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   // Payment methods
