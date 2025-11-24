@@ -586,7 +586,7 @@ export default function UsersPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={fetchUsers}
+            onClick={() => fetchUsers()}
             disabled={isLoading}
             className="border-gray-300 text-gray-700 hover:bg-gray-50"
           >

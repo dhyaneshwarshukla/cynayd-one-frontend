@@ -191,7 +191,13 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     try {
       // Fetch real users from API
       const usersData = await apiClient.getUsers();
-      return usersData.map(user => ({
+      // Handle paginated response for usersData
+      const usersArray = Array.isArray(usersData) 
+        ? usersData 
+        : (usersData && typeof usersData === 'object' && 'data' in usersData) 
+          ? usersData.data 
+          : [];
+      return usersArray.map(user => ({
         id: user.id,
         name: user.name || 'Unknown User',
         email: user.email

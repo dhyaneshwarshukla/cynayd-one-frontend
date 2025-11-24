@@ -94,7 +94,13 @@ export default function AdminSupportPage() {
   const fetchUsers = async () => {
     try {
       const usersData = await apiClient.getUsers();
-      setUsers(usersData.map(u => ({ id: u.id, name: u.name, email: u.email })));
+      // Handle paginated response for usersData
+      const usersArray = Array.isArray(usersData) 
+        ? usersData 
+        : (usersData && typeof usersData === 'object' && 'data' in usersData) 
+          ? usersData.data 
+          : [];
+      setUsers(usersArray.map(u => ({ id: u.id, name: u.name, email: u.email })));
     } catch (error) {
       console.error('Error fetching users:', error);
     }

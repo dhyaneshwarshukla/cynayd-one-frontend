@@ -72,10 +72,17 @@ export const AppAssignmentModal: React.FC<AppAssignmentModalProps> = ({
       if (currentUser?.role === 'SUPER_ADMIN') {
         // Super admin can see all users and assignments
         console.log('Loading data for SUPER_ADMIN - showing all users');
-        [orgUsers, userAppAccess] = await Promise.all([
+        const [usersData, userAppAccessData] = await Promise.all([
           apiClient.getUsers(),
           apiClient.getAllUserAppAccess()
         ]);
+        // Handle paginated response for usersData
+        orgUsers = Array.isArray(usersData) 
+          ? usersData 
+          : (usersData && typeof usersData === 'object' && 'data' in usersData) 
+            ? usersData.data 
+            : [];
+        userAppAccess = Array.isArray(userAppAccessData) ? userAppAccessData : [];
       } else if (currentUser?.role === 'ADMIN' && currentUser?.organizationId) {
         // Admin can only see users in their organization
         console.log('Loading data for ADMIN with org:', currentUser.organizationId, '- showing organization users only');

@@ -147,14 +147,21 @@ export default function AdminAppsPage() {
         apiClient.getAllUserAppAccess()
       ]);
       
+      // Handle paginated response for usersData
+      const usersArray = Array.isArray(usersData) 
+        ? usersData 
+        : (usersData && typeof usersData === 'object' && 'data' in usersData) 
+          ? usersData.data 
+          : [];
+      
       console.log('API calls successful:', {
         appsCount: appsData?.length || 0,
-        usersCount: usersData?.length || 0,
+        usersCount: usersArray.length,
         accessCount: accessData?.length || 0
       });
       
       setApps(appsData);
-      setUsers(usersData);
+      setUsers(usersArray);
       setUserAppAccess(accessData as unknown as UserAppAccessWithDetails[]);
     } catch (err) {
       console.error('Error fetching data:', err);

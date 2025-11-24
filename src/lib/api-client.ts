@@ -87,6 +87,7 @@ export interface User {
   organizationId?: string;
   emailVerified?: Date;
   mfaEnabled?: boolean;
+  isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
