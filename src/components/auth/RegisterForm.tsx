@@ -83,9 +83,10 @@ export const RegisterForm: React.FC = () => {
   const fetchPlans = async () => {
     try {
       const activePlans = await apiClient.getPlans(true);
-      setPlans(activePlans);
+      const plansArray = Array.isArray(activePlans) ? activePlans : [];
+      setPlans(plansArray);
       // Auto-select free plan
-      const freePlan = activePlans.find(p => p.slug === 'free');
+      const freePlan = plansArray.find(p => p.slug === 'free');
       if (freePlan) setSelectedPlan(freePlan.id);
     } catch (error) {
       console.error('Failed to fetch plans:', error);

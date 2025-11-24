@@ -93,7 +93,7 @@ export default function PlansManagementPage() {
     try {
       setLoading(true);
       const data = await apiClient.getPlans();
-      setPlans(data);
+      setPlans(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching plans:', error);
       toastActions.showToast({

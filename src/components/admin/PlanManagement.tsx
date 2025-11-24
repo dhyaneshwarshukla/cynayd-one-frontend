@@ -62,7 +62,7 @@ export default function PlanManagement({ organizationId }: PlanManagementProps) 
 
       // Fetch all available plans
       const plans = await apiClient.getPlans(true);
-      setAvailablePlans(plans);
+      setAvailablePlans(Array.isArray(plans) ? plans : []);
     } catch (err) {
       console.error('Error fetching plan data:', err);
       setError('Failed to load plan information');

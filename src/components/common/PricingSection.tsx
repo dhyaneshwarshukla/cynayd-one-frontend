@@ -22,7 +22,7 @@ export default function PricingSection({ highlightPlan }: PricingSectionProps) {
       setLoading(true);
       setError(null);
       const data = await apiClient.getPlans(true); // Get only active plans
-      setPlans(data);
+      setPlans(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching plans:', err);
       setError('Failed to load pricing information');
@@ -57,7 +57,8 @@ export default function PricingSection({ highlightPlan }: PricingSectionProps) {
   const parseFeatures = (features: string | undefined): string[] => {
     if (!features) return [];
     try {
-      return JSON.parse(features);
+      const parsed = JSON.parse(features);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -157,7 +158,7 @@ export default function PricingSection({ highlightPlan }: PricingSectionProps) {
 
                 {/* Features List */}
                 <ul className="mb-8 space-y-3">
-                  {features.slice(0, 6).map((feature, idx) => (
+                  {Array.isArray(features) && features.slice(0, 6).map((feature, idx) => (
                     <li key={idx} className="flex items-start">
                       <svg
                         className={`w-5 h-5 mr-3 mt-0.5 flex-shrink-0 ${

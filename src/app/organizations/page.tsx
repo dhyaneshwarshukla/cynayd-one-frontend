@@ -94,7 +94,7 @@ export default function OrganizationsPage() {
   const fetchAllPlans = async () => {
     try {
       const plans = await apiClient.getPlans(true);
-      setAllPlans(plans);
+      setAllPlans(Array.isArray(plans) ? plans : []);
     } catch (error) {
       console.error('Failed to fetch plans:', error);
     }
