@@ -98,7 +98,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
       // Fetch recent activity
       const activityData = await apiClient.getAuditLogs({ limit: 10 });
-      setRecentActivity(activityData.map(log => ({
+      // Ensure activityData is an array
+      const activityArray = Array.isArray(activityData) ? activityData : [];
+      setRecentActivity(activityArray.map(log => ({
         id: log.id,
         action: log.action,
         timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
@@ -152,7 +154,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       // Fetch security alerts
       try {
         const alertsData = await apiClient.getSecurityEvents({ limit: 10 });
-        setSecurityAlerts(alertsData);
+        setSecurityAlerts(Array.isArray(alertsData) ? alertsData : []);
       } catch (alertsErr) {
         console.warn('Failed to fetch security alerts:', alertsErr);
         setSecurityAlerts([]);
@@ -492,7 +494,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </div>
             <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
           </div>
-          {recentActivity.length > 0 ? (
+          {Array.isArray(recentActivity) && recentActivity.length > 0 ? (
             <div className="space-y-3">
               {recentActivity.slice(0, 6).map((activity) => (
                 <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
@@ -531,7 +533,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             <h3 className="text-lg font-semibold text-gray-900">Security Alerts</h3>
           </div>
           <div className="space-y-3">
-            {securityAlerts.length > 0 ? (
+            {Array.isArray(securityAlerts) && securityAlerts.length > 0 ? (
               securityAlerts.slice(0, 4).map((alert, index) => (
                 <div key={index} className={`p-3 rounded-lg border-l-4 ${
                   alert.severity === 'high' || alert.severity === 'critical' ? 'bg-red-50 border-red-400' :

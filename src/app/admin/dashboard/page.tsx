@@ -102,7 +102,10 @@ export default function AdminDashboardPage() {
         startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
       });
       
-      setRecentActivity(activity.map(log => ({
+      // Ensure activity is an array
+      const activityArray = Array.isArray(activity) ? activity : [];
+      
+      setRecentActivity(activityArray.map(log => ({
         id: log.id,
         action: log.action,
         timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
@@ -435,7 +438,7 @@ export default function AdminDashboardPage() {
                   </Button>
                 </div>
                 <div className="space-y-4">
-                  {recentActivity.length > 0 ? (
+                  {Array.isArray(recentActivity) && recentActivity.length > 0 ? (
                     recentActivity.slice(0, 5).map((activity) => (
                       <div key={activity.id} className={`flex items-center p-3 rounded-lg ${
                         activity.type === 'security' ? 'bg-red-50' :

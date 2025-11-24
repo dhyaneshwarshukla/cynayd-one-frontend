@@ -68,7 +68,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
       // Fetch organizations first to get real counts
       const orgsData = await apiClient.getOrganizations();
       console.log('Fetched organizations:', orgsData); // Debug log
-      setOrganizations(orgsData);
+      setOrganizations(Array.isArray(orgsData) ? orgsData : []);
       
       // Calculate totals from organizations data
       const totalUsersFromOrgs = orgsData.reduce((sum, org) => sum + (org.userCount || 0), 0);
@@ -95,7 +95,9 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
 
       // Fetch recent activity
       const activityData = await apiClient.getAuditLogs({ limit: 10 });
-      setRecentActivity(activityData.map(log => ({
+      // Ensure activityData is an array
+      const activityArray = Array.isArray(activityData) ? activityData : [];
+      setRecentActivity(activityArray.map(log => ({
         id: log.id,
         action: log.action,
         timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
@@ -118,7 +120,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
       // Fetch security alerts
       try {
         const alertsData = await apiClient.getSecurityEvents({ limit: 10 });
-        setSecurityAlerts(alertsData);
+        setSecurityAlerts(Array.isArray(alertsData) ? alertsData : []);
       } catch (alertsErr) {
         console.warn('Failed to fetch security alerts:', alertsErr);
         setSecurityAlerts([]);
@@ -440,7 +442,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             </div>
             <h3 className="text-lg font-semibold text-gray-900">System Activity</h3>
           </div>
-          {recentActivity.length > 0 ? (
+          {Array.isArray(recentActivity) && recentActivity.length > 0 ? (
             <div className="space-y-3">
               {recentActivity.slice(0, 6).map((activity) => (
                 <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
@@ -479,7 +481,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             <h3 className="text-lg font-semibold text-gray-900">Critical Alerts</h3>
           </div>
           <div className="space-y-3">
-            {securityAlerts.length > 0 ? (
+            {Array.isArray(securityAlerts) && securityAlerts.length > 0 ? (
               securityAlerts.slice(0, 5).map((alert, index) => (
               <div key={index} className={`p-3 rounded-lg border-l-4 ${
                   alert.severity === 'critical' || alert.severity === 'HIGH' ? 'bg-red-50 border-red-500' :
@@ -529,7 +531,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
           </div>
         </div>
 
-        {organizations.length > 0 ? (
+        {Array.isArray(organizations) && organizations.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {organizations.slice(0, 6).map((org) => (
             <Card key={org.id} className="p-6 hover:shadow-lg transition-shadow">
