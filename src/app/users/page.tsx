@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
@@ -56,6 +57,9 @@ export default function UsersPage() {
   const [showBulkActionsModal, setShowBulkActionsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [userApps, setUserApps] = useState<Record<string, any[]>>({});
+  const [loadingApps, setLoadingApps] = useState<Record<string, boolean>>({});
   
   // Form states
   const [inviteEmail, setInviteEmail] = useState('');
@@ -464,6 +468,33 @@ export default function UsersPage() {
     }
   };
 
+  const toggleUserApps = async (userId: string) => {
+    if (expandedUsers.has(userId)) {
+      // Collapse
+      setExpandedUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    } else {
+      // Expand - fetch apps if not already loaded
+      setExpandedUsers(prev => new Set(prev).add(userId));
+      
+      if (!userApps[userId]) {
+        try {
+          setLoadingApps(prev => ({ ...prev, [userId]: true }));
+          const apps = await apiClient.getUserAppsByUserId(userId);
+          setUserApps(prev => ({ ...prev, [userId]: apps }));
+        } catch (err) {
+          console.error('Failed to fetch user apps:', err);
+          setUserApps(prev => ({ ...prev, [userId]: [] }));
+        } finally {
+          setLoadingApps(prev => ({ ...prev, [userId]: false }));
+        }
+      }
+    }
+  };
+
   const handleBulkAction = async () => {
     if (selectedUsers.length === 0) {
       setError('Please select at least one user');
@@ -584,6 +615,15 @@ export default function UsersPage() {
             <span className="mr-2">👤</span>
             Add User
           </Button>
+          <Link href="/apps">
+            <Button
+              variant="outline"
+              className="border-blue-300 text-blue-700 hover:bg-blue-50"
+            >
+              <span className="mr-2">📱</span>
+              View Apps
+            </Button>
+          </Link>
           <Button
             variant="outline"
             onClick={() => fetchUsers()}
@@ -824,6 +864,14 @@ export default function UsersPage() {
                       </div>
                       <div className="flex space-x-2">
                         <Button
+                          onClick={() => toggleUserApps(user.id)}
+                          variant="outline"
+                          size="sm"
+                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                        >
+                          {expandedUsers.has(user.id) ? '▼' : '▶'} Apps
+                        </Button>
+                        <Button
                           onClick={() => handleEditUser(user)}
                           variant="outline"
                           size="sm"
@@ -861,6 +909,89 @@ export default function UsersPage() {
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Assigned Apps Section */}
+                  {expandedUsers.has(user.id) && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-gray-700">Assigned Apps</h4>
+                        <Link
+                          href="/apps"
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          View All Apps →
+                        </Link>
+                      </div>
+                      {loadingApps[user.id] ? (
+                        <div className="flex items-center justify-center py-4">
+                          <LoadingSpinner size="sm" />
+                          <span className="ml-2 text-sm text-gray-600">Loading apps...</span>
+                        </div>
+                      ) : userApps[user.id] && userApps[user.id].length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {userApps[user.id].map((app: any) => (
+                            <div
+                              key={app.id}
+                              className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                            >
+                              <div className="flex items-start space-x-3">
+                                <div
+                                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
+                                  style={{
+                                    backgroundColor: app.color || '#6366f1',
+                                  }}
+                                >
+                                  {app.icon || app.name?.charAt(0).toUpperCase() || 'A'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="text-sm font-medium text-gray-900 truncate">
+                                    {app.name}
+                                  </h5>
+                                  {app.description && (
+                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                                      {app.description}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center space-x-2 mt-2">
+                                    {app.isActive !== false && (
+                                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                        Active
+                                      </span>
+                                    )}
+                                    {app.quota && (
+                                      <span className="text-xs text-gray-500">
+                                        Quota: {app.usedQuota || 0}/{app.quota}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {app.url && (
+                                    <a
+                                      href={app.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                                    >
+                                      Open App →
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
+                          <p className="text-sm text-gray-600">No apps assigned to this user</p>
+                          <Link
+                            href="/apps"
+                            className="text-sm text-blue-600 hover:text-blue-800 font-medium mt-2 inline-block"
+                          >
+                            Assign Apps →
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </Card>
                 );
               })}

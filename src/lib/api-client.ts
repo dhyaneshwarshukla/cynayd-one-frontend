@@ -938,6 +938,20 @@ class ApiClient {
     return this.request<AppWithAccess[]>('/api/apps/my-apps');
   }
 
+  async getUserAppsByUserId(userId: string): Promise<AppWithAccess[]> {
+    const response = await this.request<{ success: boolean; data: any[] }>(`/api/users/${userId}/user-apps`);
+    // Transform the response to match AppWithAccess format
+    return response.data.map((app: any) => ({
+      ...app,
+      access: {
+        assignedAt: app.assignedAt || new Date().toISOString(),
+        expiresAt: app.expiresAt || null,
+        quota: app.quota || null,
+        usedQuota: app.usedQuota || 0
+      }
+    }));
+  }
+
   async getAppBySlug(slug: string): Promise<App> {
     return this.request<App>(`/api/apps/by-slug/${slug}`);
   }
