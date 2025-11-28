@@ -11,6 +11,7 @@ export interface App {
   isActive: boolean;
   systemApp: boolean;
   organizationId?: string;
+  metadata?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1290,6 +1291,28 @@ class ApiClient {
     return this.request<{ ssoToken: string }>(`/api/apps/${appSlug}/sso-token`, {
       method: 'POST',
     });
+  }
+
+  // Initiate SAML SSO for an app (returns HTML that auto-submits SAML form)
+  async initiateSamlSSO(appSlug: string): Promise<Response> {
+    const url = `${this.baseURL}/api/apps/${appSlug}/saml/sso`;
+    const token = this.getToken();
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to initiate SAML SSO' }));
+      throw new Error(error.error || 'Failed to initiate SAML SSO');
+    }
+
+    return response;
   }
 
   // SSO token validation

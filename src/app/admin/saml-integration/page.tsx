@@ -74,6 +74,19 @@ export default function SAMLIntegrationPage() {
 
   const appInfo = getAppInfo();
 
+  // Helper function to safely parse metadata and check SAML status
+  const getSamlStatus = (app: App | null) => {
+    if (!app?.metadata) return false;
+    try {
+      const metadata = JSON.parse(app.metadata);
+      return metadata?.samlEnabled === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isSamlEnabled = getSamlStatus(selectedApp);
+
   return (
     <UnifiedLayout
       title="SAML Integration Guide"
@@ -138,11 +151,11 @@ export default function SAMLIntegrationPage() {
                 <div>
                   <span className="font-semibold text-gray-700">SAML Status:</span>
                   <span className={`ml-2 px-2 py-1 rounded text-sm ${
-                    selectedApp.metadata && JSON.parse(selectedApp.metadata)?.samlEnabled
+                    isSamlEnabled
                       ? 'bg-green-100 text-green-800'
                       : 'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {selectedApp.metadata && JSON.parse(selectedApp.metadata)?.samlEnabled ? '✅ Enabled' : '⚠️ Not Enabled'}
+                    {isSamlEnabled ? '✅ Enabled' : '⚠️ Not Enabled'}
                   </span>
                 </div>
               </div>

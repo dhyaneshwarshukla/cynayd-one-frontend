@@ -423,22 +423,42 @@ export default function AppsPage() {
     try {
       setIsAccessing(appId);
       
-      // Generate SSO token for the specific app
-      const { ssoToken } = await apiClient.generateSSOToken(appSlug);
-      
-      // Get the actual app URL from the API
+      // Get app details to check if SAML is enabled
       const appDetails = await apiClient.getAppBySlug(appSlug);
+      const appMetadata = appDetails.metadata ? JSON.parse(appDetails.metadata) : {};
+      const isSamlEnabled = appMetadata.samlEnabled && appMetadata.samlConfig;
       
-      if (appDetails && appDetails.url) {
-        // Redirect directly to the actual app URL with SSO token
-        const appUrl = `${appDetails.url}?sso_token=${ssoToken}`;
-        console.log(`Redirecting to actual app URL: ${appUrl}`);
-        window.open(appUrl, '_blank');
+      if (isSamlEnabled) {
+        // Use SAML SSO
+        console.log(`Initiating SAML SSO for app: ${appSlug}`);
+        const response = await apiClient.initiateSamlSSO(appSlug);
+        
+        // SAML SSO returns HTML that auto-submits a form
+        const html = await response.text();
+        
+        // Create a new window and write the HTML to it
+        const samlWindow = window.open('', '_blank');
+        if (samlWindow) {
+          samlWindow.document.write(html);
+          samlWindow.document.close();
+        } else {
+          throw new Error('Popup blocked. Please allow popups for this site.');
+        }
       } else {
-        // Fallback: redirect to the portal page if no URL is configured
-        const appUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/${appSlug}?sso_token=${ssoToken}`;
-        console.log(`No app URL configured, redirecting to portal: ${appUrl}`);
-        window.open(appUrl, '_blank');
+        // Use JWT SSO (legacy)
+        const { ssoToken } = await apiClient.generateSSOToken(appSlug);
+        
+        if (appDetails && appDetails.url) {
+          // Redirect directly to the actual app URL with SSO token
+          const appUrl = `${appDetails.url}?sso_token=${ssoToken}`;
+          console.log(`Redirecting to actual app URL: ${appUrl}`);
+          window.open(appUrl, '_blank');
+        } else {
+          // Fallback: redirect to the portal page if no URL is configured
+          const appUrl = `${process.env.NEXT_PUBLIC_APP_BASE_URL}/${appSlug}?sso_token=${ssoToken}`;
+          console.log(`No app URL configured, redirecting to portal: ${appUrl}`);
+          window.open(appUrl, '_blank');
+        }
       }
       
       // Add success notification
@@ -454,7 +474,7 @@ export default function AppsPage() {
       
       setUnreadNotifications(prev => prev + 1);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('App access error:', err);
       
       // Add error notification
@@ -463,13 +483,13 @@ export default function AppsPage() {
         id: `app-access-error-${Date.now()}`,
         type: 'error',
         title: 'App Access Failed',
-        message: `Failed to access ${app?.name || 'the app'}. Please try again.`,
+        message: err.message || `Failed to access ${app?.name || 'the app'}. Please try again.`,
         timestamp: new Date(),
         read: false
       }, ...prev.slice(0, 9)]);
       
       setUnreadNotifications(prev => prev + 1);
-      setError('Failed to access app');
+      setError(err.message || 'Failed to access app');
     } finally {
       setIsAccessing(null);
     }
