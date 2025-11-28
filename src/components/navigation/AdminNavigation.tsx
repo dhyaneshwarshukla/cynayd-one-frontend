@@ -47,6 +47,7 @@ import {
   ClipboardDocumentListIcon,
   BanknotesIcon,
   LifebuoyIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 
 interface AdminNavigationProps {
@@ -83,6 +84,7 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
     { name: "Plans & Pricing", href: "/admin/plans", icon: BanknotesIcon, permission: 'organizations' },
     { name: "Roles & Permissions", href: "/roles", icon: KeyIcon, permission: 'roles' },
     { name: "Security", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "SAML Integration", href: "/admin/saml-integration", icon: LinkIcon, permission: 'security' },
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
     { name: "Support", href: "/admin/support", icon: LifebuoyIcon, permission: 'support' },
     { name: "Settings", href: "/settings", icon: CogIcon, permission: 'settings' },
