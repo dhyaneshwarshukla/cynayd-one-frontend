@@ -8,9 +8,14 @@ export default function HomePage() {
     <UnifiedLayout variant="landing">
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
           <div className="text-center">
+            <div className="inline-block mb-4">
+              <span className="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-semibold">
+                🚀 Enterprise-Ready Platform
+              </span>
+            </div>
             <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
               <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">CYNAYD One</span>
               <br />Complete Business Ecosystem
@@ -18,9 +23,9 @@ export default function HomePage() {
             <p className="text-xl text-gray-600 max-w-4xl mx-auto mb-8 leading-relaxed">
               Transform your business with our comprehensive corporate platform. Manage your entire organization 
               with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, 
-              and business website generation - all secured with enterprise-grade SSO.
+              and business website generation - all secured with enterprise-grade SSO, advanced security, and seamless payment processing.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
               <a
                 href="/auth/register"
                 className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xl transform hover:scale-105"
@@ -39,6 +44,32 @@ export default function HomePage() {
               >
                 Explore Apps
               </a>
+            </div>
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Razorpay Payment Integration</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>SAML 2.0 SSO</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Advanced Security</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Flexible Pricing Plans</span>
+              </div>
             </div>
           </div>
         </div>
@@ -185,7 +216,7 @@ export default function HomePage() {
             <div className="text-center mb-8">
               <h3 className="text-2xl font-bold text-gray-900 mb-3">Unified Business Platform</h3>
               <p className="text-gray-600 max-w-2xl mx-auto">
-                All your business tools in one place, secured with enterprise-grade SSO and managed from a single dashboard
+                All your business tools in one place, secured with enterprise-grade SSO, advanced security features, and seamless payment processing
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -196,16 +227,16 @@ export default function HomePage() {
                   </svg>
                 </div>
                 <h4 className="font-semibold text-gray-900 mb-1">Enterprise Security</h4>
-                <p className="text-sm text-gray-600">SSO, MFA & Audit Logging</p>
+                <p className="text-sm text-gray-600">SAML 2.0 SSO, MFA, Device Trust, Risk-Based Auth & Audit Logging</p>
               </div>
               <div className="text-center">
                 <div className="bg-green-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 </div>
-                <h4 className="font-semibold text-gray-900 mb-1">Instant Setup</h4>
-                <p className="text-sm text-gray-600">Get started in minutes</p>
+                <h4 className="font-semibold text-gray-900 mb-1">Secure Payments</h4>
+                <p className="text-sm text-gray-600">Razorpay integration with flexible pricing plans</p>
               </div>
               <div className="text-center">
                 <div className="bg-purple-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -219,11 +250,11 @@ export default function HomePage() {
               <div className="text-center">
                 <div className="bg-amber-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h4 className="font-semibold text-gray-900 mb-1">Cost Effective</h4>
-                <p className="text-sm text-gray-600">One platform, multiple tools</p>
+                <h4 className="font-semibold text-gray-900 mb-1">Instant Setup</h4>
+                <p className="text-sm text-gray-600">Get started in minutes</p>
               </div>
             </div>
           </div>
@@ -446,6 +477,93 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Advanced Security Features Section */}
+      <section id="security" className="py-20 bg-gradient-to-br from-gray-900 to-blue-900 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Advanced Security Features</h2>
+            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+              Enterprise-grade security with cutting-edge protection mechanisms to keep your business safe
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-blue-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">SAML 2.0 SSO</h3>
+              <p className="text-blue-100 text-sm">
+                Industry-standard Single Sign-On with SP-initiated SSO, IdP response processing, and Single Logout (SLO) support.
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-green-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Device Trust & Fingerprinting</h3>
+              <p className="text-blue-100 text-sm">
+                Unique device fingerprinting with SHA-256 hashing, device trust management, and trust score calculation for enhanced security.
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-purple-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Risk-Based Authentication</h3>
+              <p className="text-blue-100 text-sm">
+                Intelligent risk profiling with anomaly detection, geolocation-based policies, and adaptive authentication based on risk scores.
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-amber-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Geolocation Policies</h3>
+              <p className="text-blue-100 text-sm">
+                Restrict or allow access based on geographic location with configurable policies and real-time location tracking.
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-red-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Anomaly Detection</h3>
+              <p className="text-blue-100 text-sm">
+                Advanced anomaly detection system that identifies suspicious activities and potential security threats in real-time.
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="bg-indigo-500 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-3">Comprehensive Audit Logging</h3>
+              <p className="text-blue-100 text-sm">
+                Complete audit trail of all user activities, security events, and system changes for compliance and security monitoring.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section id="features" className="py-20 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -465,7 +583,7 @@ export default function HomePage() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Enterprise Security</h3>
               <p className="text-gray-600 text-sm">
-                Bank-level security with SSO, MFA, role-based access control, 
+                Bank-level security with SAML 2.0 SSO, MFA, device trust, risk-based authentication, 
                 and comprehensive audit logging for complete compliance.
               </p>
             </div>
@@ -478,7 +596,7 @@ export default function HomePage() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Custom Integration</h3>
               <p className="text-gray-600 text-sm">
-                Integrate any business application with our SSO platform. 
+                Integrate any business application with our SAML 2.0 SSO platform. 
                 Validate and secure access to third-party tools seamlessly.
               </p>
             </div>
@@ -499,13 +617,13 @@ export default function HomePage() {
             <div className="text-center">
               <div className="bg-amber-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Unified Platform</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Secure Payments</h3>
               <p className="text-gray-600 text-sm">
-                One dashboard for all your business needs. Manage HR, communication, 
-                storage, and custom apps from a single interface.
+                Razorpay payment integration with flexible pricing plans (per-user or flat), 
+                subscription management, and payment history tracking.
               </p>
             </div>
           </div>
@@ -548,7 +666,8 @@ export default function HomePage() {
           </h2>
           <p className="text-xl text-blue-100 mb-8 max-w-3xl mx-auto">
             Join the complete business ecosystem. Manage HR, communication, storage, custom apps, 
-            and generate professional websites - all secured with enterprise-grade SSO.
+            and generate professional websites - all secured with enterprise-grade SSO, advanced security features, 
+            and seamless Razorpay payment processing.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
             <a
@@ -563,8 +682,14 @@ export default function HomePage() {
             >
               Explore Platform
             </a>
+            <a
+              href="#security"
+              className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-white hover:text-blue-600 transition-all"
+            >
+              Security Features
+            </a>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
             <div className="text-blue-100">
               <div className="text-2xl font-bold text-white mb-1">4+</div>
               <div className="text-sm">Built-in Business Apps</div>
@@ -576,6 +701,10 @@ export default function HomePage() {
             <div className="text-blue-100">
               <div className="text-2xl font-bold text-white mb-1">100%</div>
               <div className="text-sm">Enterprise Security</div>
+            </div>
+            <div className="text-blue-100">
+              <div className="text-2xl font-bold text-white mb-1">✓</div>
+              <div className="text-sm">Razorpay Payments</div>
             </div>
           </div>
         </div>

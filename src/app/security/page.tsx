@@ -96,7 +96,6 @@ export default function SecurityPage() {
       fetchSecurityData();
       fetchAuditLogs();
       fetchThreatAlerts();
-      fetchSecuritySettings();
     }
   }, [isAuthenticated]);
 
@@ -182,35 +181,6 @@ export default function SecurityPage() {
     }
   };
 
-  const fetchSecuritySettings = async () => {
-    try {
-      const [ipWhitelist, securitySettings] = await Promise.all([
-        apiClient.getIpWhitelist(),
-        apiClient.getSecuritySettings().catch(() => null)
-      ]);
-      
-      setSettings(prev => ({ ...prev, ipWhitelist }));
-      
-      if (securitySettings) {
-        setSettings(prev => ({
-          ...prev,
-          mfaRequired: securitySettings.mfaRequired,
-          passwordPolicy: {
-            minLength: securitySettings.passwordMinLength,
-            requireUppercase: securitySettings.passwordRequireUppercase,
-            requireLowercase: securitySettings.passwordRequireLowercase,
-            requireNumbers: securitySettings.passwordRequireNumbers,
-            requireSymbols: securitySettings.passwordRequireSymbols
-          },
-          sessionTimeout: securitySettings.sessionTimeout,
-          failedLoginLimit: securitySettings.failedLoginLimit,
-          accountLockoutDuration: securitySettings.accountLockoutDuration
-        }));
-      }
-    } catch (err) {
-      console.error('Failed to fetch security settings:', err);
-    }
-  };
 
   const handleAcknowledgeThreat = async (alertId: string) => {
     try {
@@ -268,25 +238,7 @@ export default function SecurityPage() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      await apiClient.updateSecuritySettings({
-        mfaRequired: settings.mfaRequired,
-        mfaRequiredForAllDevices: settings.mfaRequiredForAllDevices,
-        passwordMinLength: settings.passwordPolicy.minLength,
-        passwordRequireUppercase: settings.passwordPolicy.requireUppercase,
-        passwordRequireLowercase: settings.passwordPolicy.requireLowercase,
-        passwordRequireNumbers: settings.passwordPolicy.requireNumbers,
-        passwordRequireSymbols: settings.passwordPolicy.requireSymbols,
-        sessionTimeout: settings.sessionTimeout,
-        failedLoginLimit: settings.failedLoginLimit,
-        accountLockoutDuration: settings.accountLockoutDuration
-      });
-      alert('Security settings saved successfully!');
-    } catch (err) {
-      alert('Failed to save security settings');
-    }
-  };
+ 
 
   const filteredEvents = (Array.isArray(securityEvents) ? securityEvents : []).filter(event => {
     if (!event || typeof event !== 'object') return false;
@@ -407,7 +359,7 @@ export default function SecurityPage() {
               { id: 'events', name: 'Security Events', icon: '🔍' },
               { id: 'audit', name: 'Audit Logs', icon: '📋' },
               { id: 'threats', name: 'Threat Detection', icon: '🚨' },
-              { id: 'settings', name: 'Security Settings', icon: '⚙️' }
+          
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -717,198 +669,6 @@ export default function SecurityPage() {
               </div>
             </Card>
           </div>
-        </ResponsiveContainer>
-      )}
-
-      {activeTab === 'settings' && (
-        <ResponsiveContainer maxWidth="full" className="mb-8">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Security Configuration</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* MFA Settings */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-4">Multi-Factor Authentication</h3>
-                <div className="space-y-3">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.mfaRequired}
-                      onChange={(e) => setSettings({...settings, mfaRequired: e.target.checked})}
-                      className="rounded border-gray-300"
-                    />
-                    <span className="text-sm text-gray-700">Require MFA for all users</span>
-                  </label>
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.mfaRequiredForAllDevices}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          if (confirm('This will enable MFA for all devices across all users. Continue?')) {
-                            setSettings({...settings, mfaRequiredForAllDevices: true});
-                            alert('MFA will be enabled for all devices. This may require users to re-authenticate.');
-                            // TODO: Implement API call to enable MFA for all devices
-                          }
-                        } else {
-                          setSettings({...settings, mfaRequiredForAllDevices: false});
-                        }
-                      }}
-                      className="rounded border-gray-300"
-                    />
-                    <span className="text-sm text-gray-700">Enable MFA for all devices</span>
-                  </label>
-                  <p className="text-xs text-gray-500 mt-2">
-                    When enabled, all users will be required to set up MFA on their devices. Existing sessions may be invalidated.
-                  </p>
-                </div>
-              </div>
-
-              {/* Password Policy */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-4">Password Policy</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Length</label>
-                    <input
-                      type="number"
-                      value={settings.passwordPolicy.minLength}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        passwordPolicy: {...settings.passwordPolicy, minLength: parseInt(e.target.value)}
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={settings.passwordPolicy.requireUppercase}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          passwordPolicy: {...settings.passwordPolicy, requireUppercase: e.target.checked}
-                        })}
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm text-gray-700">Require uppercase letters</span>
-                    </label>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={settings.passwordPolicy.requireLowercase}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          passwordPolicy: {...settings.passwordPolicy, requireLowercase: e.target.checked}
-                        })}
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm text-gray-700">Require lowercase letters</span>
-                    </label>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={settings.passwordPolicy.requireNumbers}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          passwordPolicy: {...settings.passwordPolicy, requireNumbers: e.target.checked}
-                        })}
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm text-gray-700">Require numbers</span>
-                    </label>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={settings.passwordPolicy.requireSymbols}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          passwordPolicy: {...settings.passwordPolicy, requireSymbols: e.target.checked}
-                        })}
-                        className="rounded border-gray-300"
-                      />
-                      <span className="text-sm text-gray-700">Require symbols</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Session Settings */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-4">Session Management</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Session Timeout (minutes)</label>
-                    <input
-                      type="number"
-                      value={settings.sessionTimeout}
-                      onChange={(e) => setSettings({...settings, sessionTimeout: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Failed Login Limit</label>
-                    <input
-                      type="number"
-                      value={settings.failedLoginLimit}
-                      onChange={(e) => setSettings({...settings, failedLoginLimit: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Account Lockout Duration (minutes)</label>
-                    <input
-                      type="number"
-                      value={settings.accountLockoutDuration}
-                      onChange={(e) => setSettings({...settings, accountLockoutDuration: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Security Actions */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-4">Security Actions</h3>
-                <div className="space-y-3">
-                  <Button
-                    onClick={() => handleExportReport('json')}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <span className="mr-2">📊</span>
-                    Export Security Report (JSON)
-                  </Button>
-                  <Button
-                    onClick={() => alert('Terminate All Sessions functionality coming soon')}
-                    variant="outline"
-                    disabled
-                    className="w-full border-red-300 text-red-700 hover:bg-red-50 opacity-50 cursor-not-allowed"
-                  >
-                    <span className="mr-2">🚫</span>
-                    Terminate All Sessions
-                  </Button>
-                  <Button
-                    onClick={() => alert('Security Audit functionality coming soon')}
-                    variant="outline"
-                    disabled
-                    className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50 opacity-50 cursor-not-allowed"
-                  >
-                    <span className="mr-2">🔍</span>
-                    Run Security Audit
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <Button
-                onClick={handleSaveSettings}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                Save All Settings
-              </Button>
-            </div>
-          </Card>
         </ResponsiveContainer>
       )}
     </UnifiedLayout>

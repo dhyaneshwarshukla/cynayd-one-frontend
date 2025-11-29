@@ -1243,6 +1243,12 @@ class ApiClient {
     url?: string;
     domain?: string;
     systemApp?: boolean;
+    samlEnabled?: boolean;
+    samlConfig?: {
+      entityId?: string;
+      acsUrl?: string;
+      sloUrl?: string;
+    };
   }): Promise<App> {
     return this.request<App>('/api/apps', {
       method: 'POST',
@@ -1313,6 +1319,49 @@ class ApiClient {
     }
 
     return response;
+  }
+
+  // SAML Configuration methods
+  async getSamlConfig(): Promise<any> {
+    return this.request('/api/saml/config');
+  }
+
+  async configureSaml(config: {
+    entityId: string;
+    ssoUrl: string;
+    sloUrl?: string;
+    certificate: string;
+    privateKey?: string; // Private key for signing (required when signAssertions is true)
+    nameIdFormat?: string;
+    signRequests?: boolean;
+    signAssertions?: boolean;
+    encryptAssertions?: boolean;
+  }): Promise<any> {
+    return this.request('/api/saml/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async enableSaml(enabled: boolean): Promise<{ success: boolean; enabled: boolean }> {
+    return this.request('/api/saml/enable', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async updateAppSamlConfig(appSlug: string, config: {
+    samlEnabled?: boolean;
+    samlConfig?: {
+      entityId?: string;
+      acsUrl?: string;
+      sloUrl?: string;
+    };
+  }): Promise<any> {
+    return this.request(`/api/apps/${appSlug}/saml/config`, {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    });
   }
 
   // SSO token validation

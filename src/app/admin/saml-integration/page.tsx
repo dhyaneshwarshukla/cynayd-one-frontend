@@ -14,23 +14,84 @@ import {
   LinkIcon,
   KeyIcon,
   ChevronDownIcon,
-  XMarkIcon
+  XMarkIcon,
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 export default function SAMLIntegrationPage() {
   const { user } = useAuth();
+  
+  // Get base URL from environment or use current origin
+  const getBaseUrl = () => {
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      // For localhost, use port 4000 for backend
+      if (origin.includes('localhost')) {
+        return origin.replace(':3000', ':4000');
+      }
+      return origin;
+    }
+    return 'https://one.cynayd.com';
+  };
+
+  const baseUrl = getBaseUrl();
+  
   const [apps, setApps] = useState<App[]>([]);
   const [selectedApp, setSelectedApp] = useState<App | null>(null);
   const [isLoadingApps, setIsLoadingApps] = useState(true);
   const [orgId, setOrgId] = useState<string>('');
   const [showCertificate, setShowCertificate] = useState(false);
+  
+  // Organization SAML state
+  const [orgSamlConfig, setOrgSamlConfig] = useState<any>(null);
+  const [isLoadingOrgConfig, setIsLoadingOrgConfig] = useState(true);
+  const [showOrgConfigForm, setShowOrgConfigForm] = useState(false);
+  const [orgConfigForm, setOrgConfigForm] = useState({
+    entityId: `${baseUrl}/saml`,
+    ssoUrl: `${baseUrl}/api/saml/sso`,
+    sloUrl: `${baseUrl}/api/saml/slo`,
+    certificate: '',
+    privateKey: '', // Private key for signing
+    nameIdFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+    signRequests: true,
+    signAssertions: true,
+    encryptAssertions: false,
+  });
+  const [isSavingOrgConfig, setIsSavingOrgConfig] = useState(false);
+  
+  // App SAML state
+  const [showAppConfigForm, setShowAppConfigForm] = useState(false);
+  const [appConfigForm, setAppConfigForm] = useState({
+    samlEnabled: false,
+    entityId: '',
+    acsUrl: '',
+    sloUrl: '',
+  });
+  const [isSavingAppConfig, setIsSavingAppConfig] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     fetchApps();
+    fetchOrgSamlConfig();
     if (user?.organizationId) {
       setOrgId(user.organizationId);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (selectedApp) {
+      const metadata = selectedApp.metadata ? JSON.parse(selectedApp.metadata) : {};
+      setAppConfigForm({
+        samlEnabled: metadata.samlEnabled || false,
+        entityId: metadata.samlConfig?.entityId || '',
+        acsUrl: metadata.samlConfig?.acsUrl || '',
+        sloUrl: metadata.samlConfig?.sloUrl || '',
+      });
+    }
+  }, [selectedApp]);
 
   const fetchApps = async () => {
     try {
@@ -47,6 +108,138 @@ export default function SAMLIntegrationPage() {
     }
   };
 
+  const fetchOrgSamlConfig = async () => {
+    try {
+      setIsLoadingOrgConfig(true);
+      const config = await apiClient.getSamlConfig();
+      setOrgSamlConfig(config);
+      if (config) {
+        setOrgConfigForm({
+          entityId: config.entityId || `${baseUrl}/saml`,
+          ssoUrl: config.ssoUrl || `${baseUrl}/api/saml/sso`,
+          sloUrl: config.sloUrl || `${baseUrl}/api/saml/slo`,
+          certificate: config.certificate || '',
+          privateKey: config.privateKey || '', // Extract private key from config
+          nameIdFormat: config.nameIdFormat || 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+          signRequests: config.signRequests !== false,
+          signAssertions: config.signAssertions !== false,
+          encryptAssertions: config.encryptAssertions || false,
+        });
+      }
+    } catch (error: any) {
+      if (error.message?.includes('not configured') || error.message?.includes('404')) {
+        setOrgSamlConfig(null);
+      } else {
+        console.error('Error fetching SAML config:', error);
+      }
+    } finally {
+      setIsLoadingOrgConfig(false);
+    }
+  };
+
+  const handleSaveOrgConfig = async () => {
+    try {
+      setIsSavingOrgConfig(true);
+      
+      // Ensure private key is included if it exists (even if user didn't change it)
+      const configToSave = { ...orgConfigForm };
+      
+      // If private key is empty in form but exists in current config, preserve it
+      if (!configToSave.privateKey && orgSamlConfig?.privateKey) {
+        configToSave.privateKey = orgSamlConfig.privateKey;
+        console.log('[SAML] Preserving existing private key from current config');
+      }
+      
+      console.log('[SAML Frontend] Saving config:', {
+        hasPrivateKey: !!configToSave.privateKey,
+        privateKeyLength: configToSave.privateKey?.length,
+        signAssertions: configToSave.signAssertions,
+      });
+      
+      await apiClient.configureSaml(configToSave);
+      setNotification({ type: 'success', message: 'SAML configuration saved successfully!' });
+      setShowOrgConfigForm(false);
+      await fetchOrgSamlConfig();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: error.message || 'Failed to save SAML configuration' });
+    } finally {
+      setIsSavingOrgConfig(false);
+    }
+  };
+
+  const handleEnableOrgSaml = async (enabled: boolean) => {
+    try {
+      await apiClient.enableSaml(enabled);
+      setNotification({ type: 'success', message: `SAML ${enabled ? 'enabled' : 'disabled'} successfully!` });
+      await fetchOrgSamlConfig();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: error.message || 'Failed to update SAML status' });
+    }
+  };
+
+  const handleSaveAppConfig = async () => {
+    try {
+      if (!selectedApp) return;
+      
+      setIsSavingAppConfig(true);
+      
+      // Check if organization SAML is configured first
+      if (!orgSamlConfig || !orgSamlConfig.enabled) {
+        setNotification({ 
+          type: 'error', 
+          message: 'Please configure and enable organization SAML first. Organization SAML is required to sign SAML assertions for app access.' 
+        });
+        return;
+      }
+      
+      if (appConfigForm.samlEnabled && (!appConfigForm.entityId || !appConfigForm.acsUrl)) {
+        setNotification({ type: 'error', message: 'Entity ID and ACS URL are required when enabling SAML' });
+        return;
+      }
+
+      await apiClient.updateAppSamlConfig(selectedApp.slug, {
+        samlEnabled: appConfigForm.samlEnabled,
+        samlConfig: appConfigForm.samlEnabled ? {
+          entityId: appConfigForm.entityId,
+          acsUrl: appConfigForm.acsUrl,
+          sloUrl: appConfigForm.sloUrl || undefined,
+        } : undefined,
+      });
+      
+      setNotification({ type: 'success', message: 'App SAML configuration saved successfully!' });
+      setShowAppConfigForm(false);
+      await fetchApps();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: error.message || 'Failed to save app SAML configuration' });
+    } finally {
+      setIsSavingAppConfig(false);
+    }
+  };
+
+  const handleCertificateFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setOrgConfigForm({ ...orgConfigForm, certificate: content.trim() });
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handlePrivateKeyFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setOrgConfigForm({ ...orgConfigForm, privateKey: content.trim() });
+      };
+      reader.readAsText(file);
+    }
+  };
+
   // Get app-specific information
   const getAppInfo = () => {
     if (!selectedApp) {
@@ -54,21 +247,21 @@ export default function SAMLIntegrationPage() {
         appSlug: '{app-slug}',
         appName: 'Your Application',
         metadataUrl: '',
-        entityId: 'https://one.cynayd.com/saml',
-        ssoUrl: 'https://one.cynayd.com/api/saml/sso',
-        sloUrl: 'https://one.cynayd.com/api/saml/slo',
+        entityId: orgSamlConfig?.entityId || `${baseUrl}/saml`,
+        ssoUrl: orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`,
+        sloUrl: orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`,
       };
     }
 
-    const metadataUrl = `https://one.cynayd.com/api/apps/${selectedApp.slug}/saml/metadata${orgId ? `?organizationId=${orgId}` : ''}`;
+    const metadataUrl = `${baseUrl}/api/apps/${selectedApp.slug}/saml/metadata${orgId ? `?organizationId=${orgId}` : ''}`;
     
     return {
       appSlug: selectedApp.slug,
       appName: selectedApp.name,
       metadataUrl,
-      entityId: 'https://one.cynayd.com/saml',
-      ssoUrl: 'https://one.cynayd.com/api/saml/sso',
-      sloUrl: 'https://one.cynayd.com/api/saml/slo',
+      entityId: orgSamlConfig?.entityId || `${baseUrl}/saml`,
+      ssoUrl: orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`,
+      sloUrl: orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`,
     };
   };
 
@@ -87,6 +280,14 @@ export default function SAMLIntegrationPage() {
 
   const isSamlEnabled = getSamlStatus(selectedApp);
 
+  // Auto-hide notification after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
   return (
     <UnifiedLayout
       title="SAML Integration Guide"
@@ -94,6 +295,305 @@ export default function SAMLIntegrationPage() {
       variant="dashboard"
     >
       <div className="space-y-6">
+        {/* Notification */}
+        {notification && (
+          <div className={`p-4 rounded-lg ${
+            notification.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span>{notification.message}</span>
+              <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-gray-700">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Organization SAML Configuration */}
+        <Card className="p-6 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center space-x-2">
+                <KeyIcon className="h-5 w-5 text-purple-600" />
+                <span>Organization SAML Configuration</span>
+                {!orgSamlConfig || !orgSamlConfig.enabled ? (
+                  <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded">
+                    Required
+                  </span>
+                ) : null}
+              </h3>
+              <p className="text-sm text-gray-600 mb-2">
+                Configure CYNAYD One as an Identity Provider (IdP) for your organization. This is required before you can use SAML SSO for apps.
+              </p>
+              {!orgSamlConfig || !orgSamlConfig.enabled ? (
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>⚠️ Action Required:</strong> You must configure and enable organization SAML before apps can use SAML SSO. The organization SAML certificate is used to sign SAML assertions sent to your apps.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={fetchOrgSamlConfig}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                title="Refresh configuration"
+              >
+                Refresh
+              </button>
+              {orgSamlConfig && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">Status:</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={orgSamlConfig.enabled || false}
+                      onChange={(e) => handleEnableOrgSaml(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                    <span className="ml-3 text-sm font-medium text-gray-700">
+                      {orgSamlConfig.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+              )}
+           {/*    <button
+                onClick={() => {
+                  setShowOrgConfigForm(!showOrgConfigForm);
+                  if (!showOrgConfigForm) {
+                    fetchOrgSamlConfig();
+                  }
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium flex items-center space-x-2"
+              >
+               {orgSamlConfig ? (
+                  <>
+                    <PencilIcon className="h-4 w-4" />
+                    <span>Edit Configuration</span>
+                  </>
+                ) : (
+                  <>
+                    <PlusIcon className="h-4 w-4" />
+                    <span>Configure SAML</span>
+                  </>
+                )} 
+              </button>*/}
+            </div>
+          </div>
+
+          {isLoadingOrgConfig ? (
+            <div className="text-sm text-gray-500">Loading configuration...</div>
+          ) : orgSamlConfig ? (
+            <div className="mt-4 space-y-4">
+              <div className="p-4 bg-white rounded-lg border border-purple-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-semibold text-gray-700">Entity ID:</span>
+                    <code className="ml-2 px-2 py-1 bg-gray-100 rounded text-gray-900">{orgSamlConfig.entityId}</code>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Status:</span>
+                    <span className={`ml-2 px-2 py-1 rounded text-sm ${
+                      orgSamlConfig.enabled
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {orgSamlConfig.enabled ? '✅ Enabled' : '⚠️ Disabled'}
+                    </span>
+                  </div>
+                  {orgSamlConfig.certificateExpiresAt && (
+                    <div>
+                      <span className="font-semibold text-gray-700">Certificate Expires:</span>
+                      <span className="ml-2 text-gray-900">
+                        {new Date(orgSamlConfig.certificateExpiresAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-semibold text-gray-700">Private Key:</span>
+                    <span className={`ml-2 px-2 py-1 rounded text-sm ${
+                      orgSamlConfig.privateKey
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {orgSamlConfig.privateKey ? '✅ Configured' : '❌ Missing'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {orgSamlConfig.enabled && orgSamlConfig.signAssertions && !orgSamlConfig.privateKey && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mr-2 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-red-900 mb-1">Private Key Required</h4>
+                      <p className="text-sm text-red-800 mb-2">
+                        Your SAML configuration is missing the private key. SAML SSO will not work without it. Please click "Edit Configuration" and add your private key.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setShowOrgConfigForm(true);
+                          fetchOrgSamlConfig();
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+                      >
+                        Add Private Key Now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                ⚠️ SAML is not configured for your organization. Click "Configure SAML" to set it up.
+              </p>
+            </div>
+          )}
+
+          {showOrgConfigForm && (
+            <div className="mt-4 p-4 bg-white rounded-lg border border-purple-200">
+              <h4 className="font-semibold text-gray-900 mb-4">SAML Configuration</h4>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Entity ID <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={orgConfigForm.entityId}
+                    onChange={(e) => setOrgConfigForm({ ...orgConfigForm, entityId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder={`${baseUrl}/saml`}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Unique identifier for CYNAYD One as IdP</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    SSO URL <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={orgConfigForm.ssoUrl}
+                    onChange={(e) => setOrgConfigForm({ ...orgConfigForm, ssoUrl: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder={`${baseUrl}/api/saml/sso`}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Single Sign-On endpoint URL</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">SLO URL (Optional)</label>
+                  <input
+                    type="text"
+                    value={orgConfigForm.sloUrl}
+                    onChange={(e) => setOrgConfigForm({ ...orgConfigForm, sloUrl: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder={`${baseUrl}/api/saml/slo`}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Single Logout endpoint URL (optional)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Certificate (PEM Format) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept=".pem,.crt,.cert"
+                      onChange={handleCertificateFileUpload}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                    />
+                    <textarea
+                      value={orgConfigForm.certificate}
+                      onChange={(e) => setOrgConfigForm({ ...orgConfigForm, certificate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-xs"
+                      rows={6}
+                      placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                      required
+                    />
+                    <p className="text-xs text-gray-500">
+                      Upload or paste your SAML certificate (public key) in PEM format.
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Private Key (PEM Format) {orgConfigForm.signAssertions && <span className="text-red-500">*</span>}
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept=".pem,.key"
+                      onChange={handlePrivateKeyFileUpload}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                    />
+                    <textarea
+                      value={orgConfigForm.privateKey}
+                      onChange={(e) => setOrgConfigForm({ ...orgConfigForm, privateKey: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-xs"
+                      rows={6}
+                      placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                      required={orgConfigForm.signAssertions}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Upload or paste your SAML private key in PEM format. Required when "Sign Assertions" is enabled. Keep this secure!
+                    </p>
+                    {orgConfigForm.signAssertions && !orgConfigForm.privateKey && (
+                      <p className="text-xs text-red-600">
+                        ⚠️ Private key is required when signing assertions is enabled.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={orgConfigForm.signRequests}
+                      onChange={(e) => setOrgConfigForm({ ...orgConfigForm, signRequests: e.target.checked })}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Sign Requests</span>
+                  </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={orgConfigForm.signAssertions}
+                      onChange={(e) => setOrgConfigForm({ ...orgConfigForm, signAssertions: e.target.checked })}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-gray-700">Sign Assertions</span>
+                  </label>
+                </div>
+                <div className="flex items-center justify-end space-x-3 pt-2">
+                  <button
+                    onClick={() => setShowOrgConfigForm(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveOrgConfig}
+                    disabled={
+                      isSavingOrgConfig || 
+                      !orgConfigForm.certificate || 
+                      (orgConfigForm.signAssertions && !orgConfigForm.privateKey)
+                    }
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  >
+                    {isSavingOrgConfig ? 'Saving...' : 'Save Configuration'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
         {/* App Selector */}
         <Card className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
           <div className="flex items-center justify-between">
@@ -130,7 +630,8 @@ export default function SAMLIntegrationPage() {
             </div>
           </div>
           {selectedApp && (
-            <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200">
+            <div className="mt-4 space-y-4">
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="font-semibold text-gray-700">App Name:</span>
@@ -151,13 +652,172 @@ export default function SAMLIntegrationPage() {
                 <div>
                   <span className="font-semibold text-gray-700">SAML Status:</span>
                   <span className={`ml-2 px-2 py-1 rounded text-sm ${
-                    isSamlEnabled
+                      isSamlEnabled
                       ? 'bg-green-100 text-green-800'
                       : 'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {isSamlEnabled ? '✅ Enabled' : '⚠️ Not Enabled'}
+                      {isSamlEnabled ? '✅ Enabled' : '⚠️ Not Enabled'}
                   </span>
                 </div>
+                </div>
+              </div>
+
+              {/* App SAML Configuration */}
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900">App SAML Configuration</h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Configure SAML settings for this specific application (Service Provider settings)
+                    </p>
+                    {(!orgSamlConfig || !orgSamlConfig.enabled) && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800">
+                        ⚠️ Organization SAML must be configured and enabled first before configuring app SAML.
+                      </div>
+                    )}
+                  </div>
+                  {/* <button
+                    onClick={() => setShowAppConfigForm(!showAppConfigForm)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center space-x-2"
+                  >
+                    {showAppConfigForm ? (
+                      <>
+                        <XMarkIcon className="h-4 w-4" />
+                        <span>Hide</span>
+                      </>
+                    ) : (
+                      <>
+                        <PencilIcon className="h-4 w-4" />
+                        <span>Configure</span>
+                      </>
+                    )}
+                  </button> */}
+                </div>
+
+                {showAppConfigForm && (
+                  <div className="space-y-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="samlEnabled"
+                        checked={appConfigForm.samlEnabled}
+                        onChange={(e) => setAppConfigForm({ ...appConfigForm, samlEnabled: e.target.checked })}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="samlEnabled" className="text-sm font-medium text-gray-700">
+                        Enable SAML for this app
+                      </label>
+                    </div>
+
+                    {appConfigForm.samlEnabled && (
+                      <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Entity ID <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={appConfigForm.entityId}
+                            onChange={(e) => setAppConfigForm({ ...appConfigForm, entityId: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="https://your-app.example.com/saml"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Your app's unique SAML identifier</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            ACS URL <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={appConfigForm.acsUrl}
+                            onChange={(e) => setAppConfigForm({ ...appConfigForm, acsUrl: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="https://your-app.example.com/saml/acs"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Where your app receives SAML responses</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            SLO URL (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={appConfigForm.sloUrl}
+                            onChange={(e) => setAppConfigForm({ ...appConfigForm, sloUrl: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="https://your-app.example.com/saml/slo"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Single Logout URL (optional)</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+                      <button
+                        onClick={() => {
+                          setShowAppConfigForm(false);
+                          // Reset form to current app state
+                          if (selectedApp) {
+                            const metadata = selectedApp.metadata ? JSON.parse(selectedApp.metadata) : {};
+                            setAppConfigForm({
+                              samlEnabled: metadata.samlEnabled || false,
+                              entityId: metadata.samlConfig?.entityId || '',
+                              acsUrl: metadata.samlConfig?.acsUrl || '',
+                              sloUrl: metadata.samlConfig?.sloUrl || '',
+                            });
+                          }
+                        }}
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveAppConfig}
+                        disabled={
+                          isSavingAppConfig || 
+                          (appConfigForm.samlEnabled && (!appConfigForm.entityId || !appConfigForm.acsUrl)) ||
+                          !orgSamlConfig || 
+                          !orgSamlConfig.enabled
+                        }
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                        title={(!orgSamlConfig || !orgSamlConfig.enabled) ? 'Organization SAML must be enabled first' : ''}
+                      >
+                        {isSavingAppConfig ? 'Saving...' : 'Save Configuration'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!showAppConfigForm && isSamlEnabled && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      {(() => {
+                        const metadata = selectedApp.metadata ? JSON.parse(selectedApp.metadata) : {};
+                        return (
+                          <>
+                            {metadata.samlConfig?.entityId && (
+                              <div>
+                                <span className="font-semibold text-gray-700">Entity ID:</span>
+                                <code className="ml-2 px-2 py-1 bg-gray-100 rounded text-gray-900 text-xs">
+                                  {metadata.samlConfig.entityId}
+                                </code>
+                              </div>
+                            )}
+                            {metadata.samlConfig?.acsUrl && (
+                              <div>
+                                <span className="font-semibold text-gray-700">ACS URL:</span>
+                                <code className="ml-2 px-2 py-1 bg-gray-100 rounded text-gray-900 text-xs">
+                                  {metadata.samlConfig.acsUrl}
+                                </code>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

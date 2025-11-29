@@ -204,37 +204,25 @@ export default function UserDashboard({ user }: UserDashboardProps) {
       const appMetadata = appDetails.metadata ? JSON.parse(appDetails.metadata) : {};
       const isSamlEnabled = appMetadata.samlEnabled && appMetadata.samlConfig;
       
-      if (isSamlEnabled) {
-        // Use SAML SSO
-        console.log(`Initiating SAML SSO for app: ${app.slug}`);
-        const response = await apiClient.initiateSamlSSO(app.slug);
-        
-        // SAML SSO returns HTML that auto-submits a form
-        const html = await response.text();
-        
-        // Create a new window and write the HTML to it
-        const samlWindow = window.open('', '_blank');
-        if (samlWindow) {
-          samlWindow.document.write(html);
-          samlWindow.document.close();
-        } else {
-          alert('Popup blocked. Please allow popups for this site.');
-        }
+      if (!isSamlEnabled) {
+        alert('SAML is not configured for this app. Please contact your administrator to configure SAML.');
+        return;
+      }
+      
+      // Use SAML SSO
+      console.log(`Initiating SAML SSO for app: ${app.slug}`);
+      const response = await apiClient.initiateSamlSSO(app.slug);
+      
+      // SAML SSO returns HTML that auto-submits a form
+      const html = await response.text();
+      
+      // Create a new window and write the HTML to it
+      const samlWindow = window.open('', '_blank');
+      if (samlWindow) {
+        samlWindow.document.write(html);
+        samlWindow.document.close();
       } else {
-        // Use JWT SSO (legacy)
-        const { ssoToken } = await apiClient.generateSSOToken(app.slug);
-        
-        if (appDetails && appDetails.url) {
-          // Redirect directly to the actual app URL with SSO token
-          const appUrl = `${appDetails.url}?sso_token=${ssoToken}`;
-          console.log(`Redirecting to actual app URL: ${appUrl}`);
-          window.open(appUrl, '_blank');
-        } else {
-          // Fallback: redirect to the portal page if no URL is configured
-          const appUrl = `${window.location.origin}/${app.slug}?sso_token=${ssoToken}`;
-          console.log(`No app URL configured, redirecting to portal: ${appUrl}`);
-          window.open(appUrl, '_blank');
-        }
+        alert('Popup blocked. Please allow popups for this site.');
       }
       
     } catch (error) {

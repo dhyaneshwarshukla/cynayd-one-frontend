@@ -18,6 +18,12 @@ interface AddAppModalProps {
     color?: string;
     url?: string;
     domain?: string;
+    samlEnabled?: boolean;
+    samlConfig?: {
+      entityId?: string;
+      acsUrl?: string;
+      sloUrl?: string;
+    };
   }) => Promise<void>;
   userRole: string;
 }
@@ -35,7 +41,11 @@ export const AddAppModal: React.FC<AddAppModalProps> = ({
     icon: '📱',
     color: '#3b82f6',
     url: '',
-    domain: ''
+    domain: '',
+    samlEnabled: false,
+    entityId: '',
+    acsUrl: '',
+    sloUrl: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -87,7 +97,27 @@ export const AddAppModal: React.FC<AddAppModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onSubmit(formData);
+      const appData: any = {
+        name: formData.name,
+        slug: formData.slug,
+        description: formData.description,
+        icon: formData.icon,
+        color: formData.color,
+        url: formData.url,
+        domain: formData.domain,
+      };
+
+      // Include SAML config if enabled
+      if (formData.samlEnabled) {
+        appData.samlEnabled = true;
+        appData.samlConfig = {
+          entityId: formData.entityId,
+          acsUrl: formData.acsUrl,
+          sloUrl: formData.sloUrl || undefined,
+        };
+      }
+
+      await onSubmit(appData);
       // Reset form on success
       setFormData({
         name: '',
@@ -96,7 +126,11 @@ export const AddAppModal: React.FC<AddAppModalProps> = ({
         icon: '📱',
         color: '#3b82f6',
         url: '',
-        domain: ''
+        domain: '',
+        samlEnabled: false,
+        entityId: '',
+        acsUrl: '',
+        sloUrl: ''
       });
       onClose();
     } catch (error) {
@@ -215,6 +249,61 @@ export const AddAppModal: React.FC<AddAppModalProps> = ({
                 placeholder="myapp.example.com"
                 helpText="Domain for SSO integration (optional)"
               />
+            </div>
+
+            {/* SAML Configuration Section */}
+            <div className="pt-6 border-t border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">SAML Configuration</h3>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="samlEnabled"
+                    checked={formData.samlEnabled}
+                    onChange={(e) => handleInputChange('samlEnabled', e.target.checked.toString())}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="samlEnabled" className="text-sm font-medium text-gray-700">
+                    Enable SAML for this app
+                  </label>
+                </div>
+              </div>
+
+              {formData.samlEnabled && (
+                <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                  <FormField
+                    label="Entity ID"
+                    name="entityId"
+                    type="text"
+                    value={formData.entityId}
+                    onChange={(value) => handleInputChange('entityId', value as string)}
+                    placeholder="https://your-app.example.com/saml"
+                    required={formData.samlEnabled}
+                    helpText="Your app's unique SAML identifier"
+                  />
+
+                  <FormField
+                    label="ACS URL"
+                    name="acsUrl"
+                    type="url"
+                    value={formData.acsUrl}
+                    onChange={(value) => handleInputChange('acsUrl', value as string)}
+                    placeholder="https://your-app.example.com/saml/acs"
+                    required={formData.samlEnabled}
+                    helpText="Where your app receives SAML responses"
+                  />
+
+                  <FormField
+                    label="SLO URL (Optional)"
+                    name="sloUrl"
+                    type="url"
+                    value={formData.sloUrl}
+                    onChange={(value) => handleInputChange('sloUrl', value as string)}
+                    placeholder="https://your-app.example.com/saml/slo"
+                    helpText="Single Logout URL (optional)"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">

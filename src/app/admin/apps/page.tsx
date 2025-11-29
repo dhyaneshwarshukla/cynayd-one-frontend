@@ -39,7 +39,9 @@ import {
   BellIcon,
   ShieldCheckIcon,
   CogIcon,
-  PlayIcon
+  PlayIcon,
+  KeyIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 interface App {
@@ -52,6 +54,7 @@ interface App {
   url?: string;
   domain?: string;
   isActive: boolean;
+  metadata?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,7 +86,16 @@ export default function AdminAppsPage() {
   const [showCreateAppModal, setShowCreateAppModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showSamlConfigModal, setShowSamlConfigModal] = useState(false);
   const [selectedApp, setSelectedApp] = useState<App | null>(null);
+  const [samlConfig, setSamlConfig] = useState({
+    samlEnabled: false,
+    entityId: '',
+    acsUrl: '',
+    sloUrl: '',
+  });
+  const [isSavingSaml, setIsSavingSaml] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [activeTab, setActiveTab] = useState('overview');
@@ -95,7 +107,11 @@ export default function AdminAppsPage() {
     icon: '📱',
     color: '#3B82F6',
     url: '',
-    domain: ''
+    domain: '',
+    samlEnabled: false,
+    entityId: '',
+    acsUrl: '',
+    sloUrl: ''
   });
 
   const [editApp, setEditApp] = useState({
@@ -178,12 +194,38 @@ export default function AdminAppsPage() {
 
   const handleCreateApp = async () => {
     try {
-      await apiClient.createApp(newApp);
+      // Validate SAML config if enabled
+      if (newApp.samlEnabled && (!newApp.entityId || !newApp.acsUrl)) {
+        setNotification({ type: 'error', message: 'Entity ID and ACS URL are required when enabling SAML' });
+        return;
+      }
+
+      const createdApp = await apiClient.createApp({
+        name: newApp.name,
+        slug: newApp.slug,
+        description: newApp.description,
+        icon: newApp.icon,
+        color: newApp.color,
+        url: newApp.url,
+        domain: newApp.domain,
+        // Include SAML configuration if enabled
+        ...(newApp.samlEnabled && newApp.entityId && newApp.acsUrl ? {
+          samlEnabled: true,
+          samlConfig: {
+            entityId: newApp.entityId,
+            acsUrl: newApp.acsUrl,
+            sloUrl: newApp.sloUrl || undefined,
+          }
+        } : {})
+      });
+      
       setShowCreateAppModal(false);
-      setNewApp({ name: '', slug: '', description: '', icon: '📱', color: '#3B82F6', url: '', domain: '' });
+      setNewApp({ name: '', slug: '', description: '', icon: '📱', color: '#3B82F6', url: '', domain: '', samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' });
       fetchData();
-    } catch (err) {
+      setNotification({ type: 'success', message: `App created successfully${newApp.samlEnabled ? ' with SAML configured' : ''}!` });
+    } catch (err: any) {
       setError('Failed to create app');
+      setNotification({ type: 'error', message: err.message || 'Failed to create app' });
       console.error('Error creating app:', err);
     }
   };
@@ -259,6 +301,76 @@ export default function AdminAppsPage() {
     setShowEditModal(true);
   };
 
+  const openSamlConfigModal = (app: App) => {
+    setSelectedApp(app);
+    try {
+      const metadata = app.metadata ? JSON.parse(app.metadata) : {};
+      setSamlConfig({
+        samlEnabled: metadata.samlEnabled || false,
+        entityId: metadata.samlConfig?.entityId || '',
+        acsUrl: metadata.samlConfig?.acsUrl || '',
+        sloUrl: metadata.samlConfig?.sloUrl || '',
+      });
+    } catch {
+      setSamlConfig({
+        samlEnabled: false,
+        entityId: '',
+        acsUrl: '',
+        sloUrl: '',
+      });
+    }
+    setShowSamlConfigModal(true);
+  };
+
+  const handleSaveSamlConfig = async () => {
+    if (!selectedApp) return;
+    
+    try {
+      setIsSavingSaml(true);
+      
+      if (samlConfig.samlEnabled && (!samlConfig.entityId || !samlConfig.acsUrl)) {
+        setNotification({ type: 'error', message: 'Entity ID and ACS URL are required when enabling SAML' });
+        return;
+      }
+
+      await apiClient.updateAppSamlConfig(selectedApp.slug, {
+        samlEnabled: samlConfig.samlEnabled,
+        samlConfig: samlConfig.samlEnabled ? {
+          entityId: samlConfig.entityId,
+          acsUrl: samlConfig.acsUrl,
+          sloUrl: samlConfig.sloUrl || undefined,
+        } : undefined,
+      });
+      
+      setNotification({ type: 'success', message: 'SAML configuration saved successfully!' });
+      setShowSamlConfigModal(false);
+      await fetchData();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: error.message || 'Failed to save SAML configuration' });
+    } finally {
+      setIsSavingSaml(false);
+    }
+  };
+
+  // Helper function to check SAML status
+  const getSamlStatus = (app: App) => {
+    if (!app.metadata) return false;
+    try {
+      const metadata = JSON.parse(app.metadata);
+      return metadata?.samlEnabled === true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Auto-hide notification
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
   const filteredApps = apps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          app.description?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -305,6 +417,21 @@ export default function AdminAppsPage() {
   return (
     <UnifiedLayout title="Admin Apps Management" subtitle={`Manage applications and user access for your organization.`} variant="dashboard">
       <div>
+        {/* Notification */}
+        {notification && (
+          <div className={`mb-4 p-4 rounded-lg ${
+            notification.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span>{notification.message}</span>
+              <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-gray-700">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
         {/* Quick Actions Header */}
         <div className="mb-8">
           <div className="flex items-center justify-end space-x-4">
@@ -664,6 +791,20 @@ export default function AdminAppsPage() {
                     <p className="text-gray-600 text-sm mb-4">{app.description}</p>
                   )}
 
+                  {/* SAML Status */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">SAML Status:</span>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        getSamlStatus(app)
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {getSamlStatus(app) ? '✅ Enabled' : '⚠️ Not Configured'}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* App URL/Domain */}
                   {(app.url || app.domain) && (
                     <div className="mb-4">
@@ -718,6 +859,14 @@ export default function AdminAppsPage() {
                       >
                         <UserPlusIcon className="w-4 h-4 mr-1" />
                         Assign Access
+                      </Button>
+                      <Button
+                        onClick={() => openSamlConfigModal(app)}
+                        variant="outline"
+                        className="px-3"
+                        title="Configure SAML"
+                      >
+                        <KeyIcon className="w-4 h-4" />
                       </Button>
                       <Button
                         onClick={() => openEditModal(app)}
@@ -908,6 +1057,56 @@ export default function AdminAppsPage() {
                   onChange={(e) => setNewApp({ ...newApp, domain: e.target.value })}
                   placeholder="example.com"
                 />
+                
+                {/* SAML Configuration Section */}
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-semibold text-gray-900">SAML Configuration</h4>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="newAppSamlEnabled"
+                        checked={newApp.samlEnabled}
+                        onChange={(e) => setNewApp({ ...newApp, samlEnabled: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="newAppSamlEnabled" className="text-sm text-gray-700">
+                        Enable SAML
+                      </label>
+                    </div>
+                  </div>
+
+                  {newApp.samlEnabled && (
+                    <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                      <Input
+                        label="Entity ID"
+                        value={newApp.entityId}
+                        onChange={(e) => setNewApp({ ...newApp, entityId: e.target.value })}
+                        placeholder="https://your-app.example.com/saml"
+                        required={newApp.samlEnabled}
+                      />
+                      <p className="text-xs text-gray-500 -mt-2">Your app's unique SAML identifier</p>
+                      
+                      <Input
+                        label="ACS URL"
+                        value={newApp.acsUrl}
+                        onChange={(e) => setNewApp({ ...newApp, acsUrl: e.target.value })}
+                        placeholder="https://your-app.example.com/saml/acs"
+                        required={newApp.samlEnabled}
+                      />
+                      <p className="text-xs text-gray-500 -mt-2">Where your app receives SAML responses</p>
+                      
+                      <Input
+                        label="SLO URL (Optional)"
+                        value={newApp.sloUrl}
+                        onChange={(e) => setNewApp({ ...newApp, sloUrl: e.target.value })}
+                        placeholder="https://your-app.example.com/saml/slo"
+                      />
+                      <p className="text-xs text-gray-500 -mt-2">Single Logout URL (optional)</p>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
                     onClick={() => setShowCreateAppModal(false)}
@@ -917,7 +1116,8 @@ export default function AdminAppsPage() {
                   </Button>
                   <Button
                     onClick={handleCreateApp}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={newApp.samlEnabled && (!newApp.entityId || !newApp.acsUrl)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                   >
                     Create App
                   </Button>
@@ -999,6 +1199,106 @@ export default function AdminAppsPage() {
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     Update App
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SAML Configuration Modal */}
+        {showSamlConfigModal && selectedApp && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                <KeyIcon className="w-5 h-5 mr-2 text-blue-600" />
+                SAML Configuration - {selectedApp.name}
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="samlEnabled"
+                    checked={samlConfig.samlEnabled}
+                    onChange={(e) => setSamlConfig({ ...samlConfig, samlEnabled: e.target.checked })}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="samlEnabled" className="text-sm font-medium text-gray-700">
+                    Enable SAML for this app
+                  </label>
+                </div>
+
+                {samlConfig.samlEnabled && (
+                  <div className="space-y-4 pl-6 border-l-2 border-blue-200">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Entity ID <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={samlConfig.entityId}
+                        onChange={(e) => setSamlConfig({ ...samlConfig, entityId: e.target.value })}
+                        placeholder="https://your-app.example.com/saml"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Your app's unique SAML identifier</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ACS URL <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={samlConfig.acsUrl}
+                        onChange={(e) => setSamlConfig({ ...samlConfig, acsUrl: e.target.value })}
+                        placeholder="https://your-app.example.com/saml/acs"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Where your app receives SAML responses</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        SLO URL (Optional)
+                      </label>
+                      <Input
+                        value={samlConfig.sloUrl}
+                        onChange={(e) => setSamlConfig({ ...samlConfig, sloUrl: e.target.value })}
+                        placeholder="https://your-app.example.com/saml/slo"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Single Logout URL (optional)</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button
+                    onClick={() => {
+                      setShowSamlConfigModal(false);
+                      if (selectedApp) {
+                        try {
+                          const metadata = selectedApp.metadata ? JSON.parse(selectedApp.metadata) : {};
+                          setSamlConfig({
+                            samlEnabled: metadata.samlEnabled || false,
+                            entityId: metadata.samlConfig?.entityId || '',
+                            acsUrl: metadata.samlConfig?.acsUrl || '',
+                            sloUrl: metadata.samlConfig?.sloUrl || '',
+                          });
+                        } catch {
+                          setSamlConfig({
+                            samlEnabled: false,
+                            entityId: '',
+                            acsUrl: '',
+                            sloUrl: '',
+                          });
+                        }
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveSamlConfig}
+                    disabled={isSavingSaml || (samlConfig.samlEnabled && (!samlConfig.entityId || !samlConfig.acsUrl))}
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                  >
+                    {isSavingSaml ? 'Saving...' : 'Save Configuration'}
                   </Button>
                 </div>
               </div>

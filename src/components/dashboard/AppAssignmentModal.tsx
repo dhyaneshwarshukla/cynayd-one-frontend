@@ -24,6 +24,7 @@ interface UserAppAccess {
   id: string;
   userId: string;
   appId: string;
+  isActive?: boolean;
   quota?: number;
   expiresAt?: string;
   assignedAt: string;
@@ -102,7 +103,15 @@ export const AppAssignmentModal: React.FC<AppAssignmentModalProps> = ({
       setUsers(orgUsers);
       
       // Filter assignments for this specific app
-      const appAssignments = userAppAccess.filter(access => access.appId === app.id);
+      // Only include active, non-expired access records
+      const appAssignments = userAppAccess.filter(access => {
+        if (access.appId !== app.id) return false;
+        // Check if access is active
+        if (!access.isActive) return false;
+        // Check if access is not expired
+        if (access.expiresAt && new Date(access.expiresAt) < new Date()) return false;
+        return true;
+      });
       setAssignedUsers(appAssignments);
       
       console.log('App assignments for this app:', appAssignments.length);
