@@ -24,6 +24,10 @@ import {
 export default function SAMLIntegrationPage() {
   const { user } = useAuth();
   
+  // Check if user is superadmin
+  const userRole = user?.role?.toUpperCase();
+  const isSuperAdmin = userRole === 'SUPER_ADMIN';
+  
   // Get base URL from environment or use current origin
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') {
@@ -360,27 +364,29 @@ export default function SAMLIntegrationPage() {
                   </label>
                 </div>
               )}
-           {/*    <button
-                onClick={() => {
-                  setShowOrgConfigForm(!showOrgConfigForm);
-                  if (!showOrgConfigForm) {
-                    fetchOrgSamlConfig();
-                  }
-                }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium flex items-center space-x-2"
-              >
-               {orgSamlConfig ? (
-                  <>
-                    <PencilIcon className="h-4 w-4" />
-                    <span>Edit Configuration</span>
-                  </>
-                ) : (
-                  <>
-                    <PlusIcon className="h-4 w-4" />
-                    <span>Configure SAML</span>
-                  </>
-                )} 
-              </button>*/}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => {
+                    setShowOrgConfigForm(!showOrgConfigForm);
+                    if (!showOrgConfigForm) {
+                      fetchOrgSamlConfig();
+                    }
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium flex items-center space-x-2"
+                >
+                  {orgSamlConfig ? (
+                    <>
+                      <PencilIcon className="h-4 w-4" />
+                      <span>Edit Configuration</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlusIcon className="h-4 w-4" />
+                      <span>Configure SAML</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
@@ -676,22 +682,24 @@ export default function SAMLIntegrationPage() {
                       </div>
                     )}
                   </div>
-                  {/* <button
-                    onClick={() => setShowAppConfigForm(!showAppConfigForm)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center space-x-2"
-                  >
-                    {showAppConfigForm ? (
-                      <>
-                        <XMarkIcon className="h-4 w-4" />
-                        <span>Hide</span>
-                      </>
-                    ) : (
-                      <>
-                        <PencilIcon className="h-4 w-4" />
-                        <span>Configure</span>
-                      </>
-                    )}
-                  </button> */}
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => setShowAppConfigForm(!showAppConfigForm)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center space-x-2"
+                    >
+                      {showAppConfigForm ? (
+                        <>
+                          <XMarkIcon className="h-4 w-4" />
+                          <span>Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <PencilIcon className="h-4 w-4" />
+                          <span>Configure</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {showAppConfigForm && (
