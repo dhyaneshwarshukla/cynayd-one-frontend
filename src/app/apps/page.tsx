@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -58,7 +58,7 @@ interface App {
   };
 }
 
-export default function AppsPage() {
+function AppsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -2193,5 +2193,19 @@ export default function AppsPage() {
       />
       </UnifiedLayout>
     </>
+  );
+}
+
+export default function AppsPage() {
+  return (
+    <Suspense fallback={
+      <UnifiedLayout>
+        <div className="flex items-center justify-center min-h-screen">
+          <LoadingSpinner size="lg" />
+        </div>
+      </UnifiedLayout>
+    }>
+      <AppsPageContent />
+    </Suspense>
   );
 }
