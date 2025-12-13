@@ -41,7 +41,12 @@ export const LoginForm: React.FC = () => {
     resolver: zodResolver(loginSchema),
   });
 
-  const onSubmit = async (data: LoginFormData) => {
+  const onSubmit = async (data: LoginFormData, e?: React.BaseSyntheticEvent) => {
+    // Explicitly prevent default form submission
+    if (e) {
+      e.preventDefault();
+    }
+    
     try {
       setError(null);
       setResendMessage(null);
@@ -59,7 +64,8 @@ export const LoginForm: React.FC = () => {
       console.log('Login error:', err);
       console.log('Error response:', err.response?.data);
       
-      const errorMessage = err instanceof Error ? err.message : 'Failed to login';
+      // Extract error message from response data first, then fallback to error message
+      const errorMessage = err.response?.data?.message || (err instanceof Error ? err.message : 'Failed to login');
       
       // Check if it's an MFA required error
       if (err.response?.data?.code === 'MFA_REQUIRED') {

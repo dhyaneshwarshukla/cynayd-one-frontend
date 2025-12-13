@@ -379,7 +379,15 @@ class ApiClient {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('API Client - Error response:', errorData);
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      
+      // Create an error object with axios-like structure
+      const error = new Error(errorData.message || `HTTP error! status: ${response.status}`) as any;
+      error.response = {
+        status: response.status,
+        statusText: response.statusText,
+        data: errorData
+      };
+      throw error;
     }
 
     // Handle 204 No Content and other empty responses
