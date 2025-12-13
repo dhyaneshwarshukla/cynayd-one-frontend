@@ -37,9 +37,24 @@ export const LoginForm: React.FC = () => {
   const errorRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showResendOption, setShowResendOption] = useState(false);
+  const [showResendOption, setShowResendOption] = useState(() => {
+    // Initialize from sessionStorage if available
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('show_resend_option') === 'true';
+    }
+    return false;
+  });
   const [showUnlockOption, setShowUnlockOption] = useState(false);
-  const [userEmail, setUserEmail] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    // Initialize from sessionStorage if available
+    if (typeof window !== 'undefined') {
+      const storedEmail = sessionStorage.getItem('resend_user_email');
+      if (storedEmail) {
+        return storedEmail;
+      }
+    }
+    return '';
+  });
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
   const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
@@ -70,6 +85,8 @@ export const LoginForm: React.FC = () => {
       // Clear from sessionStorage too
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('login_error');
+        sessionStorage.removeItem('show_resend_option');
+        sessionStorage.removeItem('resend_user_email');
       }
       setError(null);
       setResendMessage(null);
@@ -146,9 +163,14 @@ export const LoginForm: React.FC = () => {
       }
 
       // Check if it's an email verification error
-      if (errorMessage.includes('verify your email') || errorMessage.includes('EMAIL_NOT_VERIFIED')) {
+      if (errorMessage.includes('verify your email') || errorMessage.includes('EMAIL_NOT_VERIFIED') || errorMessage.toLowerCase().includes('email verification')) {
         setShowResendOption(true);
         setUserEmail(data.email);
+        // Store in sessionStorage to persist across remounts
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('show_resend_option', 'true');
+          sessionStorage.setItem('resend_user_email', data.email);
+        }
       }
     } finally {
       // Ensure submitting state is always reset
@@ -249,6 +271,14 @@ export const LoginForm: React.FC = () => {
               // Restore state
               if (!error) {
                 setError(storedError);
+              }
+              // Check if this is an email verification error and restore resend option
+              if ((storedError.includes('verify your email') || storedError.includes('EMAIL_NOT_VERIFIED') || storedError.toLowerCase().includes('email verification')) && !showResendOption) {
+                setShowResendOption(true);
+                const storedEmail = sessionStorage.getItem('resend_user_email');
+                if (storedEmail) {
+                  setUserEmail(storedEmail);
+                }
               }
             }
           }
