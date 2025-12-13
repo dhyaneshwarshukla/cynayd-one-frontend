@@ -10,7 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 interface ProfileStats {
-  products: number;
+  apps: number;
   lastActive: string;
   activity: string;
   memberSince: Date;
@@ -201,9 +201,9 @@ export default function ProfilePage() {
                       </svg>
                     </div>
                     <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-500">Products</p>
+                      <p className="text-sm font-medium text-gray-500">Apps</p>
                       <p className="text-2xl font-bold text-gray-900">
-                        {isLoadingStats ? '...' : profileStats?.products || 0}
+                        {isLoadingStats ? '...' : profileStats?.apps || 0}
                       </p>
                     </div>
                   </div>

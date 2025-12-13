@@ -1,0 +1,21 @@
+{
+  "name": "CYNAYD One - Complete Business Ecosystem",
+  "short_name": "CYNAYD One",
+  "description": "Transform your business with our comprehensive corporate platform. Manage your entire organization with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, and business website generation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "en-US",
+  "dir": "ltr"
+}
+

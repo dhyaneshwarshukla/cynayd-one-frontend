@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AddAppModal } from '@/components/dashboard/AddAppModal';
 import { AppAssignmentModal } from '@/components/dashboard/AppAssignmentModal';
 import { AppCreationModal } from '@/components/dashboard/AppCreationModal';
+import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 import { apiClient, AppWithAccess, AuditLog } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { 
@@ -72,6 +73,7 @@ function AppsPageContent() {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedApp, setSelectedApp] = useState<AppWithAccess | null>(null);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [showBulkAssignmentModal, setShowBulkAssignmentModal] = useState(false);
   const [showCreationModal, setShowCreationModal] = useState(false);
   const [showSamlConfigModal, setShowSamlConfigModal] = useState(false);
   const [samlConfig, setSamlConfig] = useState({
@@ -370,17 +372,30 @@ function AppsPageContent() {
         // Regular users see only their assigned active apps
         try {
           const assignedApps = await apiClient.getUserApps();
-          userApps = assignedApps
+          
+          // Filter active apps and deduplicate by ID
+          const uniqueAppsMap = new Map();
+          assignedApps
             .filter(app => app.isActive !== false)
-            .map(app => ({
-              ...app,
-              access: {
-                assignedAt: new Date().toISOString(),
-                expiresAt: null,
-                quota: null,
-                usedQuota: 0
+            .forEach(app => {
+              // Skip if we've already processed this app ID
+              if (!uniqueAppsMap.has(app.id)) {
+                uniqueAppsMap.set(app.id, {
+                  ...app,
+                  access: {
+                    assignedAt: app.access?.assignedAt || new Date().toISOString(),
+                    expiresAt: app.access?.expiresAt || null,
+                    quota: app.access?.quota || null,
+                    usedQuota: app.access?.usedQuota || 0
+                  }
+                });
+              } else {
+                console.warn(`Duplicate app detected: ${app.name} (ID: ${app.id}), skipping duplicate`);
               }
-            }));
+            });
+          
+          userApps = Array.from(uniqueAppsMap.values());
+          console.log(`Total unique apps after deduplication: ${userApps.length} (from ${assignedApps.length} fetched)`);
         } catch (apiError) {
           console.error('Failed to fetch user apps:', apiError);
           userApps = [];
@@ -624,6 +639,30 @@ function AppsPageContent() {
     // Check if app has metadata with SAML enabled
     // Since AppWithAccess might not have metadata, we'll need to check differently
     return false; // Will be updated when we fetch app details
+  };
+
+  // Helper function to check if user can configure app (info, SAML)
+  const canConfigureApp = (app: AppWithAccess): boolean => {
+    if (!user) return false;
+    
+    // For system apps: Only SUPER_ADMIN can configure
+    if (app.systemApp) {
+      return user.role === 'SUPER_ADMIN';
+    }
+    
+    // For org apps: Only owner org admin or SUPER_ADMIN can configure
+    if (app.organizationId) {
+      if (user.role === 'SUPER_ADMIN') {
+        return true;
+      }
+      if (user.role === 'ADMIN' && user.organizationId === app.organizationId) {
+        return true;
+      }
+      return false;
+    }
+    
+    // For other apps (assigned apps), no configuration allowed
+    return false;
   };
 
   const handleCreateApp = () => {
@@ -1131,6 +1170,17 @@ function AppsPageContent() {
                   </div>
                 )}
               </div>
+              
+              {/* Bulk Assign Button */}
+              {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                <Button 
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => setShowBulkAssignmentModal(true)}
+                >
+                  <UserPlusIcon className="w-4 h-4 mr-2" />
+                  Bulk Assign
+                </Button>
+              )}
               
               {/* Add App Button */}
               <Button 
@@ -1695,14 +1745,17 @@ function AppsPageContent() {
                                     : 'Manage Access'
                               }
                             </Button>
-                            <Button
-                              onClick={() => handleOpenSamlConfig(app)}
-                              variant="outline"
-                              className="px-3 border-blue-300 text-blue-700 hover:bg-blue-50"
-                              title="Configure SAML"
-                            >
-                              <KeyIcon className="w-4 h-4" />
-                            </Button>
+                            {/* SAML Config Button - Only show if user can configure this app */}
+                            {canConfigureApp(app) && (
+                              <Button
+                                onClick={() => handleOpenSamlConfig(app)}
+                                variant="outline"
+                                className="px-3 border-blue-300 text-blue-700 hover:bg-blue-50"
+                                title="Configure SAML"
+                              >
+                                <KeyIcon className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2183,6 +2236,18 @@ function AppsPageContent() {
           }}
         />
       )}
+
+      {/* Bulk Assignment Modal */}
+      <BulkAssignmentModal
+        apps={apps}
+        isOpen={showBulkAssignmentModal}
+        onClose={() => setShowBulkAssignmentModal(false)}
+        onAssignmentChange={handleAssignmentChange}
+        currentUser={{
+          role: user?.role || 'USER',
+          organizationId: user?.organizationId
+        }}
+      />
 
       {/* App Creation Modal */}
       <AppCreationModal

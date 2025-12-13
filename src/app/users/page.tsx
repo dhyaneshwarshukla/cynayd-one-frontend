@@ -55,6 +55,27 @@ export default function UsersPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBulkActionsModal, setShowBulkActionsModal] = useState(false);
+  const [showCsvUploadModal, setShowCsvUploadModal] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvUploadProgress, setCsvUploadProgress] = useState(0);
+  const [csvProcessing, setCsvProcessing] = useState(false);
+  const [csvTotalRows, setCsvTotalRows] = useState(0);
+  const [csvUploadResults, setCsvUploadResults] = useState<{
+    total: number;
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; email?: string; error: string }>;
+    created: Array<{ email: string; name: string }>;
+  } | null>(null);
+  const [csvUserStatuses, setCsvUserStatuses] = useState<Array<{
+    userNumber: number;
+    email: string;
+    name: string;
+    status: string;
+    message: string;
+  }>>([]);
+  const [csvUploadAbort, setCsvUploadAbort] = useState<(() => void) | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
@@ -140,6 +161,72 @@ export default function UsersPage() {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return password;
+  };
+
+  const downloadCsvTemplate = () => {
+    // Helper function to escape CSV values
+    const escapeCsvValue = (value: string): string => {
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+
+    // Create CSV header row - only fields that are actually managed
+    // Based on database schema and backend API: email, name, role, password, image, jobTitle, phoneNumber
+    const headers = ['email', 'name', 'role', 'password', 'image', 'jobTitle', 'phoneNumber'];
+    
+    // Create sample data rows
+    const sampleRows = [
+      [
+        'user@example.com',
+        'John Doe',
+        'USER',
+        '', // Optional password - leave empty for auto-generation
+        '', // Optional profile image URL
+        'Software Engineer',
+        '+1234567890'
+      ],
+      [
+        'jane@example.com',
+        'Jane Smith',
+        'ADMIN',
+        '', // Optional password
+        '', // Optional profile image URL
+        'Product Manager',
+        '+1234567891'
+      ],
+      [
+        'bob@example.com',
+        'Bob Johnson',
+        'USER',
+        '', // Optional password
+        'https://example.com/avatar.jpg', // Example image URL
+        'Designer',
+        '+1234567892'
+      ]
+    ];
+    
+    // Create CSV content with proper escaping
+    const csvRows = [
+      headers.map(escapeCsvValue).join(','),
+      ...sampleRows.map(row => row.map(escapeCsvValue).join(','))
+    ];
+    
+    const csvContent = csvRows.join('\n');
+    
+    // Add BOM for Excel compatibility
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'users_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const resetForm = () => {
@@ -387,12 +474,12 @@ export default function UsersPage() {
       try {
         setError(null);
         setSuccessMessage(null);
-        await apiClient.deleteUser(user.id);
-      setUsers(users.filter(u => u.id !== user.id));
-        setSuccessMessage('User deleted successfully!');
+        const response = await apiClient.deleteUser(user.id);
+        setUsers(users.filter(u => u.id !== user.id));
+        setSuccessMessage(response?.message || 'User deleted successfully!');
         setTimeout(() => setSuccessMessage(null), 3000);
-      } catch (err) {
-        setError('Failed to delete user');
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete user');
         console.error('Delete user error:', err);
       }
     }
@@ -483,10 +570,13 @@ export default function UsersPage() {
       if (!userApps[userId]) {
         try {
           setLoadingApps(prev => ({ ...prev, [userId]: true }));
+          console.log('Fetching apps for user:', userId);
           const apps = await apiClient.getUserAppsByUserId(userId);
-          setUserApps(prev => ({ ...prev, [userId]: apps }));
-        } catch (err) {
+          console.log('Received apps:', apps);
+          setUserApps(prev => ({ ...prev, [userId]: apps || [] }));
+        } catch (err: any) {
           console.error('Failed to fetch user apps:', err);
+          setError(`Failed to load apps: ${err.message || 'Unknown error'}`);
           setUserApps(prev => ({ ...prev, [userId]: [] }));
         } finally {
           setLoadingApps(prev => ({ ...prev, [userId]: false }));
@@ -512,7 +602,7 @@ export default function UsersPage() {
         try {
           switch (bulkAction) {
             case 'delete':
-              await apiClient.deleteUser(userId);
+              const deleteResponse = await apiClient.deleteUser(userId);
               setUsers(users.filter(u => u.id !== userId));
               break;
             case 'activate':
@@ -614,6 +704,13 @@ export default function UsersPage() {
           >
             <span className="mr-2">👤</span>
             Add User
+          </Button>
+          <Button
+            onClick={() => setShowCsvUploadModal(true)}
+            className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white"
+          >
+            <span className="mr-2">📄</span>
+            Upload CSV
           </Button>
           <Link href="/apps">
             <Button
@@ -1179,11 +1276,19 @@ export default function UsersPage() {
                       onChange={(e) => setInviteRole(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {availableRoles.map((role) => (
-                        <option key={role.id} value={role.name.toLowerCase()}>
-                          {role.name} - {role.description}
-                        </option>
-                      ))}
+                      {availableRoles
+                        .filter((role) => {
+                          // Filter out SUPER_ADMIN for non-SUPER_ADMIN users
+                          if (role.name.toUpperCase() === 'SUPER_ADMIN' && !isSuperAdmin) {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((role) => (
+                          <option key={role.id} value={role.name.toLowerCase()}>
+                            {role.name} - {role.description}
+                          </option>
+                        ))}
                     </select>
                     {availableRoles.length === 0 && (
                       <p className="mt-1 text-xs text-gray-500">Loading available roles...</p>
@@ -1351,11 +1456,19 @@ export default function UsersPage() {
                       defaultValue={selectedUser.role.toLowerCase()}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {availableRoles.map((role) => (
-                        <option key={role.id} value={role.name.toLowerCase()}>
-                          {role.name} - {role.description}
-                        </option>
-                      ))}
+                      {availableRoles
+                        .filter((role) => {
+                          // Filter out SUPER_ADMIN for non-SUPER_ADMIN users
+                          if (role.name.toUpperCase() === 'SUPER_ADMIN' && !isSuperAdmin) {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((role) => (
+                          <option key={role.id} value={role.name.toLowerCase()}>
+                            {role.name} - {role.description}
+                          </option>
+                        ))}
                     </select>
                 </div>
               </div>
@@ -1406,6 +1519,508 @@ export default function UsersPage() {
         </div>
       )}
 
+      {/* CSV Upload Modal */}
+      {showCsvUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">Upload Users via CSV</h3>
+              <button
+                onClick={() => {
+                  // If upload/processing is in progress, show confirmation
+                  if (csvUploading || csvProcessing) {
+                    const confirmed = window.confirm(
+                      'Are you sure you want to cancel user creation? The current operation will be stopped and any remaining users will not be created.'
+                    );
+                    if (!confirmed) {
+                      return;
+                    }
+                    
+                    // Abort the ongoing request
+                    if (csvUploadAbort) {
+                      csvUploadAbort();
+                      setCsvUploadAbort(null);
+                    }
+                  }
+                  
+                  setShowCsvUploadModal(false);
+                  setCsvFile(null);
+                  setCsvUploadResults(null);
+                  setCsvUploadProgress(0);
+                  setCsvProcessing(false);
+                  setCsvUploading(false);
+                  setCsvTotalRows(0);
+                  setCsvUserStatuses([]);
+                  setCsvUploadAbort(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {!csvUploadResults ? (
+              <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-blue-900 mb-2">CSV Format Requirements</h4>
+                      <p className="text-sm text-blue-800 mb-2">Your CSV file should include the following columns:</p>
+                    </div>
+                    <button
+                      onClick={downloadCsvTemplate}
+                      className="ml-4 flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap"
+                      title="Download CSV template with example data"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Download Template
+                    </button>
+                  </div>
+                  <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+                    <li><strong>email</strong> (required) - User email address</li>
+                    <li><strong>name</strong> (required) - User full name</li>
+                    <li>
+                      <strong>role</strong> (optional) - USER, ADMIN, or GUEST (defaults to USER)
+                      {!isSuperAdmin && ' - Note: SUPER_ADMIN cannot be assigned by ADMIN users'}
+                      {isSuperAdmin && ', or SUPER_ADMIN'}
+                    </li>
+                    <li><strong>password</strong> (optional) - User password (min 6 characters, auto-generated if not provided)</li>
+                    <li><strong>image</strong> (optional) - Profile image URL</li>
+                    <li><strong>jobTitle</strong> (optional) - User job title</li>
+                    <li><strong>phoneNumber</strong> (optional) - User phone number</li>
+                  </ul>
+                  <p className="text-sm text-blue-800 mt-3">
+                    <strong>Note:</strong> The first row should contain column headers. Users will receive invitation emails with their temporary passwords.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select CSV File
+                  </label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setCsvFile(file);
+                        // Parse CSV to get row count
+                        try {
+                          const text = await file.text();
+                          const lines = text.split('\n').filter(line => line.trim());
+                          // Subtract 1 for header row
+                          const rowCount = Math.max(0, lines.length - 1);
+                          setCsvTotalRows(rowCount);
+                        } catch (err) {
+                          console.error('Error parsing CSV:', err);
+                          setCsvTotalRows(0);
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {csvFile && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      Selected: <strong>{csvFile.name}</strong> ({(csvFile.size / 1024).toFixed(2)} KB)
+                      {csvTotalRows > 0 && (
+                        <span className="ml-2 text-blue-600">
+                          • {csvTotalRows} user{csvTotalRows !== 1 ? 's' : ''} to process
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+
+                {/* Progress Bar */}
+                {(csvUploading || csvProcessing) && (
+                  <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700 font-semibold">
+                        {csvUploading ? 'Upload Progress' : 'Processing Progress'}
+                      </span>
+                      <span className="text-blue-700 font-bold">
+                        {csvProcessing ? (
+                          <span className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                          </span>
+                        ) : (
+                          `${csvUploadProgress}%`
+                        )}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
+                      {csvProcessing ? (
+                        // Indeterminate progress bar for processing - shows animation even at 100%
+                        <div className="relative h-full overflow-hidden rounded-full">
+                          <div className="absolute inset-0 bg-gradient-to-r from-green-500 via-green-600 to-green-700"></div>
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer"></div>
+                        </div>
+                      ) : (
+                        // Determinate progress bar for upload
+                        <div
+                          className="bg-gradient-to-r from-green-500 via-green-600 to-green-700 h-full rounded-full transition-all duration-300 ease-out relative"
+                          style={{ width: `${csvUploadProgress}%` }}
+                        >
+                          {csvUploadProgress > 0 && csvUploadProgress < 100 && (
+                            <div className="absolute inset-0 bg-white opacity-30 animate-pulse"></div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <p className="text-gray-600">
+                        {csvUploading 
+                          ? '📤 Uploading file to server...' 
+                          : csvProcessing
+                          ? `⚙️ Processing CSV file and creating users...${csvTotalRows > 0 ? ` (${csvTotalRows} users)` : ''}`
+                          : 'Ready'}
+                      </p>
+                      {csvFile && (
+                        <p className="text-gray-500 truncate max-w-[200px]">
+                          {csvFile.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Detailed User Status List */}
+                {csvProcessing && csvUserStatuses.length > 0 && (
+                  <div className="space-y-2 p-4 bg-gray-50 border border-gray-200 rounded-lg max-h-96 overflow-y-auto">
+                    <h4 className="font-semibold text-gray-900 mb-3">User Processing Status</h4>
+                    <div className="space-y-2">
+                      {csvUserStatuses.map((userStatus, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-3 rounded-md border ${
+                            userStatus.status === 'email_sent'
+                              ? 'bg-green-50 border-green-200'
+                              : userStatus.status === 'created'
+                              ? 'bg-blue-50 border-blue-200'
+                              : userStatus.status === 'email_failed'
+                              ? 'bg-yellow-50 border-yellow-200'
+                              : userStatus.status === 'failed' || userStatus.status === 'error'
+                              ? 'bg-red-50 border-red-200'
+                              : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-900">
+                                  User {userStatus.userNumber}:
+                                </span>
+                                <span className="text-sm text-gray-700">
+                                  {userStatus.name} ({userStatus.email})
+                                </span>
+                              </div>
+                              <div className="mt-1 flex items-center gap-2 text-sm">
+                                {userStatus.status === 'email_sent' && (
+                                  <>
+                                    <span className="text-green-700">✓ User created</span>
+                                    <span className="text-gray-400">•</span>
+                                    <span className="text-green-700">✓ Email sent</span>
+                                  </>
+                                )}
+                                {userStatus.status === 'created' && (
+                                  <span className="text-blue-700">✓ User created</span>
+                                )}
+                                {userStatus.status === 'email_failed' && (
+                                  <>
+                                    <span className="text-blue-700">✓ User created</span>
+                                    <span className="text-gray-400">•</span>
+                                    <span className="text-yellow-700">⚠ Email failed</span>
+                                  </>
+                                )}
+                                {(userStatus.status === 'failed' || userStatus.status === 'error') && (
+                                  <span className="text-red-700">✗ {userStatus.message}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="ml-2">
+                              {userStatus.status === 'email_sent' && (
+                                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                              {userStatus.status === 'created' && (
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                </svg>
+                              )}
+                              {userStatus.status === 'email_failed' && (
+                                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              )}
+                              {(userStatus.status === 'failed' || userStatus.status === 'error') && (
+                                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      // If upload/processing is in progress, show confirmation
+                      if (csvUploading || csvProcessing) {
+                        const confirmed = window.confirm(
+                          'Are you sure you want to cancel user creation? The current operation will be stopped and any remaining users will not be created.'
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                        
+                        // Abort the ongoing request
+                        if (csvUploadAbort) {
+                          csvUploadAbort();
+                          setCsvUploadAbort(null);
+                        }
+                      }
+                      
+                      // Reset all state
+                      setShowCsvUploadModal(false);
+                      setCsvFile(null);
+                      setCsvUploadProgress(0);
+                      setCsvUploadResults(null);
+                      setCsvProcessing(false);
+                      setCsvUploading(false);
+                      setCsvTotalRows(0);
+                      setCsvUserStatuses([]);
+                      setCsvUploadAbort(null);
+                    }}
+                    className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-400 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!csvFile) {
+                        setError('Please select a CSV file');
+                        return;
+                      }
+
+                      try {
+                        setCsvUploading(true);
+                        setCsvProcessing(false);
+                        setCsvUploadProgress(0);
+                        setCsvUserStatuses([]);
+                        setError(null);
+                        setSuccessMessage(null);
+
+                        let uploadFinished = false;
+                        
+                        // Upload file with progress tracking and user status updates
+                        const { promise, abort } = apiClient.uploadUsersCSV(
+                          csvFile,
+                          (progress) => {
+                            setCsvUploadProgress(progress);
+                            // When upload reaches 100%, switch to processing state
+                            if (progress >= 100 && !uploadFinished) {
+                              uploadFinished = true;
+                              setCsvUploading(false);
+                              setCsvProcessing(true);
+                            }
+                          },
+                          (status) => {
+                            // Handle user status updates
+                            if (status.type === 'user_status' && status.userNumber && status.email) {
+                              setCsvUserStatuses(prev => {
+                                const existing = prev.findIndex(s => s.userNumber === status.userNumber);
+                                if (existing >= 0) {
+                                  // Update existing status
+                                  const updated = [...prev];
+                                  updated[existing] = {
+                                    userNumber: status.userNumber,
+                                    email: status.email || '',
+                                    name: status.name || status.email || '',
+                                    status: status.status || 'processing',
+                                    message: status.message || ''
+                                  };
+                                  return updated;
+                                } else {
+                                  // Add new status
+                                  return [...prev, {
+                                    userNumber: status.userNumber,
+                                    email: status.email,
+                                    name: status.name || status.email || '',
+                                    status: status.status || 'processing',
+                                    message: status.message || ''
+                                  }];
+                                }
+                              });
+                            }
+                          }
+                        );
+                        
+                        // Store abort function
+                        setCsvUploadAbort(() => abort);
+                        
+                        // Wait for the upload to complete
+                        const result = await promise;
+                        
+                        // Clear abort function on success
+                        setCsvUploadAbort(null);
+                        
+                        // Processing complete (API call returned)
+                        setCsvProcessing(false);
+                        setCsvUploadResults(result.results);
+                        setSuccessMessage(result.message);
+
+                        // Refresh users list
+                        await fetchUsers();
+                      } catch (err: any) {
+                        // Only show error if not aborted
+                        if (err.message !== 'Upload aborted') {
+                          setError(err.message || 'Failed to upload CSV file');
+                          console.error('CSV upload error:', err);
+                        } else {
+                          // User cancelled - reset state
+                          setCsvUploading(false);
+                          setCsvProcessing(false);
+                          setCsvUploadProgress(0);
+                          setCsvUserStatuses([]);
+                          setSuccessMessage(null);
+                          setError('Upload cancelled by user');
+                        }
+                      } finally {
+                        // Clear abort function
+                        setCsvUploadAbort(null);
+                        setCsvUploading(false);
+                        // Reset progress after a delay
+                        setTimeout(() => {
+                          setCsvUploadProgress(0);
+                          setCsvProcessing(false);
+                        }, 2000);
+                      }
+                    }}
+                    disabled={!csvFile || csvUploading}
+                    className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {csvUploading ? 'Uploading...' : 'Upload CSV'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className={`p-4 rounded-lg ${
+                  csvUploadResults.failed === 0 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-yellow-50 border border-yellow-200'
+                }`}>
+                  <h4 className="font-semibold mb-2">
+                    {csvUploadResults.failed === 0 ? '✅ Upload Successful!' : '⚠️ Upload Completed with Errors'}
+                  </h4>
+                  <div className="text-sm space-y-1">
+                    <p><strong>Total rows:</strong> {csvUploadResults.total}</p>
+                    <p className="text-green-700"><strong>Successfully created:</strong> {csvUploadResults.success}</p>
+                    {csvUploadResults.failed > 0 && (
+                      <p className="text-red-700"><strong>Failed:</strong> {csvUploadResults.failed}</p>
+                    )}
+                  </div>
+                </div>
+
+                {csvUploadResults.created.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Created Users ({csvUploadResults.created.length})</h4>
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-md">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {csvUploadResults.created.map((user, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-sm text-gray-900">{user.email}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900">{user.name}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {csvUploadResults.errors.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-red-900 mb-2">Errors ({csvUploadResults.errors.length})</h4>
+                    <div className="max-h-60 overflow-y-auto border border-red-200 rounded-md">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-red-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-red-700 uppercase">Row</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-red-700 uppercase">Email</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-red-700 uppercase">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {csvUploadResults.errors.map((error, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-sm text-gray-900">{error.row}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900">{error.email || 'N/A'}</td>
+                              <td className="px-3 py-2 text-sm text-red-600">{error.error}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowCsvUploadModal(false);
+                      setCsvFile(null);
+                      setCsvUploadResults(null);
+                      setCsvUploadProgress(0);
+                      setCsvProcessing(false);
+                      setCsvTotalRows(0);
+                      setCsvUserStatuses([]);
+                    }}
+                    className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-400 transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCsvFile(null);
+                      setCsvUploadResults(null);
+                      setCsvUploadProgress(0);
+                      setCsvProcessing(false);
+                      setCsvTotalRows(0);
+                      setCsvUserStatuses([]);
+                    }}
+                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    Upload Another File
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Bulk Actions Modal */}
       {showBulkActionsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1436,11 +2051,19 @@ export default function UsersPage() {
                     onChange={(e) => setBulkRole(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {availableRoles.map((role) => (
-                      <option key={role.id} value={role.name.toLowerCase()}>
-                        {role.name} - {role.description}
-                      </option>
-                    ))}
+                    {availableRoles
+                      .filter((role) => {
+                        // Filter out SUPER_ADMIN for non-SUPER_ADMIN users
+                        if (role.name.toUpperCase() === 'SUPER_ADMIN' && !isSuperAdmin) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((role) => (
+                        <option key={role.id} value={role.name.toLowerCase()}>
+                          {role.name} - {role.description}
+                        </option>
+                      ))}
                   </select>
                 </div>
               )}

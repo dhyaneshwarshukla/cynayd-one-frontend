@@ -1,0 +1,30 @@
+# robots.txt for CYNAYD One
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /security/
+Disallow: /audit/
+Disallow: /users/
+Disallow: /organizations/
+Disallow: /roles/
+Disallow: /products/
+Disallow: /apps/
+Disallow: /connect/
+Disallow: /app-sso/
+
+# Allow public pages
+Allow: /
+Allow: /api-docs
+
+# Sitemap location
+Sitemap: https://one.cynayd.com/sitemap.xml
+Sitemap: http://localhost:3000/sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1
+

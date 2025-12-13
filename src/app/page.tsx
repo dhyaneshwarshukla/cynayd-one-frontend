@@ -2,8 +2,105 @@
 
 import { UnifiedLayout } from "@/components/layout/UnifiedLayout";
 import PricingSection from "@/components/common/PricingSection";
+import { useEffect } from "react";
 
 export default function HomePage() {
+  useEffect(() => {
+    // Add structured data (JSON-LD) for SEO
+    const structuredData = {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "CYNAYD One",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock",
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "150",
+      },
+      "description": "Transform your business with our comprehensive corporate platform. Manage your entire organization with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, and business website generation - all secured with enterprise-grade SSO, advanced security, and seamless payment processing.",
+      "featureList": [
+        "SAML 2.0 SSO",
+        "HR Management",
+        "Secure Mail",
+        "Cloud Drive",
+        "Video Conferencing",
+        "Custom App Integration",
+        "Website Builder",
+        "Enterprise Security",
+        "Device Trust",
+        "Risk-Based Authentication",
+        "Audit Logging",
+        "Razorpay Payment Integration",
+      ],
+      "screenshot": `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/og-image.jpg`,
+    };
+
+    const organizationData = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "CYNAYD",
+      "url": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+      "logo": `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/logo.png`,
+      "sameAs": [
+        // Add social media links when available
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "Customer Service",
+        "email": "support@cynayd.com",
+      },
+    };
+
+    const websiteData = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "CYNAYD One",
+      "url": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/search?q={search_term_string}`,
+        },
+        "query-input": "required name=search_term_string",
+      },
+    };
+
+    // Remove existing structured data scripts if any
+    const existingScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    existingScripts.forEach((script) => script.remove());
+
+    // Add structured data scripts
+    const addStructuredData = (data: object, id: string) => {
+      const script = document.createElement("script");
+      script.type = "application/ld+json";
+      script.id = id;
+      script.text = JSON.stringify(data);
+      document.head.appendChild(script);
+    };
+
+    addStructuredData(structuredData, "software-application-schema");
+    addStructuredData(organizationData, "organization-schema");
+    addStructuredData(websiteData, "website-schema");
+
+    return () => {
+      // Cleanup on unmount
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      scripts.forEach((script) => {
+        if (["software-application-schema", "organization-schema", "website-schema"].includes(script.id)) {
+          script.remove();
+        }
+      });
+    };
+  }, []);
+
   return (
     <UnifiedLayout variant="landing">
 

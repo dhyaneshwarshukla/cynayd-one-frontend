@@ -52,28 +52,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       }, 5000); // 5 second timeout
 
       try {
-        console.log('=== AUTH CONTEXT INITIALIZATION ===');
-        console.log('AuthContext - Initializing auth...');
-        console.log('AuthContext - API Client authenticated:', apiClient.isAuthenticated());
-        console.log('AuthContext - Auth token exists:', !!apiClient.getAuthToken());
-        
         // Try to get user data - this will work with both localStorage tokens and cookies
         try {
-          console.log('AuthContext - Attempting to get current user...');
           const userData = await apiClient.getCurrentUser();
-          console.log('AuthContext - User data received:', userData);
           if (isMounted) {
             clearTimeout(timeoutId);
             setUser(userData);
             setIsLoading(false);
-            console.log('AuthContext - User state updated');
           }
         } catch (error: any) {
-          console.log('AuthContext - No valid authentication found:', error);
-          console.log('AuthContext - Error details:', error?.message);
           // Only logout if we have a token but it's invalid
           if (apiClient.getAuthToken()) {
-            console.log('AuthContext - Clearing invalid token');
             apiClient.logout();
           }
           if (isMounted) {
@@ -89,8 +78,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           clearTimeout(timeoutId);
           setIsLoading(false);
         }
-      } finally {
-        console.log('AuthContext - Initialization completed');
       }
     };
 
@@ -120,21 +107,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
   // Set user directly (for MFA flow)
   const setUserDirectly = (userData: User) => {
-    console.log('AuthContext - Setting user directly:', userData);
     setUser(userData);
   };
 
   // Trigger login success callback (for MFA flow)
   const triggerLoginSuccess = () => {
-    console.log('=== AUTH CONTEXT - TRIGGER LOGIN SUCCESS ===');
-    console.log('AuthContext - Triggering login success callback');
-    console.log('AuthContext - onLoginSuccess callback exists:', !!onLoginSuccess);
     if (onLoginSuccess) {
-      console.log('AuthContext - Calling onLoginSuccess callback...');
       onLoginSuccess();
-      console.log('AuthContext - onLoginSuccess callback completed');
-    } else {
-      console.log('AuthContext - No onLoginSuccess callback provided');
     }
   };
 

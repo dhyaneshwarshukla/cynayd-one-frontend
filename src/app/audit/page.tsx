@@ -336,7 +336,7 @@ export default function AuditPage() {
     if (action.includes('role')) return '👑';
     if (action.includes('organization')) return '🏢';
     if (action.includes('team')) return '👥';
-    if (action.includes('product')) return '📦';
+    if (action.includes('app') || action.includes('product')) return '📦';
     return '📝';
   };
 

@@ -169,6 +169,8 @@ export interface Team {
   updatedAt: Date;
 }
 
+// Legacy Product interface - deprecated, use App instead
+// Keeping for backward compatibility but should be migrated to App
 export interface Product {
   id: string;
   name: string;
@@ -181,6 +183,7 @@ export interface Product {
   updatedAt: Date;
 }
 
+// Legacy UserProductAccess interface - deprecated, use UserAppAccess instead
 export interface UserProductAccess {
   id: string;
   userId: string;
@@ -303,7 +306,7 @@ export interface SystemSettings {
     maxUsers: number;
     maxTeams: number;
     maxStorage: number;
-    maxProducts: number;
+    maxApps: number;
   };
 }
 
@@ -367,24 +370,10 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.authToken}`;
     }
 
-    console.log('API Client - Making request:', {
-      url,
-      method: options.method || 'GET',
-      hasAuth: !!this.authToken,
-      headers: Object.keys(headers)
-    });
-
     const response = await fetch(url, {
       ...options,
       headers,
       credentials: 'include', // Include cookies for CORS
-    });
-
-    console.log('API Client - Response received:', {
-      url,
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
     });
 
     if (!response.ok) {
@@ -393,14 +382,28 @@ class ApiClient {
       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
-    console.log('API Client - Success response:', {
-      url,
-      dataType: Array.isArray(data) ? 'array' : typeof data,
-      dataLength: Array.isArray(data) ? data.length : 'N/A'
-    });
+    // Handle 204 No Content and other empty responses
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as any;
+    }
 
-    return data;
+    // Check if response has content before trying to parse JSON
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const text = await response.text();
+      if (text.trim() === '') {
+        return undefined as any;
+      }
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        // If JSON parsing fails, return undefined for void responses
+        return undefined as any;
+      }
+    }
+
+    // For non-JSON responses, return undefined
+    return undefined as any;
   }
 
   // Authentication endpoints
@@ -552,6 +555,174 @@ class ApiClient {
     });
   }
 
+  uploadUsersCSV(
+    file: File,
+    onProgress?: (progress: number) => void,
+    onUserStatus?: (status: {
+      type: string;
+      userNumber?: number;
+      email?: string;
+      name?: string;
+      status?: string;
+      message?: string;
+      processed?: number;
+      total?: number;
+    }) => void
+  ): {
+    promise: Promise<{
+      message: string;
+      results: {
+        total: number;
+        success: number;
+        failed: number;
+        errors: Array<{ row: number; email?: string; error: string }>;
+        created: Array<{ email: string; name: string }>;
+      };
+    }>;
+    abort: () => void;
+  } {
+    let xhr: XMLHttpRequest | null = null;
+    
+    const promise = new Promise<{
+      message: string;
+      results: {
+        total: number;
+        success: number;
+        failed: number;
+        errors: Array<{ row: number; email?: string; error: string }>;
+        created: Array<{ email: string; name: string }>;
+      };
+    }>((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const url = `${this.baseURL}/api/users/upload-csv`;
+      xhr = new XMLHttpRequest();
+
+      let buffer = '';
+      let finalResult: any = null;
+
+      // Track upload progress
+      let uploadComplete = false;
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          onProgress(progress);
+          // Mark upload as complete when it reaches 100%
+          if (progress >= 100) {
+            uploadComplete = true;
+          }
+        }
+      });
+
+      // Track when upload completes (but before response)
+      xhr.upload.addEventListener('load', () => {
+        uploadComplete = true;
+        // Signal that upload is done, processing has started
+        if (onProgress) {
+          onProgress(100);
+        }
+      });
+
+      // Handle streaming response data (newline-delimited JSON)
+      xhr.addEventListener('progress', () => {
+        if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
+          // Process newline-delimited JSON
+          const newData = xhr.responseText.substring(buffer.length);
+          buffer = xhr.responseText;
+          
+          // Split by newlines to get individual JSON objects
+          const lines = newData.split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line);
+              
+              if (parsed.type === 'user_status' && onUserStatus) {
+                onUserStatus(parsed);
+              } else if (parsed.type === 'progress' && onUserStatus) {
+                onUserStatus(parsed);
+              } else if (parsed.type === 'complete') {
+                finalResult = parsed;
+              }
+            } catch (e) {
+              // Ignore incomplete JSON chunks
+            }
+          }
+        }
+      });
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            // Process any remaining data
+            const lines = buffer.split('\n').filter(line => line.trim());
+            for (const line of lines) {
+              try {
+                const parsed = JSON.parse(line);
+                if (parsed.type === 'complete') {
+                  finalResult = parsed;
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
+            
+            if (finalResult && finalResult.results) {
+              resolve({
+                message: finalResult.message,
+                results: finalResult.results
+              });
+            } else {
+              // Fallback: try to parse entire response as JSON
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            }
+          } catch (e) {
+            reject(new Error('Failed to parse response'));
+          }
+        } else {
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            reject(new Error(errorData.message || errorData.error || `HTTP error! status: ${xhr.status}`));
+          } catch (e) {
+            reject(new Error(`HTTP error! status: ${xhr.status}`));
+          }
+        }
+      });
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error occurred'));
+      });
+
+      // Handle abort
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload aborted'));
+      });
+
+      // Set headers
+      xhr.open('POST', url);
+      if (this.authToken) {
+        xhr.setRequestHeader('Authorization', `Bearer ${this.authToken}`);
+      }
+      xhr.withCredentials = true;
+
+      // Send request
+      xhr.send(formData);
+    });
+
+    return {
+      promise,
+      abort: () => {
+        if (xhr) {
+          xhr.abort();
+        }
+      }
+    };
+  }
+
   // Organization endpoints
   async getOrganizations(): Promise<Organization[]> {
     return this.request<Organization[]>('/api/organizations');
@@ -562,14 +733,14 @@ class ApiClient {
     activeOrganizations: number;
     totalUsers: number;
     totalTeams: number;
-    totalProducts: number;
+    totalApps: number;
   }> {
     return this.request<{
       totalOrganizations: number;
       activeOrganizations: number;
       totalUsers: number;
       totalTeams: number;
-      totalProducts: number;
+      totalApps: number;
     }>('/api/organizations/stats');
   }
 
@@ -652,8 +823,8 @@ class ApiClient {
     });
   }
 
-  async deleteUser(id: string): Promise<void> {
-    return this.request<void>(`/api/users/${id}`, {
+  async deleteUser(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/api/users/${id}`, {
       method: 'DELETE',
     });
   }
@@ -669,7 +840,7 @@ class ApiClient {
 
   // User profile endpoints
   async getUserProfileStats(): Promise<{
-    products: number;
+    apps: number;
     lastActive: string;
     activity: string;
     memberSince: Date;
@@ -940,17 +1111,51 @@ class ApiClient {
   }
 
   async getUserAppsByUserId(userId: string): Promise<AppWithAccess[]> {
-    const response = await this.request<{ success: boolean; data: any[] }>(`/api/users/${userId}/user-apps`);
-    // Transform the response to match AppWithAccess format
-    return response.data.map((app: any) => ({
-      ...app,
-      access: {
-        assignedAt: app.assignedAt || new Date().toISOString(),
-        expiresAt: app.expiresAt || null,
-        quota: app.quota || null,
-        usedQuota: app.usedQuota || 0
+    try {
+      const response = await this.request<{ success: boolean; data: any[] }>(`/api/users/${userId}/user-apps`);
+      console.log('getUserAppsByUserId response:', response);
+      
+      // Handle different response structures
+      if (!response) {
+        console.warn('Empty response from getUserAppsByUserId');
+        return [];
       }
-    }));
+      
+      // Check if response has success and data properties
+      if (response.success !== undefined && response.data) {
+        const apps = Array.isArray(response.data) ? response.data : [];
+        console.log('Parsed apps array:', apps);
+        
+        // Transform the response to match AppWithAccess format
+        return apps.map((app: any) => ({
+          ...app,
+          access: {
+            assignedAt: app.assignedAt || new Date().toISOString(),
+            expiresAt: app.expiresAt || null,
+            quota: app.quota || null,
+            usedQuota: app.usedQuota || 0
+          }
+        }));
+      }
+      
+      // If response is directly an array (fallback)
+      if (Array.isArray(response)) {
+        return response.map((app: any) => ({
+          ...app,
+          access: {
+            assignedAt: app.assignedAt || new Date().toISOString(),
+            expiresAt: app.expiresAt || null,
+            quota: app.quota || null,
+            usedQuota: app.usedQuota || 0
+          }
+        }));
+      }
+      
+      return [];
+    } catch (error: any) {
+      console.error('Error in getUserAppsByUserId:', error);
+      throw error;
+    }
   }
 
   async getAppBySlug(slug: string): Promise<App> {
@@ -1227,6 +1432,44 @@ class ApiClient {
   async revokeAppFromUser(appId: string, userId: string): Promise<void> {
     return this.request(`/api/apps/${appId}/revoke/${userId}`, {
       method: 'DELETE',
+    });
+  }
+
+  async bulkAssignApps(data: {
+    appIds: string[];
+    userIds: string[];
+    quota?: number;
+    expiresAt?: string;
+  }): Promise<{
+    success: boolean;
+    summary: {
+      total: number;
+      successful: number;
+      failed: number;
+      skipped: number;
+    };
+    results: {
+      successful: Array<{
+        appId: string;
+        userId: string;
+        action: 'created' | 'updated';
+        access: any;
+      }>;
+      failed: Array<{
+        appId: string;
+        userId: string;
+        error: string;
+      }>;
+      skipped: Array<{
+        appId: string;
+        userId: string;
+        reason: string;
+      }>;
+    };
+  }> {
+    return this.request('/api/apps/bulk-assign', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 

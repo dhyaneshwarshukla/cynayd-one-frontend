@@ -27,7 +27,7 @@ interface Organization {
 interface ExtendedOrganization extends Organization {
   userCount?: number;
   teamCount?: number;
-  productCount?: number;
+  appCount?: number;
   isActive: boolean;
   planId?: string;
   plan?: {
@@ -44,7 +44,7 @@ interface OrganizationStats {
   activeOrganizations: number;
   totalUsers: number;
   totalTeams: number;
-  totalProducts: number;
+  totalApps: number;
 }
 
 export default function OrganizationsPage() {
@@ -63,7 +63,7 @@ export default function OrganizationsPage() {
     activeOrganizations: 0,
     totalUsers: 0,
     totalTeams: 0,
-    totalProducts: 0
+    totalApps: 0
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -119,7 +119,7 @@ export default function OrganizationsPage() {
         ...org,
         userCount: org.userCount || 0,
         teamCount: 1, // Each organization is treated as a team  
-        productCount: org.appCount || 0,
+        appCount: org.appCount || 0,
         isActive: org.settings?.isActive !== false // Use settings or default to true
       }));
 
@@ -127,14 +127,14 @@ export default function OrganizationsPage() {
       
       // Calculate stats from the organizations data
       const totalUsers = extendedOrganizations.reduce((sum, org) => sum + (org.userCount || 0), 0);
-      const totalProducts = extendedOrganizations.reduce((sum, org) => sum + (org.productCount || 0), 0);
+      const totalApps = extendedOrganizations.reduce((sum, org) => sum + (org.appCount || 0), 0);
       
       setStats({
         totalOrganizations: extendedOrganizations.length,
         activeOrganizations: extendedOrganizations.filter(org => org.isActive).length,
         totalUsers: totalUsers,
         totalTeams: extendedOrganizations.length, // Each org is a team
-        totalProducts: totalProducts
+        totalApps: totalApps
       });
     } catch (error) {
       console.error('Failed to fetch organizations:', error);
@@ -189,7 +189,7 @@ export default function OrganizationsPage() {
           ...newOrg,
           userCount: 0,
           teamCount: 0,
-          productCount: 0,
+          appCount: 0,
           isActive: true
         };
 
@@ -205,7 +205,7 @@ export default function OrganizationsPage() {
             activeOrganizations: apiStats.activeOrganizations,
             totalUsers: apiStats.totalUsers,
             totalTeams: apiStats.totalTeams,
-            totalProducts: apiStats.totalProducts
+            totalApps: apiStats.totalApps
           });
         } catch (error) {
           console.warn('Failed to refresh stats after creating organization:', error);
@@ -261,7 +261,7 @@ export default function OrganizationsPage() {
               activeOrganizations: apiStats.activeOrganizations,
               totalUsers: apiStats.totalUsers,
               totalTeams: apiStats.totalTeams,
-              totalProducts: apiStats.totalProducts
+              totalApps: apiStats.totalApps
             });
           } catch (error) {
             console.warn('Failed to refresh stats after deleting organization:', error);
@@ -321,7 +321,7 @@ export default function OrganizationsPage() {
               activeOrganizations: apiStats.activeOrganizations,
               totalUsers: apiStats.totalUsers,
               totalTeams: apiStats.totalTeams,
-              totalProducts: apiStats.totalProducts
+              totalApps: apiStats.totalApps
             });
           } catch (error) {
             console.warn('Failed to refresh stats after bulk delete:', error);
@@ -354,7 +354,7 @@ export default function OrganizationsPage() {
               activeOrganizations: apiStats.activeOrganizations,
               totalUsers: apiStats.totalUsers,
               totalTeams: apiStats.totalTeams,
-              totalProducts: apiStats.totalProducts
+              totalApps: apiStats.totalApps
             });
           } catch (error) {
             console.warn('Failed to refresh stats after bulk action:', error);
@@ -587,8 +587,8 @@ export default function OrganizationsPage() {
           <Card className="p-6 bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-indigo-600">Total Products</p>
-                <p className="text-2xl font-bold text-indigo-900">{stats.totalProducts}</p>
+                <p className="text-sm font-medium text-indigo-600">Total Apps</p>
+                <p className="text-2xl font-bold text-indigo-900">{stats.totalApps}</p>
               </div>
               <div className="text-2xl">📦</div>
             </div>
@@ -750,8 +750,8 @@ export default function OrganizationsPage() {
                       <p className="text-xs text-gray-600">Teams</p>
                     </div>
                     <div className="p-2 bg-gray-50 rounded">
-                      <p className="text-lg font-bold text-gray-900">{org.productCount || 0}</p>
-                      <p className="text-xs text-gray-600">Products</p>
+                      <p className="text-lg font-bold text-gray-900">{org.appCount || 0}</p>
+                      <p className="text-xs text-gray-600">Apps</p>
                     </div>
                   </div>
                   
@@ -1033,8 +1033,8 @@ export default function OrganizationsPage() {
                   <div className="text-sm text-green-600">Teams</div>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-900">{selectedOrg.productCount || 0}</div>
-                  <div className="text-sm text-purple-600">Products</div>
+                  <div className="text-2xl font-bold text-purple-900">{selectedOrg.appCount || 0}</div>
+                  <div className="text-sm text-purple-600">Apps</div>
                 </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
                   <div className="text-2xl font-bold text-orange-900">{selectedOrg.settings?.theme || 'blue'}</div>

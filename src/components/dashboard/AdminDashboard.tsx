@@ -7,7 +7,7 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 
-interface Product {
+interface App {
   id: string;
   name: string;
   slug: string;
@@ -28,8 +28,8 @@ interface DashboardStats {
   totalOrganizations: number;
   recentLogins: number;
   pendingInvitations: number;
-  totalProducts: number;
-  activeProductAccess: number;
+  totalApps: number;
+  activeAppAccess: number;
 }
 
 interface RecentActivity {
@@ -59,8 +59,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     totalOrganizations: 0,
     recentLogins: 0,
     pendingInvitations: 0,
-    totalProducts: 0,
-    activeProductAccess: 0
+    totalApps: 0,
+    activeAppAccess: 0
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
@@ -68,8 +68,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Product-related state
-  const [products, setProducts] = useState<Product[]>([]);
+  // App-related state
+  const [apps, setApps] = useState<App[]>([]);
   const [users, setUsers] = useState<DashboardUser[]>([]);
   
   // Plan-related state
@@ -128,19 +128,19 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         console.warn('Failed to fetch organization plan details:', planErr);
       }
 
-      // Fetch products and user access
+      // Fetch apps and user access - use same logic as /apps page
       try {
-        const productsData = await fetchProducts();
-        setProducts(productsData);
+        const appsData = await fetchApps();
+        setApps(appsData);
         
-        // Update product stats
+        // Update app stats
         setStats(prevStats => ({
           ...prevStats,
-          totalProducts: productsData.length,
-          activeProductAccess: productsData.filter(p => p.isActive).length
+          totalApps: appsData.length,
+          activeAppAccess: appsData.filter(a => a.isActive).length
         }));
-      } catch (productErr) {
-        console.warn('Failed to fetch products:', productErr);
+      } catch (appErr) {
+        console.warn('Failed to fetch apps:', appErr);
       }
 
       // Fetch users (for admin)
@@ -168,23 +168,73 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   };
 
 
-  const fetchProducts = async (): Promise<Product[]> => {
+  const fetchApps = async (): Promise<App[]> => {
     try {
-      // Fetch real products from API
-      const productsData = await apiClient.getApps();
-      return productsData.map(app => ({
-        id: app.id,
-        name: app.name,
-        slug: app.slug,
-        description: app.description || 'No description available',
-        icon: app.icon || '📱',
-        color: app.color || '#3B82F6',
-        isActive: app.isActive,
-        createdAt: app.createdAt,
-        updatedAt: app.updatedAt
-      }));
+      // Use same logic as /apps page: system apps + organization apps + assigned apps
+      const [allApps, assignedApps] = await Promise.all([
+        apiClient.getApps(),
+        apiClient.getUserApps()
+      ]);
+      
+      // Get system apps (read-only, only if active)
+      const systemApps = allApps
+        .filter(app => app.systemApp === true && app.isActive !== false)
+        .map(app => ({
+          id: app.id,
+          name: app.name,
+          slug: app.slug,
+          description: app.description || 'No description available',
+          icon: app.icon || '📱',
+          color: app.color || '#3B82F6',
+          isActive: app.isActive,
+          createdAt: app.createdAt,
+          updatedAt: app.updatedAt
+        }));
+      
+      // Get organization apps (only active ones, belonging to user's organization)
+      const organizationApps = allApps
+        .filter(app => app.organizationId === user?.organizationId && app.isActive !== false)
+        .map(app => ({
+          id: app.id,
+          name: app.name,
+          slug: app.slug,
+          description: app.description || 'No description available',
+          icon: app.icon || '📱',
+          color: app.color || '#3B82F6',
+          isActive: app.isActive,
+          createdAt: app.createdAt,
+          updatedAt: app.updatedAt
+        }));
+      
+      // Get assigned apps (only active ones)
+      const assignedActiveApps = assignedApps
+        .filter(app => app.isActive !== false)
+        .map(app => ({
+          id: app.id,
+          name: app.name,
+          slug: app.slug,
+          description: app.description || 'No description available',
+          icon: app.icon || '📱',
+          color: app.color || '#3B82F6',
+          isActive: app.isActive,
+          createdAt: app.createdAt,
+          updatedAt: app.updatedAt
+        }));
+      
+      // Combine and deduplicate by ID
+      const allUserApps = [...systemApps, ...organizationApps, ...assignedActiveApps];
+      const uniqueAppsMap = new Map<string, App>();
+      
+      allUserApps.forEach(app => {
+        if (!uniqueAppsMap.has(app.id)) {
+          uniqueAppsMap.set(app.id, app);
+        }
+      });
+      
+      const apps = Array.from(uniqueAppsMap.values());
+      return apps;
     } catch (error) {
-      console.error('Error fetching products:', error);
+      console.error('Error fetching apps:', error);
       return [];
     }
   };
@@ -256,7 +306,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
             <p className="text-lg text-gray-600 mt-2">
-              Manage your organization's products, users, and settings
+              Manage your organization's apps, users, and settings
             </p>
           </div>
         </div>
@@ -282,8 +332,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <span className="text-2xl text-white">📦</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Products</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
+              <p className="text-sm font-medium text-gray-600">Total Apps</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalApps}</p>
             </div>
           </div>
         </Card>
@@ -295,7 +345,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Active Access</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeProductAccess}</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.activeAppAccess}</p>
             </div>
           </div>
         </Card>
@@ -348,7 +398,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Max Apps</p>
                     <p className="text-2xl font-bold text-green-600">{organizationPlan.plan.maxApps}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Current: {stats.totalProducts} apps
+                      Current: {stats.totalApps} apps
                     </p>
                   </div>
                 )}
@@ -452,21 +502,21 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div>
-                <p className="font-medium text-gray-900">Total Products</p>
+                <p className="font-medium text-gray-900">Total Apps</p>
                 <p className="text-sm text-gray-600">Available apps</p>
               </div>
               <div className="text-right">
-                <p className="text-xl font-bold text-gray-900">{stats.totalProducts}</p>
+                <p className="text-xl font-bold text-gray-900">{stats.totalApps}</p>
                 <p className="text-sm text-blue-600">Configured</p>
               </div>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div>
                 <p className="font-medium text-gray-900">Active Access</p>
-                <p className="text-sm text-gray-600">User-product assignments</p>
+                <p className="text-sm text-gray-600">User-app assignments</p>
               </div>
               <div className="text-right">
-                <p className="text-xl font-bold text-gray-900">{stats.activeProductAccess}</p>
+                <p className="text-xl font-bold text-gray-900">{stats.activeAppAccess}</p>
                 <p className="text-sm text-purple-600">Active</p>
               </div>
             </div>
@@ -564,7 +614,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           <div className="text-4xl mb-4">🛡️</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Admin Quick Start</h2>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            As an administrator, you have full control over your organization. Set up products, 
+            As an administrator, you have full control over your organization. Set up apps, 
             manage user access, and monitor security across all teams.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">

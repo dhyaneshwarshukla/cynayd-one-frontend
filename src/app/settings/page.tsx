@@ -8,36 +8,14 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient, UserSettings } from '@/lib/api-client';
+import { apiClient, UserSettings, SystemSettings } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import PlanManagement from '@/components/admin/PlanManagement';
 
 // Define interfaces locally
-// Using UserSettings from UI package
-
-interface SystemSettings {
-  organization: {
-    name: string;
-    slug: string;
-    timezone: string;
-    language: string;
-    theme: string;
-  };
-  features: {
-    hr: boolean;
-    drive: boolean;
-    connect: boolean;
-    mail: boolean;
-  };
-  limits: {
-    maxUsers: number;
-    maxTeams: number;
-    maxStorage: number;
-    maxProducts: number;
-  };
-}
+// Using UserSettings and SystemSettings from api-client
 
 function SettingsPageContent() {
   const { user, isAuthenticated } = useAuth();
@@ -95,7 +73,7 @@ function SettingsPageContent() {
       maxUsers: 100,
       maxTeams: 20,
       maxStorage: 1000,
-      maxProducts: 10
+      maxApps: 10
     }
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -478,7 +456,7 @@ function SettingsPageContent() {
                   {key === 'push' && 'Receive push notifications in browser'}
                   {key === 'sms' && 'Receive notifications via SMS'}
                   {key === 'security' && 'Security-related notifications'}
-                  {key === 'updates' && 'Product updates and announcements'}
+                  {key === 'updates' && 'App updates and announcements'}
                   {key === 'marketing' && 'Marketing and promotional content'}
                 </p>
               </div>

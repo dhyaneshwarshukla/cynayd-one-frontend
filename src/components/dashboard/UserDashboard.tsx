@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, AppWithAccess } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -33,10 +33,6 @@ interface UserAppAccess {
   usedQuota: number;
   quota?: number;
   expiresAt?: string;
-}
-
-interface AppWithAccess extends App {
-  userAccess?: UserAppAccess;
 }
 
 interface UserStats {
@@ -100,14 +96,9 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
       // Calculate stats
       const activeApps = appsData.filter(app => app.isActive).length;
-      const usedQuota = appsData.reduce((sum, app) => sum + (app.userAccess?.usedQuota || 0), 0);
-      const totalQuota = appsData.reduce((sum, app) => sum + (app.userAccess?.quota || 0), 0);
+      const usedQuota = appsData.reduce((sum, app) => sum + (app.access?.usedQuota || 0), 0);
+      const totalQuota = appsData.reduce((sum, app) => sum + (app.access?.quota || 0), 0);
       
-      console.log('Stats calculation:', {
-        totalApps: appsData.length,
-        activeApps,
-        appsData: appsData.map(app => ({ name: app.name, isActive: app.isActive }))
-      });
 
       setStats({
         totalApps: appsData.length,
@@ -126,40 +117,162 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
   const getApps = async (): Promise<AppWithAccess[]> => {
     try {
-      // Fetch user's assigned apps from API
-      const userApps = await apiClient.getUserApps();
+      // Use exact same logic as /apps page - check role directly (case-sensitive)
+      const userRole = user?.role;
       
-      // Transform the API response to match the expected format
-      const apps: AppWithAccess[] = userApps.map((app, index) => {
-        const processedApp = {
-          id: app.id,
-          name: app.name,
-          slug: app.slug,
-          description: app.description || 'No description available',
-          icon: getAppIcon(app.slug),
-          color: getAppColor(app.slug),
-          isActive: true, // API doesn't include isActive field, but returns only accessible apps
-          createdAt: app.createdAt || new Date().toISOString(),
-          updatedAt: app.updatedAt || new Date().toISOString(),
-          userAccess: {
-            id: `${index + 1}`,
-            userId: user?.id || '',
-            appId: app.id,
-            isActive: true, // Since API already filters for active access
-            assignedAt: app.access?.assignedAt || new Date().toISOString(),
-            usedQuota: app.access?.usedQuota || 0,
-            quota: app.access?.quota,
-            expiresAt: app.access?.expiresAt,
-            permissions: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        };
+      let apps: AppWithAccess[] = [];
+      
+      if (userRole === 'SUPER_ADMIN') {
+        // Super admins see all active apps
+        const allApps = await apiClient.getApps();
+        apps = allApps
+          .filter(app => app.isActive !== false)
+          .map(app => ({
+            id: app.id,
+            name: app.name,
+            slug: app.slug,
+            description: app.description || 'No description available',
+            icon: getAppIcon(app.slug),
+            color: getAppColor(app.slug),
+            isActive: app.isActive !== false,
+            systemApp: app.systemApp,
+            organizationId: app.organizationId,
+            createdAt: app.createdAt || new Date().toISOString(),
+            updatedAt: app.updatedAt || new Date().toISOString(),
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+      } else if (userRole === 'ADMIN') {
+        // Admins see: system apps + organization apps + assigned apps
+        const [allApps, assignedApps] = await Promise.all([
+          apiClient.getApps(),
+          apiClient.getUserApps()
+        ]);
         
-        console.log(`App: ${app.name}, isActive: ${processedApp.isActive}, userAccess.isActive: ${processedApp.userAccess.isActive}`);
-        return processedApp;
-      });
-
+        // Get system apps (read-only, only if active)
+        const systemApps = allApps
+          .filter(app => app.systemApp === true && app.isActive !== false)
+          .map(app => ({
+            id: app.id,
+            name: app.name,
+            slug: app.slug,
+            description: app.description || 'No description available',
+            icon: getAppIcon(app.slug),
+            color: getAppColor(app.slug),
+            isActive: app.isActive !== false,
+            systemApp: app.systemApp,
+            organizationId: app.organizationId,
+            createdAt: app.createdAt || new Date().toISOString(),
+            updatedAt: app.updatedAt || new Date().toISOString(),
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+        
+        // Get organization apps (only active ones, belonging to user's organization)
+        const organizationApps = allApps
+          .filter(app => {
+            const matches = app.organizationId === user.organizationId && app.isActive !== false;
+            return matches;
+          })
+          .map(app => ({
+            id: app.id,
+            name: app.name,
+            slug: app.slug,
+            description: app.description || 'No description available',
+            icon: getAppIcon(app.slug),
+            color: getAppColor(app.slug),
+            isActive: app.isActive !== false,
+            systemApp: app.systemApp,
+            organizationId: app.organizationId,
+            createdAt: app.createdAt || new Date().toISOString(),
+            updatedAt: app.updatedAt || new Date().toISOString(),
+            access: {
+              assignedAt: new Date().toISOString(),
+              expiresAt: null,
+              quota: null,
+              usedQuota: 0
+            }
+          }));
+        
+        // Get assigned apps (only active ones)
+        const assignedActiveApps = assignedApps
+          .filter(app => app.isActive !== false)
+          .map(app => ({
+            id: app.id,
+            name: app.name,
+            slug: app.slug,
+            description: app.description || 'No description available',
+            icon: getAppIcon(app.slug),
+            color: getAppColor(app.slug),
+            isActive: app.isActive !== false,
+            systemApp: app.systemApp,
+            organizationId: app.organizationId,
+            createdAt: app.createdAt || new Date().toISOString(),
+            updatedAt: app.updatedAt || new Date().toISOString(),
+            access: {
+              assignedAt: app.access?.assignedAt || new Date().toISOString(),
+              expiresAt: app.access?.expiresAt || null,
+              quota: app.access?.quota || null,
+              usedQuota: app.access?.usedQuota || 0
+            }
+          }));
+        
+        // Combine and deduplicate by ID
+        const allUserApps = [...systemApps, ...organizationApps, ...assignedActiveApps];
+        const uniqueAppsMap = new Map<string, AppWithAccess>();
+        
+        allUserApps.forEach(app => {
+          if (!uniqueAppsMap.has(app.id)) {
+            uniqueAppsMap.set(app.id, app);
+          }
+        });
+        
+        apps = Array.from(uniqueAppsMap.values());
+      } else {
+        // Regular users see only their assigned active apps
+        const assignedApps = await apiClient.getUserApps();
+        
+        // Deduplicate apps by ID to prevent showing the same app multiple times
+        const uniqueAppsMap = new Map<string, AppWithAccess>();
+        
+        assignedApps
+          .filter(app => app.isActive !== false)
+          .forEach(app => {
+            // Skip if we've already processed this app ID
+            if (!uniqueAppsMap.has(app.id)) {
+              uniqueAppsMap.set(app.id, {
+                id: app.id,
+                name: app.name,
+                slug: app.slug,
+                description: app.description || 'No description available',
+                icon: getAppIcon(app.slug),
+                color: getAppColor(app.slug),
+                isActive: app.isActive !== false,
+                systemApp: app.systemApp,
+                organizationId: app.organizationId,
+                createdAt: app.createdAt || new Date().toISOString(),
+                updatedAt: app.updatedAt || new Date().toISOString(),
+                access: {
+                  assignedAt: app.access?.assignedAt || new Date().toISOString(),
+                  expiresAt: app.access?.expiresAt || null,
+                  quota: app.access?.quota || null,
+                  usedQuota: app.access?.usedQuota || 0
+                }
+              });
+            }
+          });
+        
+        apps = Array.from(uniqueAppsMap.values());
+      }
+      
       return apps;
     } catch (error) {
       console.error('Error fetching user apps:', error);
@@ -197,8 +310,6 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
   const handleAppAccess = async (app: AppWithAccess) => {
     try {
-      console.log('Accessing app:', app.name);
-      
       // Get app details to check if SAML is enabled
       const appDetails = await apiClient.getAppBySlug(app.slug);
       const appMetadata = appDetails.metadata ? JSON.parse(appDetails.metadata) : {};
@@ -210,7 +321,6 @@ export default function UserDashboard({ user }: UserDashboardProps) {
       }
       
       // Use SAML SSO
-      console.log(`Initiating SAML SSO for app: ${app.slug}`);
       const response = await apiClient.initiateSamlSSO(app.slug);
       
       // SAML SSO returns HTML that auto-submits a form
@@ -304,7 +414,7 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                         : 'bg-gray-100 text-gray-600'
                     }`}>
                       {app.isActive ? 'Active' : 'Inactive'} 
-                      {/* Debug: {JSON.stringify({isActive: app.isActive, userAccess: app.userAccess?.isActive})} */}
+                      {/* Debug: {JSON.stringify({isActive: app.isActive, access: app.access})} */}
                     </div>
                   </div>
                 </div>

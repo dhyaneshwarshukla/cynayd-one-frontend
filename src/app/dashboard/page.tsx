@@ -50,16 +50,6 @@ export default function DashboardPage() {
   const isAdmin = userRole === 'ADMIN';
   const isRegularUser = userRole === 'USER';
 
-  // Debug logging
-  console.log('=== DASHBOARD DEBUG ===');
-  console.log('User:', user);
-  console.log('User Role (original):', user?.role);
-  console.log('User Role (uppercase):', userRole);
-  console.log('Is Super Admin:', isSuperAdmin);
-  console.log('Is Admin:', isAdmin);
-  console.log('Is Regular User:', isRegularUser);
-  console.log('========================');
-
   // Get role-specific welcome message
   const getWelcomeMessage = () => {
     if (isSuperAdmin) {
@@ -71,13 +61,13 @@ export default function DashboardPage() {
     } else if (isAdmin) {
       return {
         title: "Admin Dashboard",
-        subtitle: `Welcome back, ${user?.name || user?.email}! Manage your organization's products and users.`,
+        subtitle: `Welcome back, ${user?.name || user?.email}! Manage your organization's apps and users.`,
         icon: "🛡️"
       };
     } else {
       return {
         title: "My Workspace",
-        subtitle: `Welcome back, ${user?.name || user?.email}! Access your assigned products and collaborate with your team.`,
+        subtitle: `Welcome back, ${user?.name || user?.email}! Access your assigned apps and collaborate with your team.`,
         icon: "🚀"
       };
     }

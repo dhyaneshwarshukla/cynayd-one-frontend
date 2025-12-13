@@ -4,7 +4,7 @@ import { cn } from '../../utils/cn';
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, role, ...props }, ref) => {
     return (
       <div
         ref={ref}
@@ -12,6 +12,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
           'rounded-lg border border-gray-200 bg-white text-gray-950 shadow-sm',
           className
         )}
+        role={role || 'region'}
         {...props}
       />
     );

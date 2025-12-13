@@ -8,7 +8,8 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, App } from '@/lib/api-client';
+import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 
 // Define UserAppAccess interface locally
 interface UserAppAccess {
@@ -44,21 +45,6 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 
-interface App {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  url?: string;
-  domain?: string;
-  isActive: boolean;
-  metadata?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface User {
   id: string;
   name?: string;
@@ -85,6 +71,7 @@ export default function AdminAppsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateAppModal, setShowCreateAppModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showBulkAssignmentModal, setShowBulkAssignmentModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSamlConfigModal, setShowSamlConfigModal] = useState(false);
   const [selectedApp, setSelectedApp] = useState<App | null>(null);
@@ -363,6 +350,30 @@ export default function AdminAppsPage() {
     }
   };
 
+  // Helper function to check if user can configure app (info, SAML)
+  const canConfigureApp = (app: App): boolean => {
+    if (!user) return false;
+    
+    // For system apps: Only SUPER_ADMIN can configure
+    if (app.systemApp) {
+      return user.role === 'SUPER_ADMIN';
+    }
+    
+    // For org apps: Only owner org admin or SUPER_ADMIN can configure
+    if (app.organizationId) {
+      if (user.role === 'SUPER_ADMIN') {
+        return true;
+      }
+      if (user.role === 'ADMIN' && user.organizationId === app.organizationId) {
+        return true;
+      }
+      return false;
+    }
+    
+    // For other apps (assigned apps), no configuration allowed
+    return false;
+  };
+
   // Auto-hide notification
   useEffect(() => {
     if (notification) {
@@ -444,7 +455,23 @@ export default function AdminAppsPage() {
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <PlusIcon className="w-4 h-4 mr-2" />
-              Add New App
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowBulkAssignmentModal(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+                >
+                  <UserPlusIcon className="w-4 h-4 mr-2" />
+                  Bulk Assign
+                </Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => setShowCreateAppModal(true)}
+                >
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                  Add New App
+                </Button>
+              </div>
             </Button>
           </div>
         </div>
@@ -860,21 +887,27 @@ export default function AdminAppsPage() {
                         <UserPlusIcon className="w-4 h-4 mr-1" />
                         Assign Access
                       </Button>
-                      <Button
-                        onClick={() => openSamlConfigModal(app)}
-                        variant="outline"
-                        className="px-3"
-                        title="Configure SAML"
-                      >
-                        <KeyIcon className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        onClick={() => openEditModal(app)}
-                        variant="outline"
-                        className="px-3"
-                      >
-                        <PencilIcon className="w-4 h-4" />
-                      </Button>
+                      {/* SAML Config Button - Only show if user can configure this app */}
+                      {canConfigureApp(app) && (
+                        <Button
+                          onClick={() => openSamlConfigModal(app)}
+                          variant="outline"
+                          className="px-3"
+                          title="Configure SAML"
+                        >
+                          <KeyIcon className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {/* Edit App Button - Only show if user can configure this app */}
+                      {canConfigureApp(app) && (
+                        <Button
+                          onClick={() => openEditModal(app)}
+                          variant="outline"
+                          className="px-3"
+                        >
+                          <PencilIcon className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         onClick={() => handleDeleteApp(app.id)}
                         variant="outline"
@@ -1360,6 +1393,18 @@ export default function AdminAppsPage() {
             </div>
           </div>
         )}
+
+        {/* Bulk Assignment Modal */}
+        <BulkAssignmentModal
+          apps={apps}
+          isOpen={showBulkAssignmentModal}
+          onClose={() => setShowBulkAssignmentModal(false)}
+          onAssignmentChange={fetchData}
+          currentUser={{
+            role: user?.role || 'USER',
+            organizationId: user?.organizationId
+          }}
+        />
       </div>
     </UnifiedLayout>
   );

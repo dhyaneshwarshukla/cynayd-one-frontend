@@ -2,12 +2,99 @@ import { Providers } from "./providers";
 import "./globals.css";
 import type { Metadata } from "next";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const siteName = "CYNAYD One";
+const defaultTitle = "CYNAYD One - Complete Business Ecosystem";
+const defaultDescription = "Transform your business with our comprehensive corporate platform. Manage your entire organization with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, and business website generation - all secured with enterprise-grade SSO, advanced security, and seamless payment processing.";
+
 export const metadata: Metadata = {
-  title: "CYNAYD One - Complete Business Ecosystem",
-  description: "Transform your business with our comprehensive corporate platform.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: defaultTitle,
+    template: `%s | ${siteName}`,
+  },
+  description: defaultDescription,
+  keywords: [
+    "business platform",
+    "enterprise software",
+    "SAML SSO",
+    "HR management",
+    "cloud storage",
+    "video conferencing",
+    "business website builder",
+    "enterprise security",
+    "single sign-on",
+    "business ecosystem",
+    "corporate platform",
+    "SaaS platform",
+    "business management",
+    "enterprise authentication",
+    "device trust",
+    "risk-based authentication",
+    "audit logging",
+    "Razorpay integration",
+    "business apps",
+    "custom app integration",
+  ],
+  authors: [{ name: "CYNAYD" }],
+  creator: "CYNAYD",
+  publisher: "CYNAYD",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
   icons: {
     icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
+  manifest: "/manifest.json",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName: siteName,
+    title: defaultTitle,
+    description: defaultDescription,
+    images: [
+      {
+        url: `${siteUrl}/og-image.jpg`,
+        width: 1200,
+        height: 630,
+        alt: "CYNAYD One - Complete Business Ecosystem",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: defaultTitle,
+    description: defaultDescription,
+    images: [`${siteUrl}/og-image.jpg`],
+    creator: "@cynayd",
+    site: "@cynayd",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  verification: {
+    // Add your verification codes here when available
+    // google: "your-google-verification-code",
+    // yandex: "your-yandex-verification-code",
+    // bing: "your-bing-verification-code",
+  },
+  alternates: {
+    canonical: siteUrl,
+  },
+  category: "business",
 };
 
 export default function RootLayout({

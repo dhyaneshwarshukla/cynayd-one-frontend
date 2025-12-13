@@ -215,6 +215,13 @@ export const FormField: React.FC<FormFieldProps> = ({
       autoComplete,
       autoFocus,
       className: getInputClasses(),
+      'aria-invalid': shouldShowError ? true : undefined,
+      'aria-describedby': shouldShowError
+        ? `${name}-error`
+        : helpText
+        ? `${name}-helper`
+        : undefined,
+      'aria-required': required || undefined,
     };
 
     switch (type) {
@@ -263,13 +270,13 @@ export const FormField: React.FC<FormFieldProps> = ({
       {renderInput()}
       
       {shouldShowError && (
-        <Alert variant="error" className="text-sm">
+        <Alert variant="error" className="text-sm" role="alert" aria-live="polite" id={`${name}-error`}>
           {displayError}
         </Alert>
       )}
       
       {helpText && !shouldShowError && (
-        <p className="text-sm text-gray-500">{helpText}</p>
+        <p id={`${name}-helper`} className="text-sm text-gray-500">{helpText}</p>
       )}
     </div>
   );

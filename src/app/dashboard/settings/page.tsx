@@ -399,8 +399,8 @@ function SettingsPageContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-gray-900">Product Updates</p>
-                    <p className="text-sm text-gray-600">Get notified about new product releases</p>
+                    <p className="font-medium text-gray-900">App Updates</p>
+                    <p className="text-sm text-gray-600">Get notified about new app releases</p>
                   </div>
                   <input type="checkbox" defaultChecked className="h-4 w-4 text-blue-600" />
                 </div>
