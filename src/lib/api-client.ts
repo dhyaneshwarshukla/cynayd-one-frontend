@@ -378,15 +378,17 @@ class ApiClient {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('API Client - Error response:', errorData);
       
       // Create an error object with axios-like structure
-      const error = new Error(errorData.message || `HTTP error! status: ${response.status}`) as any;
+      const errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
+      
+      const error = new Error(errorMessage) as any;
       error.response = {
         status: response.status,
         statusText: response.statusText,
         data: errorData
       };
+      
       throw error;
     }
 

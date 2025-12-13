@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,7 +23,18 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export const LoginForm: React.FC = () => {
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    // Initialize from sessionStorage if available
+    if (typeof window !== 'undefined') {
+      const storedError = sessionStorage.getItem('login_error');
+      if (storedError) {
+        sessionStorage.removeItem('login_error');
+        return storedError;
+      }
+    }
+    return null;
+  });
+  const errorRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showResendOption, setShowResendOption] = useState(false);
@@ -37,17 +48,29 @@ export const LoginForm: React.FC = () => {
   const [mfaData, setMfaData] = useState<{userId: string, email: string, password: string} | null>(null);
   const { login, isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
   const router = useRouter();
+  
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
+
+  // Sync ref with state
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
 
   const onSubmit = async (data: LoginFormData, e?: React.BaseSyntheticEvent) => {
     // Explicitly prevent default form submission
     if (e) {
       e.preventDefault();
+      e.stopPropagation();
     }
     
     try {
+      errorRef.current = null;
+      // Clear from sessionStorage too
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('login_error');
+      }
       setError(null);
       setResendMessage(null);
       setShowResendOption(false);
@@ -61,15 +84,30 @@ export const LoginForm: React.FC = () => {
       
       await login(credentials);
     } catch (err: any) {
-      console.log('Login error:', err);
-      console.log('Error response:', err.response?.data);
+      console.error('Login error:', err);
       
       // Extract error message from response data first, then fallback to error message
-      const errorMessage = err.response?.data?.message || (err instanceof Error ? err.message : 'Failed to login');
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to login';
+      
+      // Always set error message to display it
+      errorRef.current = errorMessage; // Set ref first
+      
+      // Store in sessionStorage to persist across remounts
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('login_error', errorMessage);
+      }
+      
+      setError(errorMessage);
+      
+      // Force a re-render by using setTimeout to ensure state update
+      setTimeout(() => {
+        if (errorRef.current && !error) {
+          setError(errorRef.current);
+        }
+      }, 0);
       
       // Check if it's an MFA required error
       if (err.response?.data?.code === 'MFA_REQUIRED') {
-        console.log('MFA required, showing modal');
         setMfaData({
           userId: err.response.data.userId,
           email: err.response.data.email,
@@ -90,16 +128,9 @@ export const LoginForm: React.FC = () => {
         // Always show unlock option if account is locked
         setShowUnlockOption(true);
         setUserEmail(userEmail);
-        console.log('Account locked - showing unlock option', { 
-          code: err.response?.data?.code, 
-          userEmail,
-          errorMessage,
-          responseData: err.response?.data 
-        });
+        setIsSubmitting(false);
         return;
       }
-      
-      setError(errorMessage);
 
       // Check if it's an invalid credentials error with attempt count
       if (err.response?.data?.code === 'INVALID_CREDENTIALS') {
@@ -110,6 +141,7 @@ export const LoginForm: React.FC = () => {
         if (attemptsRemaining <= 3 && attemptsRemaining > 0) {
           console.warn(`⚠️ Only ${attemptsRemaining} attempt${attemptsRemaining > 1 ? 's' : ''} remaining before account lock`);
         }
+        setIsSubmitting(false);
         return;
       }
 
@@ -119,6 +151,7 @@ export const LoginForm: React.FC = () => {
         setUserEmail(data.email);
       }
     } finally {
+      // Ensure submitting state is always reset
       setIsSubmitting(false);
     }
   };
@@ -203,14 +236,36 @@ export const LoginForm: React.FC = () => {
           </div>
         </div>
         
-        {error && (
-          <Alert variant="error" className="mb-6 border-red-200 bg-red-50">
-            <div className="flex items-center">
-              <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
-              {error}
-            </div>
-          </Alert>
-        )}
+        {(() => {
+          // Use ref and sessionStorage as fallback if state is null
+          let displayError = error || errorRef.current;
+          
+          // Check sessionStorage as last resort
+          if (!displayError && typeof window !== 'undefined') {
+            const storedError = sessionStorage.getItem('login_error');
+            if (storedError) {
+              displayError = storedError;
+              errorRef.current = storedError;
+              // Restore state
+              if (!error) {
+                setError(storedError);
+              }
+            }
+          }
+          
+          if (displayError) {
+            return (
+              <Alert variant="error" className="mb-6 border-red-200 bg-red-50">
+                <div className="flex items-center">
+                  <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
+                  <span>{displayError}</span>
+                </div>
+              </Alert>
+            );
+          }
+          
+          return null;
+        })()}
 
         {showResendOption && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -304,7 +359,14 @@ export const LoginForm: React.FC = () => {
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSubmit(onSubmit)(e);
+          }} 
+          className="space-y-6"
+        >
           {/* Email Field */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-gray-700">
