@@ -943,6 +943,31 @@ function AppsPageContent() {
     return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`;
   };
 
+  // Format date for display with relative time
+  const formatDateDisplay = (dateString: string, showRelative: boolean = true): { date: string; relative?: string } => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    
+    const formattedDate = date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+    
+    if (showRelative && diffInDays >= 0 && diffInDays <= 7) {
+      if (diffInDays === 0) {
+        return { date: formattedDate, relative: 'Today' };
+      } else if (diffInDays === 1) {
+        return { date: formattedDate, relative: 'Yesterday' };
+      } else if (diffInDays < 7) {
+        return { date: formattedDate, relative: `${diffInDays} days ago` };
+      }
+    }
+    
+    return { date: formattedDate };
+  };
+
   // Get app icon and color from activity log
   const getAppFromActivity = (log: AuditLog) => {
     // Try to find app by name in resource or details
@@ -1268,11 +1293,11 @@ function AppsPageContent() {
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500 to-blue-600"></div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
-                    <div className="flex-shrink-0">
-                      <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-                        <Squares2X2Icon className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
+                            <div className="flex-shrink-0">
+                              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300">
+                                <Squares2X2Icon className="w-8 h-8 text-white" />
+                              </div>
+                            </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Applications</p>
                       <p className="text-3xl font-bold text-gray-900 mb-2">
@@ -1297,11 +1322,11 @@ function AppsPageContent() {
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-emerald-500 to-emerald-600"></div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
-                    <div className="flex-shrink-0">
-                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-                        <CheckCircleIcon className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
+                            <div className="flex-shrink-0">
+                              <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300">
+                                <CheckCircleIcon className="w-8 h-8 text-white" />
+                              </div>
+                            </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">System Health</p>
                       <p className="text-3xl font-bold text-gray-900 mb-2">{stats.healthScore}%</p>
@@ -1325,11 +1350,11 @@ function AppsPageContent() {
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-500 to-amber-600"></div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
-                    <div className="flex-shrink-0">
-                      <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-                        <ExclamationTriangleIcon className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
+                            <div className="flex-shrink-0">
+                              <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300">
+                                <ExclamationTriangleIcon className="w-8 h-8 text-white" />
+                              </div>
+                            </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Expiring Soon</p>
                       <p className="text-3xl font-bold text-gray-900 mb-2">{stats.expiringApps}</p>
@@ -1351,11 +1376,11 @@ function AppsPageContent() {
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-indigo-500 to-indigo-600"></div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
-                    <div className="flex-shrink-0">
-                      <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-                        <ChartBarIcon className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
+                            <div className="flex-shrink-0">
+                              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform duration-300">
+                                <ChartBarIcon className="w-8 h-8 text-white" />
+                              </div>
+                            </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
                         {user?.role === 'ADMIN' ? 'Organization Apps' : 'Quota Utilization'}
@@ -1387,11 +1412,11 @@ function AppsPageContent() {
                   onClick={() => setActiveTab('apps')}
                   className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all duration-200 text-left"
                 >
-                  <div className="flex-shrink-0 w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-100 transition-colors">
-                    <Squares2X2Icon className="w-6 h-6 text-blue-600" />
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl flex items-center justify-center mr-4 group-hover:from-blue-100 group-hover:to-blue-200 transition-all shadow-sm">
+                    <Squares2X2Icon className="w-7 h-7 text-blue-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 mb-1">View Applications</div>
+                    <div className="font-semibold text-gray-900 mb-1 text-base">View Applications</div>
                     <div className="text-sm text-gray-600">Browse and access all authorized apps</div>
                   </div>
                 </button>
@@ -1400,11 +1425,11 @@ function AppsPageContent() {
                   onClick={() => setShowAddAppModal(true)}
                   className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 hover:shadow-md transition-all duration-200 text-left"
                 >
-                  <div className="flex-shrink-0 w-12 h-12 bg-emerald-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-emerald-100 transition-colors">
-                    <PlusIcon className="w-6 h-6 text-emerald-600" />
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl flex items-center justify-center mr-4 group-hover:from-emerald-100 group-hover:to-emerald-200 transition-all shadow-sm">
+                    <PlusIcon className="w-7 h-7 text-emerald-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 mb-1">
+                    <div className="font-semibold text-gray-900 mb-1 text-base">
                       {user?.role === 'SUPER_ADMIN' ? 'Create Application' : 
                        user?.role === 'ADMIN' ? 'Add Organization App' : 
                        'Request Access'}
@@ -1421,11 +1446,11 @@ function AppsPageContent() {
                   onClick={() => setActiveTab('activity')}
                   className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 hover:shadow-md transition-all duration-200 text-left"
                 >
-                  <div className="flex-shrink-0 w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-indigo-100 transition-colors">
-                    <ClockIcon className="w-6 h-6 text-indigo-600" />
+                  <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl flex items-center justify-center mr-4 group-hover:from-indigo-100 group-hover:to-indigo-200 transition-all shadow-sm">
+                    <ClockIcon className="w-7 h-7 text-indigo-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 mb-1">Activity Log</div>
+                    <div className="font-semibold text-gray-900 mb-1 text-base">Activity Log</div>
                     <div className="text-sm text-gray-600">Review recent access and usage history</div>
                   </div>
                 </button>
@@ -1640,7 +1665,7 @@ function AppsPageContent() {
                       <div className="flex items-start justify-between mb-5">
                         <div className="flex items-start space-x-4 flex-1 min-w-0">
                           <div 
-                            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center text-white text-xl font-semibold shadow-md group-hover:scale-105 transition-transform duration-300"
+                            className="flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center text-white text-2xl font-semibold shadow-md group-hover:scale-105 transition-transform duration-300 border-2 border-white/20"
                             style={{ backgroundColor: app.color || '#3b82f6' }}
                           >
                             {app.icon || '📱'}
@@ -1712,21 +1737,64 @@ function AppsPageContent() {
                             </div>
                           )}
 
-                          {/* Access Metadata */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="flex items-center text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
-                              <CalendarIcon className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                              <div className="min-w-0">
-                                <div className="text-xs text-gray-500 mb-0.5">Assigned</div>
-                                <div className="font-medium text-gray-900 truncate">{new Date(app.access.assignedAt).toLocaleDateString()}</div>
+                          {/* Access Metadata - Enhanced Date Display */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex items-start space-x-3 bg-gradient-to-br from-blue-50 to-blue-100/50 px-4 py-3.5 rounded-lg border border-blue-200/50 hover:border-blue-300 hover:shadow-sm transition-all">
+                              <div className="flex-shrink-0 w-11 h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                                <CalendarIcon className="w-6 h-6 text-white" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1.5">Assigned Date</div>
+                                {(() => {
+                                  const dateInfo = formatDateDisplay(app.access.assignedAt);
+                                  return (
+                                    <>
+                                      <div className="font-bold text-gray-900 text-sm mb-1">{dateInfo.date}</div>
+                                      {dateInfo.relative && (
+                                        <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-md inline-block">{dateInfo.relative}</div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                             {app.access.expiresAt && (
-                              <div className="flex items-center text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
-                                <ClockIcon className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                                <div className="min-w-0">
-                                  <div className="text-xs text-gray-500 mb-0.5">Expires</div>
-                                  <div className="font-medium text-gray-900 truncate">{new Date(app.access.expiresAt).toLocaleDateString()}</div>
+                              <div className={`flex items-start space-x-3 px-4 py-3.5 rounded-lg border transition-all hover:shadow-sm ${
+                                new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                  ? 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 hover:border-amber-300'
+                                  : 'bg-gradient-to-br from-gray-50 to-gray-100/50 border-gray-200/50 hover:border-gray-300'
+                              }`}>
+                                <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center shadow-md ${
+                                  new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                    ? 'bg-gradient-to-br from-amber-500 to-amber-600'
+                                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                                }`}>
+                                  <ClockIcon className="w-6 h-6 text-white" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className={`text-xs font-semibold uppercase tracking-wide mb-1.5 ${
+                                    new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                      ? 'text-amber-700'
+                                      : 'text-gray-700'
+                                  }`}>Expiration Date</div>
+                                  {(() => {
+                                    const dateInfo = formatDateDisplay(app.access.expiresAt);
+                                    const daysUntilExpiry = Math.ceil((new Date(app.access.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                                    return (
+                                      <>
+                                        <div className="font-bold text-gray-900 text-sm mb-1">{dateInfo.date}</div>
+                                        {daysUntilExpiry > 0 && daysUntilExpiry <= 7 && (
+                                          <div className="text-xs text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md inline-block">{daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''} remaining</div>
+                                        )}
+                                        {daysUntilExpiry <= 0 && (
+                                          <div className="text-xs text-red-700 font-semibold bg-red-50 px-2 py-0.5 rounded-md inline-block">Expired</div>
+                                        )}
+                                        {daysUntilExpiry > 7 && (
+                                          <div className="text-xs text-gray-600 font-medium">Active</div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             )}
