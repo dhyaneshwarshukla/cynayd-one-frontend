@@ -1095,87 +1095,93 @@ function AppsPageContent() {
           from { transform: translateY(10px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
         .animate-slide-in {
           animation: slideIn 0.3s ease-out;
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.4s ease-out;
         }
       `}</style>
       <UnifiedLayout 
         variant="dashboard" 
         title={
-          user?.role === 'SUPER_ADMIN' ? 'All Applications' : 
+          user?.role === 'SUPER_ADMIN' ? 'Application Management' : 
           user?.role === 'ADMIN' ? 'Applications & Organization Apps' : 
-          'Your Apps'
+          'My Applications'
         } 
         subtitle={
           user?.role === 'SUPER_ADMIN' 
-            ? `Welcome back, ${user?.name || user?.email}. Manage all applications in the system.`
+            ? `Manage and monitor all applications across the enterprise platform`
             : user?.role === 'ADMIN'
-            ? `Welcome back, ${user?.name || user?.email}. View system apps and manage your organization's applications.`
-            : `Welcome back, ${user?.name || user?.email}. Access your authorized applications and organization apps.`
+            ? `View system applications and manage your organization's app portfolio`
+            : `Access and manage your authorized enterprise applications`
         }
       >
-        <div>
-        {/* Dynamic Status Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <div className="animate-fade-in">
+        {/* Enterprise Status Bar */}
+        <div className="mb-6 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               {/* Connection Status */}
-              <div className={`flex items-center text-sm ${
-                connectionStatus === 'online' ? 'text-green-600' : 'text-red-600'
+              <div className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-semibold ${
+                connectionStatus === 'online' 
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
               }`}>
                 {connectionStatus === 'online' ? (
-                  <WifiIcon className="w-4 h-4 mr-1" />
+                  <WifiIcon className="w-3.5 h-3.5 mr-1.5" />
                 ) : (
-                  <SignalIcon className="w-4 h-4 mr-1" />
+                  <SignalIcon className="w-3.5 h-3.5 mr-1.5" />
                 )}
-                <span className="font-medium">
-                  {connectionStatus === 'online' ? 'Online' : 'Offline'}
-                </span>
+                <span>{connectionStatus === 'online' ? 'Connected' : 'Offline'}</span>
               </div>
               
               {/* Last Updated */}
-              <div className="flex items-center text-sm text-gray-500">
-                <ClockIcon className="w-4 h-4 mr-1" />
-                <span>Updated {lastUpdated.toLocaleTimeString()}</span>
+              <div className="inline-flex items-center text-xs text-gray-600 bg-gray-50 px-3 py-1.5 rounded-md border border-gray-200">
+                <ClockIcon className="w-3.5 h-3.5 mr-1.5 text-gray-500" />
+                <span>Last sync: {lastUpdated.toLocaleTimeString()}</span>
               </div>
               
               {/* Refresh Indicator */}
               {isRefreshing && (
-                <div className="flex items-center text-sm text-blue-600">
-                  <ArrowPathIcon className="w-4 h-4 mr-1 animate-spin" />
-                  <span>Refreshing...</span>
+                <div className="inline-flex items-center text-xs text-blue-700 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
+                  <ArrowPathIcon className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  <span>Syncing...</span>
+                </div>
+              )}
+              
+              {/* Notifications Badge */}
+              {unreadNotifications > 0 && (
+                <div className="inline-flex items-center text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200 relative">
+                  <BellIcon className="w-3.5 h-3.5 mr-1.5" />
+                  <span>{unreadNotifications} alert{unreadNotifications !== 1 ? 's' : ''}</span>
                 </div>
               )}
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-3">
               {/* Manual Refresh Button */}
               <Button 
                 variant="outline"
                 onClick={handleManualRefresh}
                 disabled={isRefreshing || connectionStatus === 'offline'}
-                className="flex items-center"
+                className="flex items-center border-gray-300 hover:bg-gray-50 text-gray-700"
+                size="sm"
               >
                 <ArrowPathIcon className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               
-              {/* Dynamic Notifications */}
-              <div className="flex items-center text-sm text-gray-500 relative">
-                <BellIcon className="w-5 h-5 mr-2" />
-                <span>{unreadNotifications} notification{unreadNotifications !== 1 ? 's' : ''}</span>
-                {unreadNotifications > 0 && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
-                    <span className="text-xs text-white font-bold">{unreadNotifications}</span>
-                  </div>
-                )}
-              </div>
-              
               {/* Bulk Assign Button */}
               {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                 <Button 
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
                   onClick={() => setShowBulkAssignmentModal(true)}
+                  size="sm"
                 >
                   <UserPlusIcon className="w-4 h-4 mr-2" />
                   Bulk Assign
@@ -1184,11 +1190,12 @@ function AppsPageContent() {
               
               {/* Add App Button */}
               <Button 
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
                 onClick={handleCreateApp}
+                size="sm"
               >
                 <PlusIcon className="w-4 h-4 mr-2" />
-                {user?.role === 'SUPER_ADMIN' ? 'Add New App' : 
+                {user?.role === 'SUPER_ADMIN' ? 'New Application' : 
                  user?.role === 'ADMIN' ? 'Add Organization App' : 
                  'Request Access'}
               </Button>
@@ -1196,46 +1203,57 @@ function AppsPageContent() {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="mb-8">
-          <nav className="flex space-x-8 border-b border-gray-200">
+        {/* Enterprise Navigation Tabs */}
+        <div className="mb-8 border-b border-gray-200">
+          <nav className="flex space-x-1" role="tablist">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              role="tab"
+              aria-selected={activeTab === 'overview'}
+              className={`relative py-3 px-4 font-medium text-sm transition-all duration-200 ${
                 activeTab === 'overview'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300'
               }`}
             >
               <div className="flex items-center">
-                <ChartBarIcon className="w-5 h-5 mr-2" />
+                <ChartBarIcon className="w-4 h-4 mr-2" />
                 Overview
               </div>
             </button>
             <button
               onClick={() => setActiveTab('apps')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              role="tab"
+              aria-selected={activeTab === 'apps'}
+              className={`relative py-3 px-4 font-medium text-sm transition-all duration-200 ${
                 activeTab === 'apps'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300'
               }`}
             >
               <div className="flex items-center">
-                <Squares2X2Icon className="w-5 h-5 mr-2" />
-                My Apps
+                <Squares2X2Icon className="w-4 h-4 mr-2" />
+                Applications
+                {filteredApps.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-600 rounded-full">
+                    {filteredApps.length}
+                  </span>
+                )}
               </div>
             </button>
             <button
               onClick={() => setActiveTab('activity')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              role="tab"
+              aria-selected={activeTab === 'activity'}
+              className={`relative py-3 px-4 font-medium text-sm transition-all duration-200 ${
                 activeTab === 'activity'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900 border-b-2 border-transparent hover:border-gray-300'
               }`}
             >
               <div className="flex items-center">
-                <ClockIcon className="w-5 h-5 mr-2" />
-                Activity
+                <ClockIcon className="w-4 h-4 mr-2" />
+                Activity Log
               </div>
             </button>
           </nav>
@@ -1243,161 +1261,176 @@ function AppsPageContent() {
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div className="space-y-8">
-            {/* Dynamic Stats Grid */}
+          <div className="space-y-8 animate-fade-in">
+            {/* Enterprise Stats Grid */}
             <ResponsiveGrid cols={{ sm: 1, md: 2, lg: 4 }} gap="md">
-              <Card className="p-6 hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500 group">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+              <Card className="p-6 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 group overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500 to-blue-600"></div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200">
-                        <Squares2X2Icon className="w-6 h-6 text-white" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
+                        <Squares2X2Icon className="w-7 h-7 text-white" />
                       </div>
                     </div>
-                    <div className="ml-4">
-                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Apps</h3>
-                      <p className="text-3xl font-bold text-gray-900 mt-1 transition-all duration-300">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Total Applications</p>
+                      <p className="text-3xl font-bold text-gray-900 mb-2">
                         {isRefreshing ? (
-                          <span className="animate-pulse">{stats.totalApps}</span>
+                          <span className="inline-block w-12 h-8 bg-gray-200 rounded animate-pulse"></span>
                         ) : (
                           stats.totalApps
                         )}
                       </p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center">
-                        <CheckCircleIcon className="w-4 h-4 mr-1" />
-                        {stats.activeApps} active
-                      </p>
-                      <div className="mt-1 text-xs text-gray-400">
-                        Last updated: {lastUpdated.toLocaleTimeString()}
+                      <div className="flex items-center space-x-2">
+                        <div className="flex items-center text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
+                          <CheckCircleIcon className="w-3 h-3 mr-1" />
+                          {stats.activeApps} active
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 hover:shadow-lg transition-all duration-200 border-l-4 border-l-green-500">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+              <Card className="p-6 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 group overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-emerald-500 to-emerald-600"></div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <CheckCircleIcon className="w-6 h-6 text-white" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
+                        <CheckCircleIcon className="w-7 h-7 text-white" />
                       </div>
                     </div>
-                    <div className="ml-4">
-                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Health Score</h3>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">{stats.healthScore}%</p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center">
-                        <CheckCircleIcon className="w-4 h-4 mr-1" />
-                        {stats.healthScore >= 80 ? 'Excellent' : stats.healthScore >= 60 ? 'Good' : 'Needs attention'}
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">System Health</p>
+                      <p className="text-3xl font-bold text-gray-900 mb-2">{stats.healthScore}%</p>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-xs font-medium px-2 py-1 rounded-md ${
+                          stats.healthScore >= 80 
+                            ? 'text-emerald-700 bg-emerald-50' 
+                            : stats.healthScore >= 60 
+                            ? 'text-amber-700 bg-amber-50' 
+                            : 'text-red-700 bg-red-50'
+                        }`}>
+                          {stats.healthScore >= 80 ? 'Excellent' : stats.healthScore >= 60 ? 'Good' : 'Needs Attention'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 hover:shadow-lg transition-all duration-200 border-l-4 border-l-yellow-500">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+              <Card className="p-6 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 group overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-500 to-amber-600"></div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
-                        <ExclamationTriangleIcon className="w-6 h-6 text-white" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
+                        <ExclamationTriangleIcon className="w-7 h-7 text-white" />
                       </div>
                     </div>
-                    <div className="ml-4">
-                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Expiring Soon</h3>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">{stats.expiringApps}</p>
-                      <p className="text-sm text-yellow-600 mt-1 flex items-center">
-                        <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-                        {stats.expiringApps > 0 ? 'Needs attention' : 'All good'}
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Expiring Soon</p>
+                      <p className="text-3xl font-bold text-gray-900 mb-2">{stats.expiringApps}</p>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-xs font-medium px-2 py-1 rounded-md ${
+                          stats.expiringApps > 0 
+                            ? 'text-amber-700 bg-amber-50' 
+                            : 'text-emerald-700 bg-emerald-50'
+                        }`}>
+                          {stats.expiringApps > 0 ? 'Action Required' : 'All Current'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 hover:shadow-lg transition-all duration-200 border-l-4 border-l-purple-500">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+              <Card className="p-6 bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 group overflow-hidden relative">
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-indigo-500 to-indigo-600"></div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
                     <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <ChartBarIcon className="w-6 h-6 text-white" />
+                      <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
+                        <ChartBarIcon className="w-7 h-7 text-white" />
                       </div>
                     </div>
-                    <div className="ml-4">
-                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-                        {user?.role === 'ADMIN' ? 'Org Apps' : 'Quota Usage'}
-                      </h3>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        {user?.role === 'ADMIN' ? 'Organization Apps' : 'Quota Utilization'}
+                      </p>
+                      <p className="text-3xl font-bold text-gray-900 mb-2">
                         {user?.role === 'ADMIN' ? stats.organizationApps : `${stats.quotaUtilization}%`}
                       </p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center">
-                        <CheckCircleIcon className="w-4 h-4 mr-1" />
-                        {user?.role === 'ADMIN' ? 'Your organization' : `${stats.totalUsedQuota.toLocaleString()} / ${stats.totalQuota.toLocaleString()}`}
-                      </p>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-medium text-gray-600 bg-gray-50 px-2 py-1 rounded-md">
+                          {user?.role === 'ADMIN' ? 'Managed' : `${stats.totalUsedQuota.toLocaleString()} / ${stats.totalQuota.toLocaleString()}`}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </Card>
             </ResponsiveGrid>
 
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Button 
-                  onClick={() => setActiveTab('apps')}
-                  className="flex items-center justify-start p-6 h-auto bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                      <Squares2X2Icon className="w-6 h-6" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-lg">View My Apps</div>
-                      <div className="text-sm opacity-90">Access all your authorized applications</div>
-                    </div>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => setShowAddAppModal(true)}
-                  className="flex items-center justify-start p-6 h-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                      <PlusIcon className="w-6 h-6" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-lg">
-                        {user?.role === 'SUPER_ADMIN' ? 'Add New App' : 
-                         user?.role === 'ADMIN' ? 'Add Organization App' : 
-                         'Request Access'}
-                      </div>
-                      <div className="text-sm opacity-90">
-                        {user?.role === 'SUPER_ADMIN' ? 'Create a new application' : 
-                         user?.role === 'ADMIN' ? 'Add app for your organization' : 
-                         'Request access to new applications'}
-                      </div>
-                    </div>
-                  </div>
-                </Button>
-                
-                <Button 
-                  onClick={() => setActiveTab('activity')}
-                  className="flex items-center justify-start p-6 h-auto bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  <div className="flex items-center">
-                    <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                      <ClockIcon className="w-6 h-6" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-lg">View Activity</div>
-                      <div className="text-sm opacity-90">Check your recent app usage</div>
-                    </div>
-                  </div>
-                </Button>
+            {/* Enterprise Quick Actions */}
+            <Card className="p-6 bg-gradient-to-br from-gray-50 to-white border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
+                  <p className="text-sm text-gray-600 mt-1">Common tasks and shortcuts</p>
+                </div>
               </div>
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button
+                  onClick={() => setActiveTab('apps')}
+                  className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all duration-200 text-left"
+                >
+                  <div className="flex-shrink-0 w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-100 transition-colors">
+                    <Squares2X2Icon className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 mb-1">View Applications</div>
+                    <div className="text-sm text-gray-600">Browse and access all authorized apps</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setShowAddAppModal(true)}
+                  className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 hover:shadow-md transition-all duration-200 text-left"
+                >
+                  <div className="flex-shrink-0 w-12 h-12 bg-emerald-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-emerald-100 transition-colors">
+                    <PlusIcon className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 mb-1">
+                      {user?.role === 'SUPER_ADMIN' ? 'Create Application' : 
+                       user?.role === 'ADMIN' ? 'Add Organization App' : 
+                       'Request Access'}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {user?.role === 'SUPER_ADMIN' ? 'Register a new enterprise application' : 
+                       user?.role === 'ADMIN' ? 'Add application for your organization' : 
+                       'Request access to applications'}
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className="group flex items-start p-5 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 hover:shadow-md transition-all duration-200 text-left"
+                >
+                  <div className="flex-shrink-0 w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center mr-4 group-hover:bg-indigo-100 transition-colors">
+                    <ClockIcon className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 mb-1">Activity Log</div>
+                    <div className="text-sm text-gray-600">Review recent access and usage history</div>
+                  </div>
+                </button>
+              </div>
+            </Card>
 
             {/* Recent Activity & App Status */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1481,277 +1514,296 @@ function AppsPageContent() {
         )}
 
         {activeTab === 'apps' && (
-          <div className="space-y-6">
-            {/* Search and Filter */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search apps..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+          <div className="space-y-6 animate-fade-in">
+            {/* Enterprise Search and Filter Bar */}
+            <Card className="p-4 bg-white border border-gray-200 shadow-sm">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search applications by name, description, or slug..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setFilterStatus('all')}
+                    variant={filterStatus === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    className={filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white border-0' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    onClick={() => setFilterStatus('active')}
+                    variant={filterStatus === 'active' ? 'default' : 'outline'}
+                    size="sm"
+                    className={filterStatus === 'active' ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-0' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    onClick={() => setFilterStatus('expiring')}
+                    variant={filterStatus === 'expiring' ? 'default' : 'outline'}
+                    size="sm"
+                    className={filterStatus === 'expiring' ? 'bg-amber-600 hover:bg-amber-700 text-white border-0' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}
+                  >
+                    Expiring
+                  </Button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setFilterStatus('all')}
-                  variant={filterStatus === 'all' ? 'default' : 'outline'}
-                  className="text-sm"
-                >
-                  All Apps
-                </Button>
-                <Button
-                  onClick={() => setFilterStatus('active')}
-                  variant={filterStatus === 'active' ? 'default' : 'outline'}
-                  className="text-sm"
-                >
-                  Active
-                </Button>
-                <Button
-                  onClick={() => setFilterStatus('expiring')}
-                  variant={filterStatus === 'expiring' ? 'default' : 'outline'}
-                  className="text-sm"
-                >
-                  Expiring Soon
-                </Button>
-              </div>
-            </div>
+              {searchTerm && (
+                <div className="mt-3 flex items-center text-sm text-gray-600">
+                  <span>Found {filteredApps.length} application{filteredApps.length !== 1 ? 's' : ''}</span>
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="ml-2 text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </Card>
 
-            {/* Dynamic Error Display */}
+            {/* Enterprise Error Display */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <ExclamationTriangleIcon className="w-5 h-5 text-red-600 mr-2" />
-                    <h3 className="text-red-800 font-medium">Error</h3>
+              <Card className="p-4 bg-red-50 border border-red-200 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                      <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-red-900 mb-1">Error Loading Applications</h3>
+                      <p className="text-sm text-red-700 mb-2">{error}</p>
+                      <div className="flex items-center text-xs text-red-600">
+                        <div className={`w-2 h-2 rounded-full mr-2 ${
+                          connectionStatus === 'online' ? 'bg-emerald-500' : 'bg-red-500'
+                        }`}></div>
+                        {connectionStatus === 'offline' ? 'Network connection unavailable' : 'Please try again'}
+                      </div>
+                    </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleManualRefresh}
                     disabled={isRefreshing || connectionStatus === 'offline'}
-                    className="text-red-700 border-red-300 hover:bg-red-100"
+                    className="ml-4 border-red-300 text-red-700 hover:bg-red-100"
                   >
-                    <ArrowPathIcon className="w-4 h-4 mr-1" />
+                    <ArrowPathIcon className={`w-4 h-4 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
                     Retry
                   </Button>
                 </div>
-                <p className="text-red-700 text-sm mt-1">{error}</p>
-                <div className="mt-2 flex items-center text-xs text-red-600">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${
-                    connectionStatus === 'online' ? 'bg-green-500' : 'bg-red-500'
-                  }`}></div>
-                  {connectionStatus === 'offline' ? 'Check your connection' : 'Try refreshing the page'}
-                </div>
-              </div>
+              </Card>
             )}
 
-            {/* Apps Grid */}
+            {/* Enterprise Apps Grid */}
             {filteredApps.length === 0 ? (
-              <Card className="p-12 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Squares2X2Icon className="w-8 h-8 text-gray-400" />
+              <Card className="p-16 text-center bg-white border border-gray-200 shadow-sm">
+                <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Squares2X2Icon className="w-10 h-10 text-gray-400" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  {searchTerm ? 'No apps found' : 'No Apps Available'}
+                  {searchTerm ? 'No Applications Found' : 'No Applications Available'}
                 </h3>
-                <p className="text-gray-500 max-w-md mx-auto">
+                <p className="text-gray-600 max-w-md mx-auto mb-6">
                   {searchTerm 
-                    ? 'Try adjusting your search terms or filters.'
-                    : 'You don\'t have access to any apps yet. Contact your administrator to get started.'
+                    ? 'Try adjusting your search terms or clear the filters to see all applications.'
+                    : 'You don\'t have access to any applications yet. Contact your administrator to request access.'
                   }
                 </p>
                 {!searchTerm && (
-                  <Button className="mt-4 bg-blue-600 hover:bg-blue-700 text-white">
-                    Contact Administrator
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+                    Request Access
                   </Button>
                 )}
               </Card>
             ) : (
               <ResponsiveGrid cols={{ sm: 1, md: 2, lg: 3 }} gap="md">
-                {filteredApps.map((app) => {
+                {filteredApps.map((app, index) => {
                   const accessStatus = getAccessStatus(app);
                   const usagePercentage = getUsagePercentage(app);
                   
                   return (
-                    <Card key={app.id} className="p-6 hover:shadow-xl transition-all duration-300 border-l-4 border-l-blue-500 group animate-slide-in">
-                      {/* Dynamic App Header */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center">
+                    <Card 
+                      key={app.id} 
+                      className="p-6 bg-white border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-300 group overflow-hidden relative animate-slide-in"
+                      style={{ animationDelay: `${index * 0.05}s` }}
+                    >
+                      {/* Enterprise App Header */}
+                      <div className="flex items-start justify-between mb-5">
+                        <div className="flex items-start space-x-4 flex-1 min-w-0">
                           <div 
-                            className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-lg group-hover:scale-110 transition-transform duration-200"
+                            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center text-white text-xl font-semibold shadow-md group-hover:scale-105 transition-transform duration-300"
                             style={{ backgroundColor: app.color || '#3b82f6' }}
                           >
                             {app.icon || '📱'}
                           </div>
-                          <div className="ml-3">
-                            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate group-hover:text-blue-600 transition-colors">
                               {app.name}
                             </h3>
-                            <p className="text-sm text-gray-500">{app.slug}</p>
-                            {/* Dynamic Status Indicator */}
-                            <div className="flex items-center mt-1">
-                              <div className={`w-2 h-2 rounded-full mr-2 ${
-                                getAccessStatus(app).color === 'green' ? 'bg-green-500' :
-                                getAccessStatus(app).color === 'yellow' ? 'bg-yellow-500' :
-                                'bg-red-500'
-                              }`}></div>
-                              <span className="text-xs text-gray-400">
-                                {getAccessStatus(app).status === 'active' ? 'Live' : 
-                                 getAccessStatus(app).status === 'expiring' ? 'Expiring' : 'Inactive'}
+                            <p className="text-xs text-gray-500 font-mono truncate mb-2">{app.slug}</p>
+                            <div className="flex items-center space-x-2 flex-wrap">
+                              {app.systemApp && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  <ShieldCheckIcon className="w-3 h-3 mr-1" />
+                                  System
+                                </span>
+                              )}
+                              {app.organizationId && !app.systemApp && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                  <UsersIcon className="w-3 h-3 mr-1" />
+                                  Organization
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${
+                                accessStatus.color === 'green' 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                  : accessStatus.color === 'yellow' 
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-red-50 text-red-700 border-red-200'
+                              }`}>
+                                {accessStatus.color === 'green' && <CheckCircleIcon className="w-3 h-3 mr-1" />}
+                                {accessStatus.color === 'yellow' && <ExclamationTriangleIcon className="w-3 h-3 mr-1" />}
+                                {accessStatus.color === 'red' && <ExclamationTriangleIcon className="w-3 h-3 mr-1" />}
+                                {accessStatus.text}
                               </span>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {app.systemApp && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                              <ShieldCheckIcon className="w-3 h-3 mr-1" />
-                              System App
-                            </span>
-                          )}
-                          {app.organizationId && !app.systemApp && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              <UsersIcon className="w-3 h-3 mr-1" />
-                              Organization App
-                            </span>
-                          )}
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            accessStatus.color === 'green' ? 'bg-green-100 text-green-800' :
-                            accessStatus.color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {accessStatus.color === 'green' && <CheckCircleIcon className="w-3 h-3 mr-1" />}
-                            {accessStatus.color === 'yellow' && <ExclamationTriangleIcon className="w-3 h-3 mr-1" />}
-                            {accessStatus.color === 'red' && <ExclamationTriangleIcon className="w-3 h-3 mr-1" />}
-                            {accessStatus.text}
-                          </span>
                         </div>
                       </div>
 
                       {/* App Description */}
                       {app.description && (
-                        <p className="text-gray-600 text-sm mb-4 line-clamp-2">{app.description}</p>
+                        <p className="text-gray-600 text-sm mb-5 line-clamp-2 leading-relaxed">{app.description}</p>
                       )}
 
-                      {/* Access Information */}
+                      {/* Enterprise Access Information */}
                       {app.access && (
-                        <div className="mb-4 space-y-3">
-                          {/* Dynamic Usage Progress */}
+                        <div className="mb-5 space-y-4">
+                          {/* Usage Progress Bar */}
                           {app.access.quota && (
-                            <div>
-                              <div className="flex justify-between text-sm text-gray-600 mb-1">
-                                <span>Usage</span>
-                                <span className="font-medium">{app.access.usedQuota} / {app.access.quota}</span>
+                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Quota Usage</span>
+                                <span className="text-xs font-bold text-gray-900">{app.access.usedQuota.toLocaleString()} / {app.access.quota.toLocaleString()}</span>
                               </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                              <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-1">
                                 <div 
-                                  className={`h-2 rounded-full transition-all duration-500 ease-out ${
+                                  className={`h-2.5 rounded-full transition-all duration-500 ease-out ${
                                     usagePercentage > 90 ? 'bg-gradient-to-r from-red-500 to-red-600' :
-                                    usagePercentage > 70 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
-                                    'bg-gradient-to-r from-blue-500 to-blue-600'
+                                    usagePercentage > 70 ? 'bg-gradient-to-r from-amber-500 to-amber-600' :
+                                    'bg-gradient-to-r from-emerald-500 to-emerald-600'
                                   }`}
-                                  style={{ 
-                                    width: `${usagePercentage}%`,
-                                    animation: usagePercentage > 0 ? 'pulse 2s infinite' : 'none'
-                                  }}
+                                  style={{ width: `${usagePercentage}%` }}
                                 ></div>
                               </div>
-                              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                <span>{usagePercentage}% used</span>
-                                <span>{app.access.quota - app.access.usedQuota} remaining</span>
+                              <div className="flex justify-between text-xs text-gray-600">
+                                <span>{usagePercentage}% utilized</span>
+                                <span className="font-medium">{app.access.quota - app.access.usedQuota} remaining</span>
                               </div>
                             </div>
                           )}
 
-                          {/* Access Details */}
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div className="flex items-center text-gray-600">
-                              <CalendarIcon className="w-4 h-4 mr-2" />
-                              <span>Assigned: {new Date(app.access.assignedAt).toLocaleDateString()}</span>
+                          {/* Access Metadata */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="flex items-center text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                              <CalendarIcon className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <div className="text-xs text-gray-500 mb-0.5">Assigned</div>
+                                <div className="font-medium text-gray-900 truncate">{new Date(app.access.assignedAt).toLocaleDateString()}</div>
+                              </div>
                             </div>
                             {app.access.expiresAt && (
-                              <div className="flex items-center text-gray-600">
-                                <ClockIcon className="w-4 h-4 mr-2" />
-                                <span>Expires: {new Date(app.access.expiresAt).toLocaleDateString()}</span>
+                              <div className="flex items-center text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                                <ClockIcon className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+                                <div className="min-w-0">
+                                  <div className="text-xs text-gray-500 mb-0.5">Expires</div>
+                                  <div className="font-medium text-gray-900 truncate">{new Date(app.access.expiresAt).toLocaleDateString()}</div>
+                                </div>
                               </div>
                             )}
                           </div>
                         </div>
                       )}
 
-                      {/* Dynamic Action Buttons */}
-                      <div className="space-y-2">
+                      {/* Enterprise Action Buttons */}
+                      <div className="space-y-3 pt-4 border-t border-gray-200">
                         <Button
                           onClick={() => handleAppAccess(app.slug, app.id)}
                           disabled={isAccessing === app.id || accessStatus.status === 'expired' || connectionStatus === 'offline'}
-                          className={`w-full ${
+                          className={`w-full font-semibold ${
                             accessStatus.status === 'expired' 
-                              ? 'bg-gray-400 cursor-not-allowed' 
+                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-0' 
                               : connectionStatus === 'offline'
-                                ? 'bg-gray-300 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-                          } text-white transition-all duration-200 group-hover:shadow-lg`}
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-0'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm hover:shadow-md'
+                          } transition-all duration-200`}
                         >
                           {isAccessing === app.id ? (
                             <div className="flex items-center justify-center">
                               <LoadingSpinner size="sm" className="mr-2" />
-                              Connecting...
+                              <span>Connecting...</span>
                             </div>
                           ) : accessStatus.status === 'expired' ? (
                             <div className="flex items-center justify-center">
                               <ExclamationTriangleIcon className="w-4 h-4 mr-2" />
-                              Access Expired
+                              <span>Access Expired</span>
                             </div>
                           ) : connectionStatus === 'offline' ? (
                             <div className="flex items-center justify-center">
                               <SignalIcon className="w-4 h-4 mr-2" />
-                              Offline
+                              <span>Offline Mode</span>
                             </div>
                           ) : (
                             <div className="flex items-center justify-center">
                               <PlayIcon className="w-4 h-4 mr-2" />
-                              Access {app.name}
+                              <span>Launch Application</span>
                               <ArrowTopRightOnSquareIcon className="w-4 h-4 ml-2" />
                             </div>
                           )}
                         </Button>
                         
-                        {/* Admin Action Buttons */}
+                        {/* Admin Management Actions */}
                         {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                           <div className="flex gap-2">
                             <Button
                               onClick={() => handleAssignApp(app)}
                               variant="outline"
-                              className={`flex-1 ${
+                              size="sm"
+                              className={`flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 ${
                                 app.systemApp 
-                                  ? 'border-purple-300 text-purple-700 hover:bg-purple-50' 
+                                  ? 'border-indigo-300 text-indigo-700 hover:bg-indigo-50' 
                                   : app.organizationId && app.organizationId === user?.organizationId
-                                    ? 'border-green-300 text-green-700 hover:bg-green-50'
-                                    : 'border-blue-300 text-blue-700 hover:bg-blue-50'
+                                    ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                                    : ''
                               }`}
                             >
-                              <UserPlusIcon className="w-4 h-4 mr-2" />
-                              {app.systemApp 
-                                ? 'Assign System App' 
-                                : app.organizationId && app.organizationId === user?.organizationId
-                                  ? 'Assign Org App'
-                                  : user?.role === 'ADMIN' 
-                                    ? 'Assign to Users' 
-                                    : 'Manage Access'
-                              }
+                              <UserPlusIcon className="w-4 h-4 mr-1.5" />
+                              <span className="text-xs font-medium">
+                                {app.systemApp 
+                                  ? 'Assign' 
+                                  : app.organizationId && app.organizationId === user?.organizationId
+                                    ? 'Manage'
+                                    : 'Assign'
+                                }
+                              </span>
                             </Button>
-                            {/* SAML Config Button - Only show if user can configure this app */}
+                            {/* SAML Config Button */}
                             {canConfigureApp(app) && (
                               <Button
                                 onClick={() => handleOpenSamlConfig(app)}
                                 variant="outline"
-                                className="px-3 border-blue-300 text-blue-700 hover:bg-blue-50"
-                                title="Configure SAML"
+                                size="sm"
+                                className="px-3 border-gray-300 text-gray-700 hover:bg-gray-50"
+                                title="Configure SAML SSO"
                               >
                                 <KeyIcon className="w-4 h-4" />
                               </Button>
