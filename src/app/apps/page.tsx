@@ -1194,35 +1194,37 @@ function AppsPageContent() {
                 variant="outline"
                 onClick={handleManualRefresh}
                 disabled={isRefreshing || connectionStatus === 'offline'}
-                className="flex items-center border-gray-300 hover:bg-gray-50 text-gray-700"
+                className="inline-flex items-center justify-center gap-2 border-gray-300 hover:bg-gray-50 text-gray-700"
                 size="sm"
               >
-                <ArrowPathIcon className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh
+                <ArrowPathIcon className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
               </Button>
               
               {/* Bulk Assign Button */}
               {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                 <Button 
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
+                  className="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
                   onClick={() => setShowBulkAssignmentModal(true)}
                   size="sm"
                 >
-                  <UserPlusIcon className="w-4 h-4 mr-2" />
-                  Bulk Assign
+                  <UserPlusIcon className="w-4 h-4" />
+                  <span>Bulk Assign</span>
                 </Button>
               )}
               
               {/* Add App Button */}
               <Button 
-                className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
+                className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-sm"
                 onClick={handleCreateApp}
                 size="sm"
               >
-                <PlusIcon className="w-4 h-4 mr-2" />
-                {user?.role === 'SUPER_ADMIN' ? 'New Application' : 
-                 user?.role === 'ADMIN' ? 'Add Organization App' : 
-                 'Request Access'}
+                <PlusIcon className="w-4 h-4" />
+                <span>
+                  {user?.role === 'SUPER_ADMIN' ? 'New Application' : 
+                   user?.role === 'ADMIN' ? 'Add Organization App' : 
+                   'Request Access'}
+                </span>
               </Button>
             </div>
           </div>
@@ -1737,68 +1739,47 @@ function AppsPageContent() {
                             </div>
                           )}
 
-                          {/* Access Metadata - Enhanced Date Display */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex items-start space-x-3 bg-gradient-to-br from-blue-50 to-blue-100/50 px-4 py-3.5 rounded-lg border border-blue-200/50 hover:border-blue-300 hover:shadow-sm transition-all">
-                              <div className="flex-shrink-0 w-11 h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                                <CalendarIcon className="w-6 h-6 text-white" />
+                          {/* Access Metadata - Expiration Date Display */}
+                          {app.access.expiresAt && (
+                            <div className={`flex items-start space-x-3 px-4 py-3.5 rounded-lg border transition-all hover:shadow-sm ${
+                              new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                ? 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 hover:border-amber-300'
+                                : 'bg-gradient-to-br from-gray-50 to-gray-100/50 border-gray-200/50 hover:border-gray-300'
+                            }`}>
+                              <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center shadow-md ${
+                                new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                  ? 'bg-gradient-to-br from-amber-500 to-amber-600'
+                                  : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                              }`}>
+                                <ClockIcon className="w-6 h-6 text-white" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1.5">Assigned Date</div>
+                                <div className={`text-xs font-semibold uppercase tracking-wide mb-1.5 ${
+                                  new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                    ? 'text-amber-700'
+                                    : 'text-gray-700'
+                                }`}>Expiration Date</div>
                                 {(() => {
-                                  const dateInfo = formatDateDisplay(app.access.assignedAt);
+                                  const dateInfo = formatDateDisplay(app.access.expiresAt);
+                                  const daysUntilExpiry = Math.ceil((new Date(app.access.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
                                   return (
                                     <>
                                       <div className="font-bold text-gray-900 text-sm mb-1">{dateInfo.date}</div>
-                                      {dateInfo.relative && (
-                                        <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-md inline-block">{dateInfo.relative}</div>
+                                      {daysUntilExpiry > 0 && daysUntilExpiry <= 7 && (
+                                        <div className="text-xs text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md inline-block">{daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''} remaining</div>
+                                      )}
+                                      {daysUntilExpiry <= 0 && (
+                                        <div className="text-xs text-red-700 font-semibold bg-red-50 px-2 py-0.5 rounded-md inline-block">Expired</div>
+                                      )}
+                                      {daysUntilExpiry > 7 && (
+                                        <div className="text-xs text-gray-600 font-medium">Active</div>
                                       )}
                                     </>
                                   );
                                 })()}
                               </div>
                             </div>
-                            {app.access.expiresAt && (
-                              <div className={`flex items-start space-x-3 px-4 py-3.5 rounded-lg border transition-all hover:shadow-sm ${
-                                new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                                  ? 'bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 hover:border-amber-300'
-                                  : 'bg-gradient-to-br from-gray-50 to-gray-100/50 border-gray-200/50 hover:border-gray-300'
-                              }`}>
-                                <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center shadow-md ${
-                                  new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                                    ? 'bg-gradient-to-br from-amber-500 to-amber-600'
-                                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
-                                }`}>
-                                  <ClockIcon className="w-6 h-6 text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className={`text-xs font-semibold uppercase tracking-wide mb-1.5 ${
-                                    new Date(app.access.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                                      ? 'text-amber-700'
-                                      : 'text-gray-700'
-                                  }`}>Expiration Date</div>
-                                  {(() => {
-                                    const dateInfo = formatDateDisplay(app.access.expiresAt);
-                                    const daysUntilExpiry = Math.ceil((new Date(app.access.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                                    return (
-                                      <>
-                                        <div className="font-bold text-gray-900 text-sm mb-1">{dateInfo.date}</div>
-                                        {daysUntilExpiry > 0 && daysUntilExpiry <= 7 && (
-                                          <div className="text-xs text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md inline-block">{daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''} remaining</div>
-                                        )}
-                                        {daysUntilExpiry <= 0 && (
-                                          <div className="text-xs text-red-700 font-semibold bg-red-50 px-2 py-0.5 rounded-md inline-block">Expired</div>
-                                        )}
-                                        {daysUntilExpiry > 7 && (
-                                          <div className="text-xs text-gray-600 font-medium">Active</div>
-                                        )}
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
                       )}
 
