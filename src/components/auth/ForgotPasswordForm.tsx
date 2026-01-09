@@ -35,7 +35,10 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onSucces
       setSuccess(null);
       setIsSubmitting(true);
       
-      const response = await apiClient.resetPassword(data.email);
+      // Normalize email: trim and convert to lowercase for case-insensitive lookup
+      const normalizedEmail = data.email.trim().toLowerCase();
+      
+      const response = await apiClient.resetPassword(normalizedEmail);
       setSuccess(response.message || 'Password reset email sent! Check your inbox for further instructions.');
       onSuccess?.();
     } catch (err) {

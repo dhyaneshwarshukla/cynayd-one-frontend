@@ -118,8 +118,11 @@ export const RegisterForm: React.FC = () => {
     pricingId: string;
   }) => {
     try {
+      // Normalize email: trim and convert to lowercase before registration
+      const normalizedEmail = data.email.trim().toLowerCase();
+      
       const registerData: RegisterData = {
-        email: data.email,
+        email: normalizedEmail,
         password: data.password,
         name: data.name,
         organizationName: data.organizationName,
@@ -181,6 +184,9 @@ export const RegisterForm: React.FC = () => {
 
       setProcessingPayment(true);
 
+      // Normalize email: trim and convert to lowercase for payment order
+      const normalizedEmail = data.email.trim().toLowerCase();
+      
       // Create payment order with user email for reconciliation
       const orderResponse = await apiClient.createPaymentOrder({
         planId: selectedPlan,
@@ -188,8 +194,8 @@ export const RegisterForm: React.FC = () => {
         currency: pricing.currency || 'INR',
         notes: {
           organizationName: data.organizationName || '',
-          email: data.email,
-          userEmail: data.email, // Explicitly pass for reconciliation
+          email: normalizedEmail,
+          userEmail: normalizedEmail, // Explicitly pass for reconciliation
         },
       });
 
@@ -232,7 +238,7 @@ export const RegisterForm: React.FC = () => {
         },
         prefill: {
           name: data.name,
-          email: data.email,
+          email: normalizedEmail,
           contact: data.phoneNumber || '',
         },
         theme: {

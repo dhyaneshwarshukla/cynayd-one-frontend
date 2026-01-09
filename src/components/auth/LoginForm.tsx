@@ -93,8 +93,11 @@ export const LoginForm: React.FC = () => {
       setShowResendOption(false);
       setIsSubmitting(true);
       
+      // Normalize email: trim and convert to lowercase for case-insensitive login
+      const normalizedEmail = data.email.trim().toLowerCase();
+      
       const credentials: LoginCredentials = {
-        email: data.email,
+        email: normalizedEmail,
         password: data.password,
         rememberMe: data.rememberMe,
       };
