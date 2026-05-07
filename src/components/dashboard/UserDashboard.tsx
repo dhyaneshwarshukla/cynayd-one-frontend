@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiClient, AppWithAccess } from '@/lib/api-client';
+import { launchAppWithFallback } from '@/lib/launch-app';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -310,34 +311,10 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
   const handleAppAccess = async (app: AppWithAccess) => {
     try {
-      // Get app details to check if SAML is enabled
-      const appDetails = await apiClient.getAppBySlug(app.slug);
-      const appMetadata = appDetails.metadata ? JSON.parse(appDetails.metadata) : {};
-      const isSamlEnabled = appMetadata.samlEnabled && appMetadata.samlConfig;
-      
-      if (!isSamlEnabled) {
-        alert('SAML is not configured for this app. Please contact your administrator to configure SAML.');
-        return;
-      }
-      
-      // Use SAML SSO
-      const response = await apiClient.initiateSamlSSO(app.slug);
-      
-      // SAML SSO returns HTML that auto-submits a form
-      const html = await response.text();
-      
-      // Create a new window and write the HTML to it
-      const samlWindow = window.open('', '_blank');
-      if (samlWindow) {
-        samlWindow.document.write(html);
-        samlWindow.document.close();
-      } else {
-        alert('Popup blocked. Please allow popups for this site.');
-      }
-      
-    } catch (error) {
+      await launchAppWithFallback(app.slug);
+    } catch (error: any) {
       console.error('Error accessing app:', error);
-      alert(`Failed to access ${app.name}. Please try again.`);
+      alert(error?.message || `Failed to access ${app.name}. Please try again.`);
     }
   };
 

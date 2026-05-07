@@ -712,7 +712,7 @@ export default function UsersPage() {
             <span className="mr-2">📄</span>
             Upload CSV
           </Button>
-          <Link href="/apps">
+          <Link href="/admin/apps">
             <Button
               variant="outline"
               className="border-blue-300 text-blue-700 hover:bg-blue-50"
@@ -1013,7 +1013,7 @@ export default function UsersPage() {
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-semibold text-gray-700">Assigned Apps</h4>
                         <Link
-                          href="/apps"
+                          href="/admin/apps"
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                         >
                           View All Apps →
@@ -1080,7 +1080,7 @@ export default function UsersPage() {
                         <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
                           <p className="text-sm text-gray-600">No apps assigned to this user</p>
                           <Link
-                            href="/apps"
+                            href="/admin/apps"
                             className="text-sm text-blue-600 hover:text-blue-800 font-medium mt-2 inline-block"
                           >
                             Assign Apps →

@@ -55,7 +55,7 @@ export const Navigation: React.FC = () => {
                 
                 {/* Role-based navigation items */}
                 {user?.role && canSeeNavigationItem(user.role as any, ['apps']) && (
-                  <a href="/apps" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                  <a href="/admin/apps" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                     Apps
                   </a>
                 )}

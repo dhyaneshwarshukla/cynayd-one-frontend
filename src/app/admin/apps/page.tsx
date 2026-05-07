@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Card } from '@/components/common/Card';
@@ -11,7 +11,7 @@ import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/Respons
 import { apiClient, App } from '@/lib/api-client';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 
-// Define UserAppAccess interface locally
+// Define UserAppAccess interface locally (aligned with GET /api/apps/user-access)
 interface UserAppAccess {
   id: string;
   userId: string;
@@ -19,10 +19,14 @@ interface UserAppAccess {
   permissions: string[];
   createdAt: string;
   updatedAt: string;
+  isActive: boolean;
+  assignedAt?: string;
+  expiresAt?: string;
+  quota?: number;
+  usedQuota?: number;
 }
 import { 
   PlusIcon, 
-  EyeIcon, 
   PencilIcon, 
   TrashIcon,
   UserPlusIcon,
@@ -31,13 +35,10 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ChartBarIcon,
   Squares2X2Icon,
   ExclamationTriangleIcon,
-  CalendarIcon,
   ArrowTopRightOnSquareIcon,
-  BellIcon,
   ShieldCheckIcon,
   CogIcon,
   PlayIcon,
@@ -53,12 +54,25 @@ interface User {
 }
 
 interface UserAppAccessWithDetails extends UserAppAccess {
-  isActive: boolean;
   user: User;
   app: App;
-  expiresAt?: string;
-  quota?: number;
-  usedQuota?: number;
+}
+
+const ACCESS_PAGE_SIZE = 10;
+
+function getAccessDerivedStatus(access: UserAppAccessWithDetails): 'expired' | 'active' | 'inactive' {
+  const expires = access.expiresAt ? new Date(access.expiresAt).getTime() : null;
+  if (expires !== null && !Number.isNaN(expires) && expires < Date.now()) return 'expired';
+  if (access.isActive) return 'active';
+  return 'inactive';
+}
+
+function toDatetimeLocalValue(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 
@@ -117,6 +131,20 @@ export default function AdminAppsPage() {
     quota: '',
     expiresAt: ''
   });
+
+  const [accessSearchTerm, setAccessSearchTerm] = useState('');
+  const [accessFilterStatus, setAccessFilterStatus] = useState<'all' | 'active' | 'expired' | 'inactive'>('all');
+  const [accessPage, setAccessPage] = useState(1);
+  const [selectedAccessIds, setSelectedAccessIds] = useState<Set<string>>(new Set());
+  const [showEditAccessModal, setShowEditAccessModal] = useState(false);
+  const [editingAccess, setEditingAccess] = useState<UserAppAccessWithDetails | null>(null);
+  const [editAccessForm, setEditAccessForm] = useState({ quota: '', expiresAt: '' });
+  const [revokingAccessId, setRevokingAccessId] = useState<string | null>(null);
+  const [bulkRevoking, setBulkRevoking] = useState(false);
+
+  const notify = useCallback((type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+  }, []);
 
   useEffect(() => {
     console.log('Admin Apps Page - useEffect triggered:', {
@@ -183,11 +211,13 @@ export default function AdminAppsPage() {
     try {
       // Validate SAML config if enabled
       if (newApp.samlEnabled && (!newApp.entityId || !newApp.acsUrl)) {
-        setNotification({ type: 'error', message: 'Entity ID and ACS URL are required when enabling SAML' });
+        notify('error', 'Entity ID and ACS URL are required when enabling SAML');
         return;
       }
 
-      const createdApp = await apiClient.createApp({
+      const hadSaml = newApp.samlEnabled;
+
+      await apiClient.createApp({
         name: newApp.name,
         slug: newApp.slug,
         description: newApp.description,
@@ -209,10 +239,10 @@ export default function AdminAppsPage() {
       setShowCreateAppModal(false);
       setNewApp({ name: '', slug: '', description: '', icon: '📱', color: '#3B82F6', url: '', domain: '', samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' });
       fetchData();
-      setNotification({ type: 'success', message: `App created successfully${newApp.samlEnabled ? ' with SAML configured' : ''}!` });
+      notify('success', `App created successfully${hadSaml ? ' with SAML configured' : ''}!`);
     } catch (err: any) {
       setError('Failed to create app');
-      setNotification({ type: 'error', message: err.message || 'Failed to create app' });
+      notify('error', err.message || 'Failed to create app');
       console.error('Error creating app:', err);
     }
   };
@@ -225,8 +255,10 @@ export default function AdminAppsPage() {
       setShowEditModal(false);
       setSelectedApp(null);
       fetchData();
-    } catch (err) {
+      notify('success', 'App updated successfully!');
+    } catch (err: any) {
       setError('Failed to update app');
+      notify('error', err.message || 'Failed to update app');
       console.error('Error updating app:', err);
     }
   };
@@ -238,9 +270,11 @@ export default function AdminAppsPage() {
     
     try {
       await apiClient.deleteApp(appId);
-      fetchData();
+      await fetchData();
+      notify('success', 'App deleted successfully');
     } catch (err) {
       setError('Failed to delete app');
+      notify('error', err instanceof Error ? err.message : 'Failed to delete app');
       console.error('Error deleting app:', err);
     }
   };
@@ -256,20 +290,81 @@ export default function AdminAppsPage() {
       setShowAssignModal(false);
       setAssignmentData({ userId: '', quota: '', expiresAt: '' });
       setSelectedApp(null);
-      fetchData();
+      await fetchData();
+      notify('success', 'Access assigned successfully');
     } catch (err) {
       setError('Failed to assign access');
+      notify('error', err instanceof Error ? err.message : 'Failed to assign access');
       console.error('Error assigning access:', err);
     }
   };
 
   const handleRevokeAccess = async (access: UserAppAccessWithDetails) => {
+    if (!confirm(`Revoke access for ${access.user.email} to ${access.app.name}?`)) {
+      return;
+    }
+    setRevokingAccessId(access.id);
     try {
       await apiClient.revokeAppAccess(access.appId, access.userId);
-      fetchData();
+      setSelectedAccessIds((prev) => {
+        const next = new Set(prev);
+        next.delete(access.id);
+        return next;
+      });
+      await fetchData();
+      notify('success', 'Access revoked successfully');
     } catch (err) {
       setError('Failed to revoke access');
+      notify('error', err instanceof Error ? err.message : 'Failed to revoke access');
       console.error('Error revoking access:', err);
+    } finally {
+      setRevokingAccessId(null);
+    }
+  };
+
+  const handleBulkRevoke = async () => {
+    if (selectedAccessIds.size === 0) return;
+    if (!confirm(`Revoke access for ${selectedAccessIds.size} selected assignment(s)?`)) return;
+    setBulkRevoking(true);
+    try {
+      const toRevoke = userAppAccess.filter((a) => selectedAccessIds.has(a.id));
+      for (const access of toRevoke) {
+        await apiClient.revokeAppAccess(access.appId, access.userId);
+      }
+      setSelectedAccessIds(new Set());
+      await fetchData();
+      notify('success', `Revoked ${toRevoke.length} assignment(s)`);
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'Bulk revoke failed');
+      console.error('Bulk revoke error:', err);
+    } finally {
+      setBulkRevoking(false);
+    }
+  };
+
+  const openEditAccessModal = (access: UserAppAccessWithDetails) => {
+    setEditingAccess(access);
+    setEditAccessForm({
+      quota: access.quota != null ? String(access.quota) : '',
+      expiresAt: toDatetimeLocalValue(access.expiresAt),
+    });
+    setShowEditAccessModal(true);
+  };
+
+  const handleSaveAccessEdit = async () => {
+    if (!editingAccess) return;
+    try {
+      await apiClient.assignAppAccess(editingAccess.appId, editingAccess.userId, {
+        quota: editAccessForm.quota ? parseInt(editAccessForm.quota, 10) : undefined,
+        expiresAt: editAccessForm.expiresAt ? new Date(editAccessForm.expiresAt) : undefined,
+      });
+      setShowEditAccessModal(false);
+      setEditingAccess(null);
+      await fetchData();
+      notify('success', 'Access updated successfully');
+    } catch (err: any) {
+      notify('error', err?.message || 'Failed to update access');
+      console.error('Error updating access:', err);
     }
   };
 
@@ -316,7 +411,7 @@ export default function AdminAppsPage() {
       setIsSavingSaml(true);
       
       if (samlConfig.samlEnabled && (!samlConfig.entityId || !samlConfig.acsUrl)) {
-        setNotification({ type: 'error', message: 'Entity ID and ACS URL are required when enabling SAML' });
+        notify('error', 'Entity ID and ACS URL are required when enabling SAML');
         return;
       }
 
@@ -329,11 +424,11 @@ export default function AdminAppsPage() {
         } : undefined,
       });
       
-      setNotification({ type: 'success', message: 'SAML configuration saved successfully!' });
+      notify('success', 'SAML configuration saved successfully!');
       setShowSamlConfigModal(false);
       await fetchData();
     } catch (error: any) {
-      setNotification({ type: 'error', message: error.message || 'Failed to save SAML configuration' });
+      notify('error', error.message || 'Failed to save SAML configuration');
     } finally {
       setIsSavingSaml(false);
     }
@@ -391,6 +486,41 @@ export default function AdminAppsPage() {
     return matchesSearch && matchesFilter;
   });
 
+  const filteredUserAccess = useMemo(() => {
+    const q = accessSearchTerm.trim().toLowerCase();
+    return userAppAccess.filter((access) => {
+      const userMatch =
+        !q ||
+        (access.user?.name ?? '').toLowerCase().includes(q) ||
+        (access.user?.email ?? '').toLowerCase().includes(q) ||
+        (access.app?.name ?? '').toLowerCase().includes(q);
+      if (!userMatch) return false;
+      const derived = getAccessDerivedStatus(access);
+      if (accessFilterStatus === 'all') return true;
+      if (accessFilterStatus === 'expired') return derived === 'expired';
+      if (accessFilterStatus === 'active') return derived === 'active';
+      if (accessFilterStatus === 'inactive') return derived === 'inactive';
+      return true;
+    });
+  }, [userAppAccess, accessSearchTerm, accessFilterStatus]);
+
+  const accessTotalPages = Math.max(1, Math.ceil(filteredUserAccess.length / ACCESS_PAGE_SIZE));
+
+  const paginatedUserAccess = useMemo(() => {
+    const start = (accessPage - 1) * ACCESS_PAGE_SIZE;
+    return filteredUserAccess.slice(start, start + ACCESS_PAGE_SIZE);
+  }, [filteredUserAccess, accessPage]);
+
+  useEffect(() => {
+    setAccessPage(1);
+  }, [accessSearchTerm, accessFilterStatus]);
+
+  useEffect(() => {
+    if (accessPage > accessTotalPages) {
+      setAccessPage(accessTotalPages);
+    }
+  }, [accessPage, accessTotalPages]);
+
   if (authLoading || loading) {
     return (
       <ResponsiveContainer className="p-6">
@@ -428,52 +558,48 @@ export default function AdminAppsPage() {
   return (
     <UnifiedLayout title="Admin Apps Management" subtitle={`Manage applications and user access for your organization.`} variant="dashboard">
       <div>
-        {/* Notification */}
+        {/* Toast notification */}
         {notification && (
-          <div className={`mb-4 p-4 rounded-lg ${
-            notification.type === 'success' 
-              ? 'bg-green-50 border border-green-200 text-green-800' 
-              : 'bg-red-50 border border-red-200 text-red-800'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span>{notification.message}</span>
-              <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-gray-700">
+          <div
+            role="alert"
+            className={`fixed top-4 right-4 z-[60] max-w-md w-[calc(100%-2rem)] shadow-lg rounded-lg border p-4 transition-all ${
+              notification.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-sm font-medium pr-2">{notification.message}</span>
+              <button
+                type="button"
+                onClick={() => setNotification(null)}
+                className="shrink-0 text-gray-500 hover:text-gray-700"
+                aria-label="Dismiss notification"
+              >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
           </div>
         )}
         {/* Quick Actions Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-end space-x-4">
-            <div className="flex items-center text-sm text-gray-500">
-              <BellIcon className="w-5 h-5 mr-2" />
-              <span>3 notifications</span>
-            </div>
-            <Button 
-              onClick={() => setShowCreateAppModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <PlusIcon className="w-4 h-4 mr-2" />
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowBulkAssignmentModal(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white border-green-600"
-                >
-                  <UserPlusIcon className="w-4 h-4 mr-2" />
-                  Bulk Assign
-                </Button>
-                <Button
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={() => setShowCreateAppModal(true)}
-                >
-                  <PlusIcon className="w-4 h-4 mr-2" />
-                  Add New App
-                </Button>
-              </div>
-            </Button>
-          </div>
+        <div className="mb-8 flex items-center justify-end gap-3 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowBulkAssignmentModal(true)}
+            className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+          >
+            <UserPlusIcon className="w-4 h-4 mr-2" />
+            Bulk Assign
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setShowCreateAppModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <PlusIcon className="w-4 h-4 mr-2" />
+            Add New App
+          </Button>
         </div>
 
         {/* Navigation Tabs */}
@@ -863,58 +989,71 @@ export default function AdminAppsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    {/* Direct Access Button */}
                     {app.url && (
                       <Button
-                        onClick={() => window.open(app.url?.startsWith('http') ? app.url : `https://${app.url}`, '_blank')}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            app.url?.startsWith('http') ? app.url : `https://${app.url}`,
+                            '_blank'
+                          )
+                        }
+                        className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm"
                       >
-                        <PlayIcon className="w-4 h-4 mr-1" />
-                        Access App
-                        <ArrowTopRightOnSquareIcon className="w-4 h-4 ml-1" />
+                        <PlayIcon className="w-4 h-4 mr-1 shrink-0" />
+                        <span>Access App</span>
+                        <ArrowTopRightOnSquareIcon className="w-4 h-4 ml-1 shrink-0" />
                       </Button>
                     )}
-                    
-                    {/* Action Buttons */}
-                    <div className="flex gap-2">
+
+                    <div className="flex gap-2 items-stretch">
                       <Button
+                        type="button"
                         onClick={() => {
                           setSelectedApp(app);
                           setShowAssignModal(true);
                         }}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm"
+                        className="flex-1 min-w-0 h-10 bg-green-600 hover:bg-green-700 text-white text-sm"
                       >
-                        <UserPlusIcon className="w-4 h-4 mr-1" />
-                        Assign Access
+                        <UserPlusIcon className="w-4 h-4 mr-1 shrink-0" />
+                        <span className="truncate">Assign Access</span>
                       </Button>
-                      {/* SAML Config Button - Only show if user can configure this app */}
-                      {canConfigureApp(app) && (
+                      <div className="flex gap-1 shrink-0">
+                        {canConfigureApp(app) && (
+                          <Button
+                            type="button"
+                            onClick={() => openSamlConfigModal(app)}
+                            variant="outline"
+                            className="h-10 w-10 p-0 flex items-center justify-center"
+                            title="Configure SAML"
+                            aria-label="Configure SAML"
+                          >
+                            <KeyIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canConfigureApp(app) && (
+                          <Button
+                            type="button"
+                            onClick={() => openEditModal(app)}
+                            variant="outline"
+                            className="h-10 w-10 p-0 flex items-center justify-center"
+                            title="Edit app"
+                            aria-label="Edit app"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
-                          onClick={() => openSamlConfigModal(app)}
+                          type="button"
+                          onClick={() => handleDeleteApp(app.id)}
                           variant="outline"
-                          className="px-3"
-                          title="Configure SAML"
+                          className="h-10 w-10 p-0 flex items-center justify-center text-red-600 hover:text-red-700 border-gray-300"
+                          title="Delete app"
+                          aria-label="Delete app"
                         >
-                          <KeyIcon className="w-4 h-4" />
+                          <TrashIcon className="w-4 h-4" />
                         </Button>
-                      )}
-                      {/* Edit App Button - Only show if user can configure this app */}
-                      {canConfigureApp(app) && (
-                        <Button
-                          onClick={() => openEditModal(app)}
-                          variant="outline"
-                          className="px-3"
-                        >
-                          <PencilIcon className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button
-                        onClick={() => handleDeleteApp(app.id)}
-                        variant="outline"
-                        className="px-3 text-red-600 hover:text-red-700"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -926,11 +1065,57 @@ export default function AdminAppsPage() {
         {activeTab === 'access' && (
           <div className="space-y-6">
             <Card className="p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900">User Access Management</h3>
-                <div className="flex items-center text-sm text-gray-500">
-                  <UsersIcon className="w-4 h-4 mr-1" />
-                  {userAppAccess.length} assignments
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                  <span className="inline-flex items-center">
+                    <UsersIcon className="w-4 h-4 mr-1" />
+                    {filteredUserAccess.length} of {userAppAccess.length} shown
+                  </span>
+                  {selectedAccessIds.size > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                      disabled={bulkRevoking}
+                      onClick={handleBulkRevoke}
+                    >
+                      {bulkRevoking ? 'Revoking…' : `Revoke selected (${selectedAccessIds.size})`}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col lg:flex-row gap-4 mb-4">
+                <div className="flex-1 relative min-w-0">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                  <Input
+                    placeholder="Search by user or app…"
+                    value={accessSearchTerm}
+                    onChange={(e) => setAccessSearchTerm(e.target.value)}
+                    className="pl-10"
+                    aria-label="Search assignments"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['active', 'Active'],
+                      ['expired', 'Expired'],
+                      ['inactive', 'Inactive'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <Button
+                      key={key}
+                      type="button"
+                      variant={accessFilterStatus === key ? 'default' : 'outline'}
+                      className="text-sm"
+                      onClick={() => setAccessFilterStatus(key)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
                 </div>
               </div>
 
@@ -938,6 +1123,29 @@ export default function AdminAppsPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-4 py-3 text-left w-12">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          checked={
+                            paginatedUserAccess.length > 0 &&
+                            paginatedUserAccess.every((a) => selectedAccessIds.has(a.id))
+                          }
+                          onChange={(e) => {
+                            const ids = paginatedUserAccess.map((a) => a.id);
+                            setSelectedAccessIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) {
+                                ids.forEach((id) => next.add(id));
+                              } else {
+                                ids.forEach((id) => next.delete(id));
+                              }
+                              return next;
+                            });
+                          }}
+                          aria-label="Select all on this page"
+                        />
+                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         User
                       </th>
@@ -962,82 +1170,171 @@ export default function AdminAppsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {userAppAccess.map((access) => (
-                      <tr key={access.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-3">
-                              <span className="text-sm font-medium text-gray-700">
-                                {(access.user.name || access.user.email).charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {access.user.name || 'No Name'}
-                              </div>
-                              <div className="text-sm text-gray-500">{access.user.email}</div>
-                            </div>
+                    {paginatedUserAccess.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-16 text-center text-gray-500">
+                          <div className="flex flex-col items-center gap-2">
+                            <ExclamationTriangleIcon className="w-10 h-10 text-gray-400" />
+                            <p className="font-medium text-gray-700">No assignments found</p>
+                            <p className="text-sm">
+                              Try adjusting search or filters, or assign access from App Management.
+                            </p>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div 
-                              className="w-6 h-6 rounded flex items-center justify-center text-white text-xs mr-2"
-                              style={{ backgroundColor: access.app.color }}
-                            >
-                              {access.app.icon}
-                            </div>
-                            <span className="text-sm font-medium text-gray-900">{access.app.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {access.isActive ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <CheckCircleIcon className="w-3 h-3 mr-1" />
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              <XCircleIcon className="w-3 h-3 mr-1" />
-                              Inactive
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(access.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {access.expiresAt ? new Date(access.expiresAt).toLocaleDateString() : 'Never'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
-                              <div 
-                                className="bg-blue-600 h-2 rounded-full" 
-                                style={{ 
-                                  width: `${access.quota ? (access.usedQuota / access.quota) * 100 : 0}%` 
-                                }}
-                              ></div>
-                            </div>
-                            <span className="text-sm text-gray-500">
-                              {access.usedQuota}/{access.quota || '∞'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <Button
-                            onClick={() => handleRevokeAccess(access)}
-                            className="text-red-600 hover:text-red-900"
-                            variant="outline"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </Button>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      paginatedUserAccess.map((access) => {
+                        const derived = getAccessDerivedStatus(access);
+                        const used = access.usedQuota ?? 0;
+                        const quota = access.quota;
+                        const usagePct =
+                          quota != null && quota > 0
+                            ? Math.min(100, (used / quota) * 100)
+                            : 0;
+                        const assignedDate = access.assignedAt || access.createdAt;
+                        return (
+                          <tr key={access.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                checked={selectedAccessIds.has(access.id)}
+                                onChange={(e) => {
+                                  setSelectedAccessIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(access.id);
+                                    else next.delete(access.id);
+                                    return next;
+                                  });
+                                }}
+                                aria-label={`Select ${access.user.email}`}
+                              />
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-3">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {(access.user?.name || access.user?.email || '?').charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {access.user?.name || 'No Name'}
+                                  </div>
+                                  <div className="text-sm text-gray-500">{access.user?.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div
+                                  className="w-6 h-6 rounded flex items-center justify-center text-white text-xs mr-2 shrink-0"
+                                  style={{ backgroundColor: access.app?.color || '#3b82f6' }}
+                                >
+                                  {access.app?.icon || '📱'}
+                                </div>
+                                <span className="text-sm font-medium text-gray-900">{access.app?.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {derived === 'expired' ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                  <ClockIcon className="w-3 h-3 mr-1" />
+                                  Expired
+                                </span>
+                              ) : derived === 'active' ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  <CheckCircleIcon className="w-3 h-3 mr-1" />
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                  <XCircleIcon className="w-3 h-3 mr-1" />
+                                  Inactive
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {assignedDate ? new Date(assignedDate).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {access.expiresAt ? new Date(access.expiresAt).toLocaleDateString() : 'Never'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap min-w-[140px]">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-gray-200 rounded-full h-2 min-w-[48px]">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all"
+                                    style={{ width: `${usagePct}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm text-gray-500 tabular-nums shrink-0">
+                                  {used}/{quota != null ? quota : '∞'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-9 w-9 p-0 flex items-center justify-center"
+                                  title="Edit quota / expiry"
+                                  aria-label="Edit assignment"
+                                  onClick={() => openEditAccessModal(access)}
+                                >
+                                  <PencilIcon className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-9 w-9 p-0 flex items-center justify-center text-red-600 hover:text-red-800"
+                                  title="Revoke access"
+                                  aria-label="Revoke access"
+                                  disabled={revokingAccessId === access.id}
+                                  onClick={() => handleRevokeAccess(access)}
+                                >
+                                  {revokingAccessId === access.id ? (
+                                    <span className="text-xs">…</span>
+                                  ) : (
+                                    <TrashIcon className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
+
+              {filteredUserAccess.length > ACCESS_PAGE_SIZE && (
+                <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-gray-600">
+                  <span>
+                    Page {accessPage} of {accessTotalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={accessPage <= 1}
+                      onClick={() => setAccessPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={accessPage >= accessTotalPages}
+                      onClick={() => setAccessPage((p) => Math.min(accessTotalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
         )}
@@ -1197,7 +1494,7 @@ export default function AdminAppsPage() {
                   onChange={(e) => setEditApp({ ...editApp, color: e.target.value })}
                 />
                 <Input
-                  label="App URL"
+                  label="Application URL"
                   value={editApp.url}
                   onChange={(e) => setEditApp({ ...editApp, url: e.target.value })}
                   placeholder="https://app.example.com or app.example.com"
@@ -1387,6 +1684,53 @@ export default function AdminAppsPage() {
                     className="bg-green-600 hover:bg-green-700 text-white"
                   >
                     Assign Access
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit user-app access (quota / expiry) */}
+        {showEditAccessModal && editingAccess && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Edit assignment</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                {editingAccess.user?.email} → {editingAccess.app?.name}
+              </p>
+              <div className="space-y-4">
+                <Input
+                  label="Quota (optional)"
+                  type="number"
+                  min={0}
+                  value={editAccessForm.quota}
+                  onChange={(e) => setEditAccessForm({ ...editAccessForm, quota: e.target.value })}
+                  placeholder="Leave empty for no limit"
+                />
+                <Input
+                  label="Expires at (optional)"
+                  type="datetime-local"
+                  value={editAccessForm.expiresAt}
+                  onChange={(e) => setEditAccessForm({ ...editAccessForm, expiresAt: e.target.value })}
+                />
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowEditAccessModal(false);
+                      setEditingAccess(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSaveAccessEdit}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Save changes
                   </Button>
                 </div>
               </div>

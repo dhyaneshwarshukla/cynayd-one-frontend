@@ -458,7 +458,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
         </Card>
 
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/apps'}>
+        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/admin/apps'}>
           <div className="text-center">
             <div className="p-4 bg-purple-100 rounded-2xl mx-auto w-fit mb-4">
               <span className="text-3xl">📦</span>
@@ -634,7 +634,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </Button>
             <Button
               variant="outline"
-              onClick={() => window.location.href = '/apps'}
+              onClick={() => window.location.href = '/admin/apps'}
               className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
             >
               <span className="mr-2">📦</span>
