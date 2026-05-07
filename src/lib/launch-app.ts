@@ -1,11 +1,19 @@
 import { apiClient, type App } from '@/lib/api-client';
 
+/**
+ * SAML is considered ENABLED for an app when its metadata JSON contains:
+ *   { "samlEnabled": true, "samlConfig": { "entityId": "...", "acsUrl": "...", ... } }
+ *
+ * This MUST stay in sync with the backend check in:
+ *   standalone-backend/src/routes/apps.routes.ts  (POST /api/apps/:appSlug/sso-token)
+ *   -> if (appMetadata.samlEnabled && appMetadata.samlConfig) { ... SAML path ... }
+ */
 function isSamlEnabled(metadata?: string): boolean {
   if (!metadata) return false;
 
   try {
     const parsed = JSON.parse(metadata);
-    return Boolean(parsed.samlEnabled && parsed.samlConfig);
+    return Boolean(parsed?.samlEnabled === true && parsed?.samlConfig);
   } catch {
     return false;
   }
@@ -32,32 +40,70 @@ function appendSsoToken(baseUrl: string, ssoToken: string): string {
   return `${baseUrl}${delimiter}sso_token=${encodeURIComponent(ssoToken)}`;
 }
 
-export async function launchAppWithFallback(appSlug: string): Promise<void> {
-  const appDetails = await apiClient.getAppBySlug(appSlug);
-
-  if (isSamlEnabled(appDetails.metadata)) {
-    const response = await apiClient.initiateSamlSSO(appSlug);
-    const html = await response.text();
-    const samlWindow = window.open('', '_blank');
-    if (!samlWindow) {
-      throw new Error('Popup blocked. Please allow popups for this site.');
-    }
-    samlWindow.document.write(html);
-    samlWindow.document.close();
-    return;
+function openSamlAutoSubmitWindow(html: string, appName: string): void {
+  const samlWindow = window.open('', '_blank');
+  if (!samlWindow) {
+    throw new Error('Popup blocked. Please allow popups for this site to access ' + appName + '.');
   }
+  samlWindow.document.write(html);
+  samlWindow.document.close();
+}
 
-  const { ssoToken } = await apiClient.generateSSOToken(appSlug);
+async function launchViaSaml(appSlug: string, appName: string): Promise<void> {
+  console.info(`[launch-app] "${appSlug}" -> SAML SSO path (POST /api/apps/${appSlug}/saml/sso)`);
+  const response = await apiClient.initiateSamlSSO(appSlug);
+  const html = await response.text();
+  if (!html || !html.toLowerCase().includes('samlresponse')) {
+    throw new Error(`Invalid SAML response received from server for "${appName}". Please verify SAML configuration.`);
+  }
+  openSamlAutoSubmitWindow(html, appName);
+}
+
+async function launchViaJwtSsoToken(appDetails: App): Promise<void> {
   const baseUrl = getAppBaseUrl(appDetails);
-
   if (!baseUrl) {
     throw new Error('Application URL or domain is not configured. Please update this app in Admin > Apps.');
   }
 
-  const redirectUrl = appendSsoToken(baseUrl, ssoToken);
+  console.info(`[launch-app] "${appDetails.slug}" -> JWT SSO token path (POST /api/apps/${appDetails.slug}/sso-token)`);
+
+  const result = await apiClient.generateSSOToken(appDetails.slug);
+
+  if (!result || typeof result.ssoToken !== 'string' || !result.ssoToken) {
+    throw new Error(`Server did not return a valid SSO token for "${appDetails.name}". Check backend logs.`);
+  }
+
+  const redirectUrl = appendSsoToken(baseUrl, result.ssoToken);
   const appWindow = window.open(redirectUrl, '_blank');
   if (!appWindow) {
-    throw new Error('Popup blocked. Please allow popups for this site.');
+    throw new Error('Popup blocked. Please allow popups for this site to access ' + appDetails.name + '.');
   }
 }
 
+/**
+ * Launch an app using the correct SSO mechanism:
+ *   - SAML enabled in app.metadata  -> POST /api/apps/:slug/saml/sso  (auto-submit SAML form)
+ *   - SAML NOT enabled              -> POST /api/apps/:slug/sso-token (5-min JWT, redirect with ?sso_token=)
+ *
+ * The decision is made from the app's metadata fetched fresh from
+ * GET /api/apps/by-slug/:slug, which is the single source of truth.
+ */
+export async function launchAppWithFallback(appSlug: string): Promise<void> {
+  const appDetails = await apiClient.getAppBySlug(appSlug);
+
+  if (!appDetails) {
+    throw new Error(`App "${appSlug}" not found or inactive.`);
+  }
+
+  const samlEnabled = isSamlEnabled(appDetails.metadata);
+  console.info(
+    `[launch-app] App="${appDetails.name}" slug="${appDetails.slug}" samlEnabled=${samlEnabled}`
+  );
+
+  if (samlEnabled) {
+    await launchViaSaml(appDetails.slug, appDetails.name);
+    return;
+  }
+
+  await launchViaJwtSsoToken(appDetails);
+}

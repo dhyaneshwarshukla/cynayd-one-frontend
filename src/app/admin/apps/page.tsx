@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { apiClient, App } from '@/lib/api-client';
+import { launchAppWithFallback } from '@/lib/launch-app';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 
 // Define UserAppAccess interface locally (aligned with GET /api/apps/user-access)
@@ -989,15 +990,17 @@ export default function AdminAppsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    {app.url && (
+                    {(app.url || app.domain) && (
                       <Button
                         type="button"
-                        onClick={() =>
-                          window.open(
-                            app.url?.startsWith('http') ? app.url : `https://${app.url}`,
-                            '_blank'
-                          )
-                        }
+                        onClick={async () => {
+                          try {
+                            await launchAppWithFallback(app.slug);
+                          } catch (err: any) {
+                            console.error('Failed to launch app via SSO:', err);
+                            alert(err?.message || `Failed to access ${app.name}. Please try again.`);
+                          }
+                        }}
                         className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm"
                       >
                         <PlayIcon className="w-4 h-4 mr-1 shrink-0" />
