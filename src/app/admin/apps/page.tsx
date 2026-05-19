@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { apiClient, App } from '@/lib/api-client';
+import { filterOrgScopedApps } from '@/lib/app-scope';
 import { launchAppWithFallback } from '@/lib/launch-app';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 
@@ -80,7 +81,8 @@ function toDatetimeLocalValue(iso?: string): string {
 
 export default function AdminAppsPage() {
   const pathname = usePathname();
-  const isSuperAdminScope = pathname?.startsWith('/superadmin/apps') ?? false;
+  const isSuperAdminScope =
+    pathname?.includes('/superadmin/apps') ?? false;
   const { user, isLoading: authLoading } = useAuth();
   const [apps, setApps] = useState<App[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -198,7 +200,11 @@ export default function AdminAppsPage() {
         accessCount: accessData?.length || 0
       });
       
-      setApps(appsData);
+      const scopedApps = isSuperAdminScope
+        ? appsData
+        : filterOrgScopedApps(appsData, user?.organizationId);
+
+      setApps(scopedApps);
       setUsers(usersArray);
       setUserAppAccess(accessData as unknown as UserAppAccessWithDetails[]);
     } catch (err) {
@@ -484,7 +490,12 @@ export default function AdminAppsPage() {
     }
   }, [notification]);
 
-  const filteredApps = apps.filter(app => {
+  const orgVisibleApps = useMemo(() => {
+    if (isSuperAdminScope || !user) return apps;
+    return filterOrgScopedApps(apps, user.organizationId);
+  }, [apps, isSuperAdminScope, user]);
+
+  const filteredApps = orgVisibleApps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          app.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || 
@@ -495,7 +506,11 @@ export default function AdminAppsPage() {
 
   const filteredUserAccess = useMemo(() => {
     const q = accessSearchTerm.trim().toLowerCase();
+    const visibleAppIds = new Set(orgVisibleApps.map((a) => a.id));
     return userAppAccess.filter((access) => {
+      if (!isSuperAdminScope && access.app?.id && !visibleAppIds.has(access.app.id)) {
+        return false;
+      }
       const userMatch =
         !q ||
         (access.user?.name ?? '').toLowerCase().includes(q) ||
@@ -509,7 +524,7 @@ export default function AdminAppsPage() {
       if (accessFilterStatus === 'inactive') return derived === 'inactive';
       return true;
     });
-  }, [userAppAccess, accessSearchTerm, accessFilterStatus]);
+  }, [userAppAccess, accessSearchTerm, accessFilterStatus, isSuperAdminScope, orgVisibleApps]);
 
   const accessTotalPages = Math.max(1, Math.ceil(filteredUserAccess.length / ACCESS_PAGE_SIZE));
 
@@ -709,10 +724,10 @@ export default function AdminAppsPage() {
                     </div>
                     <div className="ml-4">
                       <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Apps</h3>
-                      <p className="text-3xl font-bold text-gray-900 mt-1">{apps.length}</p>
+                      <p className="text-3xl font-bold text-gray-900 mt-1">{orgVisibleApps.length}</p>
                       <p className="text-sm text-green-600 mt-1 flex items-center">
                         <CheckCircleIcon className="w-4 h-4 mr-1" />
-                        {apps.filter(app => app.isActive).length} active
+                        {orgVisibleApps.filter(app => app.isActive).length} active
                       </p>
                     </div>
                   </div>
@@ -869,7 +884,7 @@ export default function AdminAppsPage() {
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {apps.slice(0, 3).map((app) => (
+                  {orgVisibleApps.slice(0, 3).map((app) => (
                     <div key={app.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center">
                         <div 
@@ -1798,7 +1813,7 @@ export default function AdminAppsPage() {
 
         {/* Bulk Assignment Modal */}
         <BulkAssignmentModal
-          apps={apps}
+          apps={orgVisibleApps}
           isOpen={showBulkAssignmentModal}
           onClose={() => setShowBulkAssignmentModal(false)}
           onAssignmentChange={fetchData}
