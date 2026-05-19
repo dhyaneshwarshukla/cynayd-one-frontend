@@ -64,11 +64,15 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                 <a href="/dashboard/settings" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                   Settings
                 </a>
+                <a href="/contact" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                  Contact
+                </a>
               </>
             ) : (
               <>
                 <a href="/#apps" className="text-gray-600 hover:text-gray-900 transition-colors">Apps</a>
                 <a href="/#features" className="text-gray-600 hover:text-gray-900 transition-colors">Features</a>
+                <a href="/#pricing" className="text-gray-600 hover:text-gray-900 transition-colors">Pricing</a>
                 <a href="/contact" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
               </>
             )}
@@ -260,6 +264,12 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
               </>
             ) : (
               <>
+                <a
+                  href="/contact"
+                  className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Contact Us
+                </a>
                 <Button asChild variant="outline">
                   <a href="/auth/login">Login</a>
                 </Button>

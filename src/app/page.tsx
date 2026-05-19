@@ -67,7 +67,9 @@ export default function HomePage() {
         "@type": "SearchAction",
         "target": {
           "@type": "EntryPoint",
-          "urlTemplate": `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/search?q={search_term_string}`,
+          "urlTemplate":
+            (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000") +
+            "/search?q={search_term_string}",
         },
         "query-input": "required name=search_term_string",
       },
@@ -135,6 +137,12 @@ export default function HomePage() {
                 className="bg-white text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-all shadow-lg border border-gray-200"
               >
                 Explore Apps
+              </a>
+              <a
+                href="/contact"
+                className="bg-white text-blue-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-all shadow-lg border border-blue-200"
+              >
+                Contact Us
               </a>
             </div>
             <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
@@ -775,6 +783,12 @@ export default function HomePage() {
             >
               Security Features
             </a>
+            <a
+              href="/contact"
+              className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-white hover:text-blue-600 transition-all"
+            >
+              Contact Us
+            </a>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
             <div className="text-blue-100">
@@ -815,11 +829,11 @@ export default function HomePage() {
             <div>
               <h4 className="text-lg font-semibold mb-4">Platform</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Built-in Apps</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Custom Integration</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Website Generation</a></li>
-                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Enterprise SSO</a></li>
+                <li><a href="/#apps" className="hover:text-white transition-colors">Built-in Apps</a></li>
+                <li><a href="/#features" className="hover:text-white transition-colors">Custom Integration</a></li>
+                <li><a href="/#features" className="hover:text-white transition-colors">Website Generation</a></li>
+                <li><a href="/#pricing" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="/#security" className="hover:text-white transition-colors">Enterprise SSO</a></li>
               </ul>
             </div>
             <div>
@@ -828,7 +842,7 @@ export default function HomePage() {
                 <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
                 <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
                 <li><a href="/contact" className="hover:text-white transition-colors">Contact</a></li>
-                <li><a href="/dashboard/help" className="hover:text-white transition-colors">Support</a></li>
+                <li><a href="/contact" className="hover:text-white transition-colors">Support</a></li>
               </ul>
             </div>
             <div>
