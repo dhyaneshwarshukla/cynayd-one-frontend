@@ -231,7 +231,7 @@ export default function PricingSection({ highlightPlan }: PricingSectionProps) {
           <p className="text-gray-600 mb-4">
             All plans include 24/7 support, enterprise security, and regular platform updates.
           </p>
-          <a href="#contact" className="text-blue-600 hover:text-blue-700 font-semibold">
+          <a href="/contact" className="text-blue-600 hover:text-blue-700 font-semibold">
             Need a custom plan? Contact Sales →
           </a>
         </div>

@@ -1112,8 +1112,14 @@ class ApiClient {
   }
 
   // App endpoints
+  /** System apps + current organization's apps (org admin scope) */
   async getApps(): Promise<App[]> {
     return this.request<App[]>('/api/apps');
+  }
+
+  /** All apps platform-wide — SUPER_ADMIN only */
+  async getSuperAdminApps(): Promise<App[]> {
+    return this.request<App[]>('/api/superadmin/apps');
   }
 
   async getUserApps(): Promise<AppWithAccess[]> {
@@ -1483,7 +1489,10 @@ class ApiClient {
     });
   }
 
-  async getAllUserAppAccess(): Promise<UserAppAccess[]> {
+  async getAllUserAppAccess(options?: { superAdminScope?: boolean }): Promise<UserAppAccess[]> {
+    if (options?.superAdminScope) {
+      return this.request<UserAppAccess[]>('/api/superadmin/apps/user-access');
+    }
     return this.request<UserAppAccess[]>('/api/apps/user-access');
   }
 
@@ -1839,6 +1848,19 @@ class ApiClient {
 
   async getSupportResponses(ticketId: string): Promise<any[]> {
     return this.request(`/api/support/tickets/${ticketId}/responses`);
+  }
+
+  async submitContactInquiry(data: {
+    name: string;
+    email: string;
+    company?: string;
+    topic: 'general' | 'sales' | 'support' | 'partnership';
+    message: string;
+  }): Promise<{ success: boolean; message: string }> {
+    return this.request('/api/public/contact', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   // Utility methods

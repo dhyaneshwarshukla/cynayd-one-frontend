@@ -67,9 +67,9 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
               </>
             ) : (
               <>
-                <a href="#apps" className="text-gray-600 hover:text-gray-900 transition-colors">Apps</a>
-                <a href="#features" className="text-gray-600 hover:text-gray-900 transition-colors">Features</a>
-                <a href="#about" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>
+                <a href="/#apps" className="text-gray-600 hover:text-gray-900 transition-colors">Apps</a>
+                <a href="/#features" className="text-gray-600 hover:text-gray-900 transition-colors">Features</a>
+                <a href="/contact" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
               </>
             )}
           </div>

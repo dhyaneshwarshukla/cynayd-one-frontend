@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Card } from '@/components/common/Card';
@@ -78,6 +79,8 @@ function toDatetimeLocalValue(iso?: string): string {
 
 
 export default function AdminAppsPage() {
+  const pathname = usePathname();
+  const isSuperAdminScope = pathname?.startsWith('/superadmin/apps') ?? false;
   const { user, isLoading: authLoading } = useAuth();
   const [apps, setApps] = useState<App[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -154,6 +157,9 @@ export default function AdminAppsPage() {
       isAdmin: user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'
     });
     
+    if (!authLoading && isSuperAdminScope && user?.role !== 'SUPER_ADMIN') {
+      return;
+    }
     if (!authLoading && (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN')) {
       console.log('Starting to fetch data...');
       fetchData();
@@ -162,7 +168,7 @@ export default function AdminAppsPage() {
     } else if (!authLoading && user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       console.log('User is not admin:', user.role);
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, isSuperAdminScope]);
 
   const fetchData = async () => {
     try {
@@ -174,9 +180,9 @@ export default function AdminAppsPage() {
       console.log('API Client authenticated:', apiClient.isAuthenticated());
       
       const [appsData, usersData, accessData] = await Promise.all([
-        apiClient.getApps(),
+        isSuperAdminScope ? apiClient.getSuperAdminApps() : apiClient.getApps(),
         apiClient.getUsers(),
-        apiClient.getAllUserAppAccess()
+        apiClient.getAllUserAppAccess({ superAdminScope: isSuperAdminScope }),
       ]);
       
       // Handle paginated response for usersData
@@ -537,6 +543,24 @@ export default function AdminAppsPage() {
     );
   }
 
+  if (isSuperAdminScope && user && user.role !== 'SUPER_ADMIN') {
+    return (
+      <ResponsiveContainer className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Access Denied</h3>
+          <p className="text-red-700 text-sm mt-1">
+            Super Admin privileges are required to manage all platform apps.
+          </p>
+          <p className="mt-3 text-sm text-red-600">
+            <a href="/admin/apps" className="text-blue-600 hover:text-blue-500 underline">
+              Go to organization apps
+            </a>
+          </p>
+        </div>
+      </ResponsiveContainer>
+    );
+  }
+
   if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
     return (
       <ResponsiveContainer className="p-6">
@@ -556,9 +580,31 @@ export default function AdminAppsPage() {
     );
   }
 
+  const pageTitle = isSuperAdminScope ? 'Super Admin — All Apps' : 'Admin Apps Management';
+  const pageSubtitle = isSuperAdminScope
+    ? 'View, create, and modify all apps across every organization on the platform.'
+    : 'System apps and apps created by your organization only.';
+
   return (
-    <UnifiedLayout title="Admin Apps Management" subtitle={`Manage applications and user access for your organization.`} variant="dashboard">
+    <UnifiedLayout title={pageTitle} subtitle={pageSubtitle} variant="dashboard">
       <div>
+        {!isSuperAdminScope && user.role === 'SUPER_ADMIN' && (
+          <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+            Manage apps across all organizations on the platform?{' '}
+            <a href="/superadmin/apps" className="font-semibold underline hover:text-purple-700">
+              Open Super Admin — All Apps
+            </a>
+          </div>
+        )}
+        {isSuperAdminScope && (
+          <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+            Viewing every app on the platform. For your organization only, use{' '}
+            <a href="/admin/apps" className="font-semibold underline hover:text-purple-700">
+              Organization Apps
+            </a>
+            .
+          </div>
+        )}
         {/* Toast notification */}
         {notification && (
           <div
@@ -924,6 +970,15 @@ export default function AdminAppsPage() {
                       <div className="ml-3">
                         <h3 className="text-lg font-semibold text-gray-900">{app.name}</h3>
                         <p className="text-sm text-gray-500">{app.slug}</p>
+                        {isSuperAdminScope && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {app.systemApp
+                              ? 'System app'
+                              : app.organizationId
+                                ? `Org: ${app.organizationId}`
+                                : 'No organization'}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center">

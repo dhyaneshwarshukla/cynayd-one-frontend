@@ -77,6 +77,9 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
   const managementNavigation = [
     { name: "Users", href: "/users", icon: UsersIcon, permission: 'users' },
     { name: "Apps", href: "/admin/apps", icon: Squares2X2Icon, permission: 'apps' },
+    ...(user?.role === 'SUPER_ADMIN'
+      ? [{ name: "All Apps", href: "/superadmin/apps", icon: CommandLineIcon, permission: 'apps' as const }]
+      : []),
   ];
 
   const systemNavigation = [
