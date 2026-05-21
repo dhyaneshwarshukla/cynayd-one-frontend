@@ -172,21 +172,6 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
         </Alert>
       )}
 
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl p-8 border border-purple-200">
-        <div className="flex items-center space-x-4">
-          <div className="p-4 bg-purple-100 rounded-2xl">
-            <span className="text-4xl">👑</span>
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Super Admin Dashboard</h1>
-            <p className="text-lg text-gray-600 mt-2">
-              Full system access - manage all organizations, users, and global settings
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">

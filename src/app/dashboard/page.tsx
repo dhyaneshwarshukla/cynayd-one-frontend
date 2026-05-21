@@ -3,10 +3,18 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import UserDashboard from '../../components/dashboard/UserDashboard';
 import AdminDashboard from '../../components/dashboard/AdminDashboard';
 import SuperAdminDashboard from '../../components/dashboard/SuperAdminDashboard';
+
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -24,17 +32,18 @@ export default function DashboardPage() {
     }
   }, [isAuthenticated, isLoading, router]);
 
+  const displayName = useMemo(() => {
+    if (!user) return '';
+    const name = user.name?.trim();
+    if (name) return name.split(/\s+/)[0];
+    return user.email?.split('@')[0] || 'there';
+  }, [user]);
+
   // Show loading state while checking authentication
   if (isLoading) {
     return (
-      <UnifiedLayout
-        title="Loading..."
-        subtitle="Checking authentication status"
-        variant="dashboard"
-      >
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
+      <UnifiedLayout variant="dashboard">
+        <DashboardSkeleton />
       </UnifiedLayout>
     );
   }
@@ -48,29 +57,27 @@ export default function DashboardPage() {
   const userRole = user?.role?.toUpperCase();
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
   const isAdmin = userRole === 'ADMIN';
-  const isRegularUser = userRole === 'USER';
+  const greeting = getTimeGreeting();
 
-  // Get role-specific welcome message
   const getWelcomeMessage = () => {
     if (isSuperAdmin) {
       return {
-        title: "Super Admin Dashboard",
-        subtitle: `Welcome back, ${user?.name || user?.email}! Manage all organizations and system-wide settings.`,
-        icon: "👑"
-      };
-    } else if (isAdmin) {
-      return {
-        title: "Admin Dashboard",
-        subtitle: `Welcome back, ${user?.name || user?.email}! Manage your organization's apps and users.`,
-        icon: "🛡️"
-      };
-    } else {
-      return {
-        title: "My Workspace",
-        subtitle: `Welcome back, ${user?.name || user?.email}! Access your assigned apps and collaborate with your team.`,
-        icon: "🚀"
+        title: 'Super Admin Dashboard',
+        subtitle:
+          'Manage organizations, system apps, and platform-wide settings from one place.',
       };
     }
+    if (isAdmin) {
+      return {
+        title: `${greeting}, ${displayName}`,
+        subtitle:
+          'Overview of your organization — users, apps, and recent activity.',
+      };
+    }
+    return {
+      title: `${greeting}, ${displayName}`,
+      subtitle: 'Open your assigned apps and manage your account settings.',
+    };
   };
 
   const welcome = getWelcomeMessage();

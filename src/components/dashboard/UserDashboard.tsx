@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { apiClient, AppWithAccess } from '@/lib/api-client';
 import { launchAppWithFallback } from '@/lib/launch-app';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
-import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { AppIcon } from '@/components/common/AppIcon';
+import { StatsCard } from '@/components/dashboard/StatsCard';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { WorkspaceAppCard } from '@/components/dashboard/WorkspaceAppCard';
+import {
+  MagnifyingGlassIcon,
+  Squares2X2Icon,
+  UserCircleIcon,
+  Cog6ToothIcon,
+  QuestionMarkCircleIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
 
 interface App {
   id: string;
@@ -57,6 +68,7 @@ interface UserDashboardProps {
 }
 
 export default function UserDashboard({ user }: UserDashboardProps) {
+  const router = useRouter();
   const [apps, setApps] = useState<AppWithAccess[]>([]);
   const [stats, setStats] = useState<UserStats>({
     totalApps: 0,
@@ -67,6 +79,8 @@ export default function UserDashboard({ user }: UserDashboardProps) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [launchingAppId, setLaunchingAppId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -118,164 +132,82 @@ export default function UserDashboard({ user }: UserDashboardProps) {
     }
   };
 
+  const defaultAccess = () => ({
+    assignedAt: new Date().toISOString(),
+    expiresAt: null as string | null,
+    quota: null as number | null,
+    usedQuota: 0,
+  });
+
+  /** Preserve API icon/iconUrl; only fall back to slug defaults when missing. */
+  const normalizeDashboardApp = (
+    app: AppWithAccess,
+    access?: AppWithAccess['access']
+  ): AppWithAccess => ({
+    ...app,
+    description: app.description || 'No description available',
+    icon: app.icon || getAppIcon(app.slug),
+    iconUrl: app.iconUrl,
+    color: app.color || getAppColor(app.slug),
+    isActive: app.isActive !== false,
+    createdAt: app.createdAt || new Date().toISOString(),
+    updatedAt: app.updatedAt || new Date().toISOString(),
+    access: access ?? app.access ?? defaultAccess(),
+  });
+
   const getApps = async (): Promise<AppWithAccess[]> => {
     try {
-      // Use exact same logic as /apps page - check role directly (case-sensitive)
       const userRole = user?.role;
-      
       let apps: AppWithAccess[] = [];
-      
+
       if (userRole === 'SUPER_ADMIN') {
-        // Super admins see all active apps
         const allApps = await apiClient.getApps();
         apps = allApps
-          .filter(app => app.isActive !== false)
-          .map(app => ({
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description || 'No description available',
-            icon: getAppIcon(app.slug),
-            color: getAppColor(app.slug),
-            isActive: app.isActive !== false,
-            systemApp: app.systemApp,
-            organizationId: app.organizationId,
-            createdAt: app.createdAt || new Date().toISOString(),
-            updatedAt: app.updatedAt || new Date().toISOString(),
-            access: {
-              assignedAt: new Date().toISOString(),
-              expiresAt: null,
-              quota: null,
-              usedQuota: 0
-            }
-          }));
+          .filter((app) => app.isActive !== false)
+          .map((app) => normalizeDashboardApp(app as AppWithAccess));
       } else if (userRole === 'ADMIN') {
-        // Admins see: system apps + organization apps + assigned apps
         const [allApps, assignedApps] = await Promise.all([
           apiClient.getApps(),
-          apiClient.getUserApps()
+          apiClient.getUserApps(),
         ]);
-        
-        // Get system apps (read-only, only if active)
+
         const systemApps = allApps
-          .filter(app => app.systemApp === true && app.isActive !== false)
-          .map(app => ({
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description || 'No description available',
-            icon: getAppIcon(app.slug),
-            color: getAppColor(app.slug),
-            isActive: app.isActive !== false,
-            systemApp: app.systemApp,
-            organizationId: app.organizationId,
-            createdAt: app.createdAt || new Date().toISOString(),
-            updatedAt: app.updatedAt || new Date().toISOString(),
-            access: {
-              assignedAt: new Date().toISOString(),
-              expiresAt: null,
-              quota: null,
-              usedQuota: 0
-            }
-          }));
-        
-        // Get organization apps (only active ones, belonging to user's organization)
+          .filter((app) => app.systemApp === true && app.isActive !== false)
+          .map((app) => normalizeDashboardApp(app as AppWithAccess));
+
         const organizationApps = allApps
-          .filter(app => {
-            const matches = app.organizationId === user.organizationId && app.isActive !== false;
-            return matches;
-          })
-          .map(app => ({
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description || 'No description available',
-            icon: getAppIcon(app.slug),
-            color: getAppColor(app.slug),
-            isActive: app.isActive !== false,
-            systemApp: app.systemApp,
-            organizationId: app.organizationId,
-            createdAt: app.createdAt || new Date().toISOString(),
-            updatedAt: app.updatedAt || new Date().toISOString(),
-            access: {
-              assignedAt: new Date().toISOString(),
-              expiresAt: null,
-              quota: null,
-              usedQuota: 0
-            }
-          }));
-        
-        // Get assigned apps (only active ones)
+          .filter(
+            (app) =>
+              app.organizationId === user.organizationId && app.isActive !== false
+          )
+          .map((app) => normalizeDashboardApp(app as AppWithAccess));
+
         const assignedActiveApps = assignedApps
-          .filter(app => app.isActive !== false)
-          .map(app => ({
-            id: app.id,
-            name: app.name,
-            slug: app.slug,
-            description: app.description || 'No description available',
-            icon: getAppIcon(app.slug),
-            color: getAppColor(app.slug),
-            isActive: app.isActive !== false,
-            systemApp: app.systemApp,
-            organizationId: app.organizationId,
-            createdAt: app.createdAt || new Date().toISOString(),
-            updatedAt: app.updatedAt || new Date().toISOString(),
-            access: {
-              assignedAt: app.access?.assignedAt || new Date().toISOString(),
-              expiresAt: app.access?.expiresAt || null,
-              quota: app.access?.quota || null,
-              usedQuota: app.access?.usedQuota || 0
-            }
-          }));
-        
-        // Combine and deduplicate by ID
-        const allUserApps = [...systemApps, ...organizationApps, ...assignedActiveApps];
+          .filter((app) => app.isActive !== false)
+          .map((app) => normalizeDashboardApp(app));
+
         const uniqueAppsMap = new Map<string, AppWithAccess>();
-        
-        allUserApps.forEach(app => {
+        [...systemApps, ...organizationApps, ...assignedActiveApps].forEach((app) => {
           if (!uniqueAppsMap.has(app.id)) {
             uniqueAppsMap.set(app.id, app);
           }
         });
-        
         apps = Array.from(uniqueAppsMap.values());
       } else {
-        // Regular users see only their assigned active apps
         const assignedApps = await apiClient.getUserApps();
-        
-        // Deduplicate apps by ID to prevent showing the same app multiple times
         const uniqueAppsMap = new Map<string, AppWithAccess>();
-        
+
         assignedApps
-          .filter(app => app.isActive !== false)
-          .forEach(app => {
-            // Skip if we've already processed this app ID
+          .filter((app) => app.isActive !== false)
+          .forEach((app) => {
             if (!uniqueAppsMap.has(app.id)) {
-              uniqueAppsMap.set(app.id, {
-                id: app.id,
-                name: app.name,
-                slug: app.slug,
-                description: app.description || 'No description available',
-                icon: getAppIcon(app.slug),
-                color: getAppColor(app.slug),
-                isActive: app.isActive !== false,
-                systemApp: app.systemApp,
-                organizationId: app.organizationId,
-                createdAt: app.createdAt || new Date().toISOString(),
-                updatedAt: app.updatedAt || new Date().toISOString(),
-                access: {
-                  assignedAt: app.access?.assignedAt || new Date().toISOString(),
-                  expiresAt: app.access?.expiresAt || null,
-                  quota: app.access?.quota || null,
-                  usedQuota: app.access?.usedQuota || 0
-                }
-              });
+              uniqueAppsMap.set(app.id, normalizeDashboardApp(app));
             }
           });
-        
+
         apps = Array.from(uniqueAppsMap.values());
       }
-      
+
       return apps;
     } catch (error) {
       console.error('Error fetching user apps:', error);
@@ -313,177 +245,197 @@ export default function UserDashboard({ user }: UserDashboardProps) {
 
   const handleAppAccess = async (app: AppWithAccess) => {
     try {
+      setLaunchingAppId(app.id);
       await launchAppWithFallback(app.slug);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error accessing app:', error);
-      alert(error?.message || `Failed to access ${app.name}. Please try again.`);
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Failed to access ${app.name}. Please try again.`;
+      alert(message);
+    } finally {
+      setLaunchingAppId(null);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner size="lg" />
-      </div>
+  const filteredApps = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter(
+      (app) =>
+        app.name.toLowerCase().includes(q) ||
+        app.slug.toLowerCase().includes(q) ||
+        (app.description?.toLowerCase().includes(q) ?? false)
     );
+  }, [apps, searchQuery]);
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
   }
 
+  const quickLinks = [
+    {
+      href: '/dashboard/profile',
+      label: 'Profile',
+      description: 'Update your account details',
+      icon: UserCircleIcon,
+    },
+    {
+      href: '/dashboard/settings',
+      label: 'Settings',
+      description: 'Preferences and security',
+      icon: Cog6ToothIcon,
+    },
+    {
+      href: '/dashboard/help',
+      label: 'Help & support',
+      description: 'Guides and documentation',
+      icon: QuestionMarkCircleIcon,
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {error && (
-        <Alert variant="error" className="mb-6">
-          {error}
+        <Alert variant="error">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={() => fetchDashboardData()}>
+              <ArrowPathIcon className="mr-1.5 h-4 w-4" />
+              Retry
+            </Button>
+          </div>
         </Alert>
       )}
 
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-8 border border-blue-200">
-        <div className="flex items-center space-x-4">
-          <div className="p-4 bg-blue-100 rounded-2xl">
-            <span className="text-4xl">🚀</span>
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome to {organization?.name || 'Your'} Workspace
-            </h1>
-            <p className="text-lg text-gray-600 mt-2">
-              Access your assigned apps and collaborate with your team
-            </p>
-          </div>
-        </div>
-      </div>
+      {organization && (
+        <p className="text-sm text-gray-500">
+          Organization:{' '}
+          <span className="font-medium text-gray-700">{organization.name}</span>
+        </p>
+      )}
 
-      {/* Apps Section */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Apps to Access</h2>
-            <p className="text-gray-600 mt-1">Access your assigned apps and tools</p>
-          </div>
-        </div>
-
-        {apps.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {apps.map((app) => (
-              <Card 
-                key={app.id} 
-                className="p-6 hover:shadow-lg transition-shadow group cursor-pointer"
-                onClick={() => handleAppAccess(app)}
-              >
-                <div className="flex items-center space-x-4">
-                  <AppIcon
-                    name={app.name}
-                    icon={app.icon}
-                    iconUrl={app.iconUrl}
-                    color={app.color}
-                    size="lg"
-                  />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                      {app.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {app.description}
-                    </p>
-                    <div className={`mt-2 px-3 py-1 rounded-full text-xs font-medium inline-block ${
-                      app.isActive
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {app.isActive ? 'Active' : 'Inactive'} 
-                      {/* Debug: {JSON.stringify({isActive: app.isActive, access: app.access})} */}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
-            <div className="text-6xl mb-4">📦</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No Apps Assigned
-            </h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              You don't have any apps assigned yet. Contact your administrator to get access to the tools you need for your work.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                onClick={() => alert('Contact admin feature coming soon!')}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <span className="mr-2">📧</span>
-                Request Access
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => alert('Help center coming soon!')}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                <span className="mr-2">❓</span>
-                Get Help
-              </Button>
-            </div>
-          </Card>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatsCard
+          title="Your apps"
+          value={stats.totalApps}
+          description="Assigned to you"
+        />
+        <StatsCard
+          title="Ready to open"
+          value={stats.activeApps}
+          description="Currently active"
+        />
+        {stats.totalQuota > 0 && (
+          <StatsCard
+            title="Usage"
+            value={`${stats.usedQuota}/${stats.totalQuota}`}
+            description="Quota consumed"
+          />
         )}
       </div>
 
-      {/* Analytics Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Usage Analytics */}
-        <Card className="p-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <span className="text-xl">📊</span>
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_280px]">
+        <section aria-labelledby="apps-heading">
+          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 id="apps-heading" className="text-lg font-semibold text-gray-900">
+                Your applications
+              </h2>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {apps.length === 0
+                  ? 'No apps assigned yet'
+                  : `${filteredApps.length} of ${apps.length} app${apps.length === 1 ? '' : 's'}`}
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Usage Analytics</h3>
+            {apps.length > 0 && (
+              <div className="relative w-full sm:max-w-xs">
+                <MagnifyingGlassIcon
+                  className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search apps..."
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  aria-label="Search applications"
+                />
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-1">Active Apps</h4>
-              <p className="text-2xl font-bold text-blue-600">{stats.activeApps}</p>
-              <p className="text-sm text-gray-600">Currently accessible</p>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-1">Total Apps</h4>
-              <p className="text-2xl font-bold text-green-600">{stats.totalApps}</p>
-              <p className="text-sm text-gray-600">Assigned to you</p>
-            </div>
-          </div>
-        </Card>
 
-        {/* Quick Actions */}
-        <Card className="p-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <span className="text-xl">⚡</span>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
-          </div>
-          <div className="space-y-3">
-            <Button
-              onClick={() => window.location.href = '/dashboard/profile'}
-              className="w-full justify-start bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-            >
-              <span className="mr-3">👤</span>
-              Update Profile
-            </Button>
-            <Button
-              onClick={() => window.location.href = '/dashboard/settings'}
-              className="w-full justify-start bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-            >
-              <span className="mr-3">⚙️</span>
-              Settings
-            </Button>
-            <Button
-              onClick={() => window.location.href = '/dashboard/help'}
-              className="w-full justify-start bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200"
-            >
-              <span className="mr-3">❓</span>
-              Get Help
-            </Button>
-          </div>
-        </Card>
+          {apps.length > 0 ? (
+            filteredApps.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredApps.map((app) => (
+                  <WorkspaceAppCard
+                    key={app.id}
+                    app={app}
+                    onOpen={handleAppAccess}
+                    isLaunching={launchingAppId === app.id}
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card className="p-8 text-center">
+                <Squares2X2Icon className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-sm text-gray-600">
+                  No apps match &ldquo;{searchQuery}&rdquo;. Try a different search.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setSearchQuery('')}
+                >
+                  Clear search
+                </Button>
+              </Card>
+            )
+          ) : (
+            <Card className="border-dashed p-10 text-center">
+              <Squares2X2Icon className="mx-auto h-12 w-12 text-gray-300" />
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">No apps assigned</h3>
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-600">
+                Your administrator has not assigned any applications yet. Contact them to
+                request access to the tools you need.
+              </p>
+              <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                <Button onClick={() => router.push('/dashboard/help')}>View help</Button>
+                <Button variant="outline" onClick={() => fetchDashboardData()}>
+                  <ArrowPathIcon className="mr-1.5 h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+            </Card>
+          )}
+        </section>
+
+        <aside className="space-y-4" aria-label="Quick links">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Quick links
+          </h2>
+          <nav className="space-y-2">
+            {quickLinks.map(({ href, label, description, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/30"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                  <Icon className="h-5 w-5" aria-hidden />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-gray-900">{label}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500">{description}</span>
+                </span>
+              </Link>
+            ))}
+          </nav>
+        </aside>
       </div>
     </div>
   );

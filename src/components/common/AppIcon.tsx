@@ -2,11 +2,30 @@
 
 import React from "react";
 
-const IMAGE_URL_PATTERN = /^(https?:\/\/|\/\/|data:image\/)/i;
+const ABSOLUTE_IMAGE_URL_PATTERN = /^(https?:\/\/|\/\/|data:image\/)/i;
+const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|ico)(\?.*)?$/i;
 
 export function isAppIconImageUrl(value?: string | null): boolean {
   if (!value?.trim()) return false;
-  return IMAGE_URL_PATTERN.test(value.trim());
+  const trimmed = value.trim();
+  if (ABSOLUTE_IMAGE_URL_PATTERN.test(trimmed)) return true;
+  if (trimmed.startsWith("/")) return true;
+  return IMAGE_EXTENSION_PATTERN.test(trimmed);
+}
+
+/** Resolve relative icon paths against the API origin (e.g. /uploads/...). */
+export function toAbsoluteAppIconUrl(url: string): string {
+  const trimmed = url.trim();
+  if (ABSOLUTE_IMAGE_URL_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/")) {
+    const base =
+      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    return `${String(base).replace(/\/$/, "")}${trimmed}`;
+  }
+  return trimmed;
 }
 
 export function resolveAppIconImageUrl(
@@ -14,10 +33,10 @@ export function resolveAppIconImageUrl(
   icon?: string | null
 ): string | null {
   if (iconUrl?.trim() && isAppIconImageUrl(iconUrl)) {
-    return iconUrl.trim();
+    return toAbsoluteAppIconUrl(iconUrl);
   }
   if (icon?.trim() && isAppIconImageUrl(icon)) {
-    return icon.trim();
+    return toAbsoluteAppIconUrl(icon);
   }
   return null;
 }

@@ -54,7 +54,7 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
 
   // For dashboard pages, show sidebar if user is admin
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Mobile sidebar */}
       <Transition.Root show={sidebarOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
@@ -129,27 +129,26 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
           onMenuClick={() => setSidebarOpen(true)} 
         />
         
-        <main className="py-6">
+        <main className="py-6 sm:py-8">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {/* Page Header */}
             {(title || subtitle || actions) && (
-              <div className="mb-8">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex-1">
+              <header className="mb-6 sm:mb-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0 flex-1">
                     {title && (
-                      <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+                      <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                        {title}
+                      </h1>
                     )}
                     {subtitle && (
-                      <p className="mt-2 text-lg text-gray-600">{subtitle}</p>
+                      <p className="mt-1.5 max-w-2xl text-sm text-gray-600 sm:text-base">
+                        {subtitle}
+                      </p>
                     )}
                   </div>
-                  {actions && (
-                    <div className="flex-shrink-0">
-                      {actions}
-                    </div>
-                  )}
+                  {actions && <div className="shrink-0">{actions}</div>}
                 </div>
-              </div>
+              </header>
             )}
             {children}
           </div>
