@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import apiClient, { User, LoginCredentials, RegisterData } from '../lib/api-client';
+import { clearSessionLocked, touchUserInteraction } from '../lib/session-lock-storage';
 
 interface AuthContextType {
   user: User | null;
@@ -112,6 +113,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
   // Trigger login success callback (for MFA flow)
   const triggerLoginSuccess = () => {
+    clearSessionLocked();
+    touchUserInteraction();
     if (onLoginSuccess) {
       onLoginSuccess();
     }
@@ -126,7 +129,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       // Fetch full user profile to get all required fields
       const fullUser = await apiClient.getCurrentUser();
       setUser(fullUser);
-      
+
+      clearSessionLocked();
+      touchUserInteraction();
+
       // Call success callback if provided
       onLoginSuccess?.();
     } catch (error) {

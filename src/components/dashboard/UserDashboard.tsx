@@ -7,6 +7,7 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
+import { AppIcon } from '@/components/common/AppIcon';
 
 interface App {
   id: string;
@@ -14,6 +15,7 @@ interface App {
   slug: string;
   description?: string;
   icon?: string;
+  iconUrl?: string;
   color?: string;
   url?: string;
   domain?: string;
@@ -369,15 +371,13 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                 onClick={() => handleAppAccess(app)}
               >
                 <div className="flex items-center space-x-4">
-                  <div 
-                    className="h-16 w-16 rounded-2xl flex items-center justify-center text-3xl"
-                    style={{ 
-                      backgroundColor: app.color + '15', 
-                      color: app.color
-                    }}
-                  >
-                    {app.icon}
-                  </div>
+                  <AppIcon
+                    name={app.name}
+                    icon={app.icon}
+                    iconUrl={app.iconUrl}
+                    color={app.color}
+                    size="lg"
+                  />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
                       {app.name}

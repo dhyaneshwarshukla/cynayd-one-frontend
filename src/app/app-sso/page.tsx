@@ -7,6 +7,7 @@ import { Card } from '@/components/common/Card';
 import { Alert } from '@/components/common/Alert';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { AppIcon } from '@/components/common/AppIcon';
 
 
 interface SSOValidationResult {
@@ -23,6 +24,7 @@ interface SSOValidationResult {
     slug: string;
     description?: string;
     icon?: string;
+    iconUrl?: string;
     color?: string;
     access?: {
       assignedAt: string;
@@ -192,12 +194,13 @@ function AppSSOContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-3">
-              <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-xl"
-                style={{ backgroundColor: currentApp.color || '#3B82F6' }}
-              >
-                {currentApp.icon || '📱'}
-              </div>
+              <AppIcon
+                name={currentApp.name}
+                icon={currentApp.icon}
+                iconUrl={currentApp.iconUrl}
+                color={currentApp.color}
+                size="sm"
+              />
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">
                   {currentApp.name}

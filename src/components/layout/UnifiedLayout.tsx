@@ -9,6 +9,7 @@ import { Button } from '../common/Button';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { BrandLink } from '../common/BrandLink';
 
 interface UnifiedLayoutProps {
   children: React.ReactNode;
@@ -99,12 +100,7 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
                 
                 <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-white px-6 pb-4">
                   <div className="flex h-16 shrink-0 items-center">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">C</span>
-                      </div>
-                      <span className="text-xl font-semibold">CYNAYD</span>
-                    </div>
+                    <BrandLink name="CYNAYD" />
                   </div>
                   <AdminNavigation variant="mobile" />
                 </div>
@@ -119,12 +115,7 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
         <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
           <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6 pb-4">
             <div className="flex h-16 shrink-0 items-center">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">C</span>
-                </div>
-                <span className="text-xl font-semibold">CYNAYD</span>
-              </div>
+              <BrandLink name="CYNAYD" />
             </div>
             <AdminNavigation variant="sidebar" />
           </div>

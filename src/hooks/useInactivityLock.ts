@@ -1,191 +1,139 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
+import {
+  touchUserInteraction,
+  getLastUserInteraction,
+  getMsSinceLastInteraction,
+} from '../lib/session-lock-storage';
 
 interface UseInactivityLockOptions {
-  inactivityTimeout?: number; // in milliseconds, default 5 minutes
+  inactivityTimeout?: number;
   onLock: () => void;
   enabled?: boolean;
 }
 
 /**
- * Hook to detect user inactivity and trigger lock screen
- * @param options Configuration options
- * @returns Object with lock state and methods
+ * Detects user inactivity and calls onLock. Parent owns lock UI state.
  */
 export function useInactivityLock({
-  inactivityTimeout = 5 * 60 * 1000, // 5 minutes default
+  inactivityTimeout = 5 * 60 * 1000,
   onLock,
   enabled = true,
 }: UseInactivityLockOptions) {
-  const [isLocked, setIsLocked] = useState(false);
-  const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const activityHandlersRef = useRef<Array<() => void>>([]);
-  const tabHiddenTimeRef = useRef<number | null>(null); // Track when tab was hidden
+  const onLockRef = useRef(onLock);
+  onLockRef.current = onLock;
 
-  const resetTimer = useCallback(() => {
-    if (!enabled || isLocked) return;
-
-    // Clear existing timer
+  const clearTimer = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
+  }, []);
 
-    // Update last activity
-    const now = Date.now();
-    setLastActivity(now);
+  const scheduleLock = useCallback(
+    (delayMs: number) => {
+      clearTimer();
+      if (delayMs <= 0) {
+        onLockRef.current();
+        return;
+      }
+      timeoutRef.current = setTimeout(() => {
+        onLockRef.current();
+      }, delayMs);
+    },
+    [clearTimer]
+  );
 
-    // Store in localStorage for persistence
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('lastActivity', now.toString());
-    }
+  const resetTimer = useCallback(() => {
+    if (!enabled) return;
 
-    // Set new timer
-    timeoutRef.current = setTimeout(() => {
-      console.log('⏰ Inactivity timeout reached, locking screen...');
-      setIsLocked(true);
-      onLock();
-    }, inactivityTimeout);
-  }, [enabled, inactivityTimeout, onLock, isLocked]);
+    touchUserInteraction();
+    scheduleLock(inactivityTimeout);
+  }, [enabled, inactivityTimeout, scheduleLock]);
 
   const unlock = useCallback(() => {
-    setIsLocked(false);
     resetTimer();
   }, [resetTimer]);
 
   const handleActivity = useCallback(() => {
-    if (!isLocked && enabled) {
+    if (enabled) {
       resetTimer();
     }
-  }, [isLocked, resetTimer, enabled]);
+  }, [enabled, resetTimer]);
 
   useEffect(() => {
     if (!enabled) {
-      // When disabled, ensure we're not locked and clear any timers
-      if (isLocked) {
-        setIsLocked(false);
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      clearTimer();
       return;
     }
 
-    // Restore last activity from localStorage
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('lastActivity');
-      if (stored) {
-        const storedTime = parseInt(stored, 10);
-        const timeSinceActivity = Date.now() - storedTime;
-        
-        // If more than inactivity timeout has passed, lock immediately
-        if (timeSinceActivity >= inactivityTimeout) {
-          setIsLocked(true);
-          onLock();
-        } else {
-          // Otherwise, set timer for remaining time
-          setLastActivity(storedTime);
-          timeoutRef.current = setTimeout(() => {
-            setIsLocked(true);
-            onLock();
-          }, inactivityTimeout - timeSinceActivity);
-        }
+    const last = getLastUserInteraction();
+    if (last !== null) {
+      const elapsed = Date.now() - last;
+      if (elapsed >= inactivityTimeout) {
+        onLockRef.current();
       } else {
-        // No stored activity, start fresh
-        resetTimer();
+        scheduleLock(inactivityTimeout - elapsed);
       }
+    } else {
+      touchUserInteraction();
+      scheduleLock(inactivityTimeout);
     }
 
-    // Activity event listeners - use document instead of window for better coverage
     const events = [
       'mousedown',
       'mousemove',
-      'keydown', // Changed from keypress for better detection
+      'keydown',
       'keypress',
       'scroll',
       'touchstart',
       'click',
-      'wheel', // Added wheel event
+      'wheel',
     ];
 
-    const activityHandlers = events.map((event) => {
-      const handler = () => {
-        if (enabled && !isLocked) {
-          handleActivity();
-        }
-      };
-      // Use document for better event capture
+    const handlers = events.map((event) => {
+      const handler = () => handleActivity();
       document.addEventListener(event, handler, { passive: true });
-      return handler;
+      return { event, handler };
     });
 
-    activityHandlersRef.current = activityHandlers;
-
-    // Handle tab visibility changes (user switching tabs/windows)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        // Tab became hidden - pause timer and record time
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-          timeoutRef.current = null;
+        clearTimer();
+      } else {
+        const msSince = getMsSinceLastInteraction();
+        if (msSince === null) {
+          resetTimer();
+        } else if (msSince >= inactivityTimeout) {
+          onLockRef.current();
+        } else {
+          scheduleLock(inactivityTimeout - msSince);
         }
-        tabHiddenTimeRef.current = Date.now();
-        console.log('👁️ Tab hidden - timer paused');
-      } else if (document.visibilityState === 'visible' && !isLocked) {
-        // Tab became visible - check if we should lock
-        console.log('👁️ Tab visible - checking activity');
-        
-        if (typeof window !== 'undefined') {
-          const stored = localStorage.getItem('lastActivity');
-          if (stored) {
-            const storedTime = parseInt(stored, 10);
-            const timeSinceActivity = Date.now() - storedTime;
-            
-            // If more than inactivity timeout has passed, lock immediately
-            if (timeSinceActivity >= inactivityTimeout) {
-              console.log('🔒 Locking due to inactivity while tab was hidden');
-              setIsLocked(true);
-              onLock();
-            } else {
-              // Resume timer with remaining time
-              const remainingTime = inactivityTimeout - timeSinceActivity;
-              console.log(`⏰ Resuming timer - ${Math.round(remainingTime / 1000)}s remaining`);
-              timeoutRef.current = setTimeout(() => {
-                setIsLocked(true);
-                onLock();
-              }, remainingTime);
-            }
-          } else {
-            // No stored activity, start fresh
-            resetTimer();
-          }
-        }
-        
-        tabHiddenTimeRef.current = null;
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      // Cleanup
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      activityHandlers.forEach((handler, index) => {
-        document.removeEventListener(events[index], handler);
+      clearTimer();
+      handlers.forEach(({ event, handler }) => {
+        document.removeEventListener(event, handler);
       });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [enabled, inactivityTimeout, onLock, handleActivity, resetTimer, isLocked]);
+  }, [
+    enabled,
+    inactivityTimeout,
+    handleActivity,
+    resetTimer,
+    scheduleLock,
+    clearTimer,
+  ]);
 
   return {
-    isLocked,
     unlock,
-    lastActivity,
     resetTimer: handleActivity,
   };
 }
-

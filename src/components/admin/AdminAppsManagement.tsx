@@ -7,6 +7,7 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
+import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { apiClient, App } from '@/lib/api-client';
 import { filterOrgScopedApps } from '@/lib/app-scope';
@@ -114,6 +115,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     slug: '',
     description: '',
     icon: '📱',
+    iconUrl: '',
     color: '#3B82F6',
     url: '',
     domain: '',
@@ -128,6 +130,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     slug: '',
     description: '',
     icon: '📱',
+    iconUrl: '',
     color: '#3B82F6',
     url: '',
     domain: '',
@@ -237,6 +240,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
         slug: newApp.slug,
         description: newApp.description,
         icon: newApp.icon,
+        iconUrl: newApp.iconUrl || undefined,
         color: newApp.color,
         url: newApp.url,
         domain: newApp.domain,
@@ -252,7 +256,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
       });
       
       setShowCreateAppModal(false);
-      setNewApp({ name: '', slug: '', description: '', icon: '📱', color: '#3B82F6', url: '', domain: '', samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' });
+      setNewApp({ name: '', slug: '', description: '', icon: '📱', iconUrl: '', color: '#3B82F6', url: '', domain: '', samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' });
       fetchData();
       notify('success', `App created successfully${hadSaml ? ' with SAML configured' : ''}!`);
     } catch (err: any) {
@@ -390,6 +394,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
       slug: app.slug,
       description: app.description || '',
       icon: app.icon || '📱',
+      iconUrl: app.iconUrl || '',
       color: app.color || '#3B82F6',
       url: app.url || '',
       domain: app.domain || '',
@@ -889,12 +894,14 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   {orgVisibleApps.slice(0, 3).map((app) => (
                     <div key={app.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center">
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm"
-                          style={{ backgroundColor: app.color || '#3b82f6' }}
-                        >
-                          {app.icon || '📱'}
-                        </div>
+                        <AppIcon
+                          name={app.name}
+                          icon={app.icon}
+                          iconUrl={app.iconUrl}
+                          color={app.color}
+                          size="xs"
+                          className="mr-3"
+                        />
                         <span className="text-sm font-medium text-gray-900">{app.name}</span>
                       </div>
                       <span className={`text-sm font-medium ${
@@ -978,12 +985,13 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                 <Card key={app.id} className="p-6 hover:shadow-lg transition-all duration-200">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center">
-                      <div 
-                        className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-lg"
-                        style={{ backgroundColor: app.color }}
-                      >
-                        {app.icon}
-                      </div>
+                      <AppIcon
+                        name={app.name}
+                        icon={app.icon}
+                        iconUrl={app.iconUrl}
+                        color={app.color}
+                        size="md"
+                      />
                       <div className="ml-3">
                         <h3 className="text-lg font-semibold text-gray-900">{app.name}</h3>
                         <p className="text-sm text-gray-500">{app.slug}</p>
@@ -1302,12 +1310,14 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
-                                <div
-                                  className="w-6 h-6 rounded flex items-center justify-center text-white text-xs mr-2 shrink-0"
-                                  style={{ backgroundColor: access.app?.color || '#3b82f6' }}
-                                >
-                                  {access.app?.icon || '📱'}
-                                </div>
+                                <AppIcon
+                                  name={access.app?.name || 'App'}
+                                  icon={access.app?.icon}
+                                  iconUrl={access.app?.iconUrl}
+                                  color={access.app?.color}
+                                  size="xs"
+                                  className="mr-2 rounded"
+                                />
                                 <span className="text-sm font-medium text-gray-900">{access.app?.name}</span>
                               </div>
                             </td>
@@ -1439,10 +1449,16 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   placeholder="Enter app description"
                 />
                 <Input
-                  label="Icon"
+                  label="Icon (emoji)"
                   value={newApp.icon}
                   onChange={(e) => setNewApp({ ...newApp, icon: e.target.value })}
-                  placeholder="Enter icon (emoji or text)"
+                  placeholder="e.g. 📱"
+                />
+                <Input
+                  label="Icon image URL"
+                  value={newApp.iconUrl}
+                  onChange={(e) => setNewApp({ ...newApp, iconUrl: e.target.value })}
+                  placeholder="https://example.com/icon.png"
                 />
                 <Input
                   label="Color"
@@ -1557,10 +1573,16 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   placeholder="Enter app description"
                 />
                 <Input
-                  label="Icon"
+                  label="Icon (emoji)"
                   value={editApp.icon}
                   onChange={(e) => setEditApp({ ...editApp, icon: e.target.value })}
-                  placeholder="Enter icon (emoji or text)"
+                  placeholder="e.g. 📱"
+                />
+                <Input
+                  label="Icon image URL"
+                  value={editApp.iconUrl}
+                  onChange={(e) => setEditApp({ ...editApp, iconUrl: e.target.value })}
+                  placeholder="https://example.com/icon.png"
                 />
                 <Input
                   label="Color"

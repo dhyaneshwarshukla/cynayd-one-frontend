@@ -2,65 +2,44 @@
 
 ## Quick Test (30 seconds)
 
-To test the lock screen quickly, temporarily change the timeout in `SessionLockProvider.tsx`:
+Temporarily change the timeout in `SessionLockProvider.tsx`:
 
 ```typescript
-// Change this line:
-inactivityTimeout: 5 * 60 * 1000, // 5 minutes
-
-// To this (30 seconds for testing):
-inactivityTimeout: 30 * 1000, // 30 seconds
+const INACTIVITY_TIMEOUT_MS = 30 * 1000; // 30 seconds for testing
 ```
 
-Then:
-1. Login to the portal
-2. Set up a PIN (if not already set)
-3. Wait 30 seconds without moving mouse/keyboard
-4. Lock screen should appear
+Then: login, set PIN, wait 30s without input — lock screen should appear.
 
-## Browser Console Test
+## Force lock (no PIN / persisted session lock)
 
-Open browser console and run:
+Browser console:
 
 ```javascript
-// Check if inactivity lock is active
-console.log('Last Activity:', localStorage.getItem('lastActivity'));
-
-// Manually trigger lock (for testing)
-// This will lock the screen immediately
-window.dispatchEvent(new Event('test-lock'));
+sessionStorage.setItem('sessionLocked', 'true');
+location.reload();
 ```
 
-## Verify Activity Detection
+## Force lock timing (inactivity)
 
-Check if events are being captured:
+Set last user interaction to 6 minutes ago:
 
 ```javascript
-// Monitor activity
-let activityCount = 0;
-document.addEventListener('mousemove', () => {
-  activityCount++;
-  console.log('Activity detected:', activityCount);
-});
+localStorage.setItem('lastUserInteraction', (Date.now() - 6 * 60 * 1000).toString());
+location.reload();
 ```
 
-## Check Lock State
+If PIN is enabled, lock screen still appears on reload even without the above (always require PIN on refresh).
+
+## Check storage
 
 ```javascript
-// In browser console, check localStorage
-console.log('Last Activity:', localStorage.getItem('lastActivity'));
-console.log('Time since activity:', Date.now() - parseInt(localStorage.getItem('lastActivity') || '0'));
+console.log('sessionLocked', sessionStorage.getItem('sessionLocked'));
+console.log('lastUserInteraction', localStorage.getItem('lastUserInteraction'));
 ```
 
-## Force Lock (for testing)
-
-Add this to browser console:
+## Verify activity detection
 
 ```javascript
-// Force lock screen
-localStorage.setItem('lastActivity', (Date.now() - 6 * 60 * 1000).toString());
-window.location.reload();
+let n = 0;
+document.addEventListener('mousemove', () => { n++; console.log('activity', n); });
 ```
-
-This sets last activity to 6 minutes ago, so on reload it will lock immediately.
-

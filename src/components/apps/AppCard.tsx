@@ -4,6 +4,7 @@ import React from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { AppWithAccess } from '@/lib/api-client';
+import { AppIcon } from '@/components/common/AppIcon';
 import {
   ArrowTopRightOnSquareIcon,
   ClockIcon,
@@ -42,14 +43,14 @@ export const AppCard: React.FC<AppCardProps> = ({
       {/* App Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-lg group-hover:scale-110 transition-transform duration-200"
-            style={{ backgroundColor: app.color || '#3b82f6' }}
-            role="img"
-            aria-label={`${app.name} icon`}
-          >
-            {app.icon || '📱'}
-          </div>
+          <AppIcon
+            name={app.name}
+            icon={app.icon}
+            iconUrl={app.iconUrl}
+            color={app.color}
+            size="md"
+            className="group-hover:scale-110 transition-transform duration-200"
+          />
           <div className="ml-3">
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
               {app.name}

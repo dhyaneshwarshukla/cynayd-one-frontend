@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
+import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 
 interface App {
@@ -14,6 +15,7 @@ interface App {
   slug: string;
   description?: string;
   icon?: string;
+  iconUrl?: string;
   color?: string;
   url?: string;
   domain?: string;
@@ -139,14 +141,14 @@ export default function ProductsPage() {
               <Card key={app.id} className="p-6 hover:shadow-lg transition-shadow">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center">
-                    {app.icon && (
-                      <div 
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-xl mr-3"
-                        style={{ backgroundColor: app.color || '#3b82f6' }}
-                      >
-                        {app.icon}
-                      </div>
-                    )}
+                    <AppIcon
+                      name={app.name}
+                      icon={app.icon}
+                      iconUrl={app.iconUrl}
+                      color={app.color}
+                      size="sm"
+                      className="mr-3"
+                    />
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">
                         {app.name}

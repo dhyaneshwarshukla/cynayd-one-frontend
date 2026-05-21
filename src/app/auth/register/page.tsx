@@ -1,6 +1,7 @@
 "use client";
 
 import { RegisterForm } from '@/components/auth/RegisterForm';
+import { BrandLink } from '@/components/common/BrandLink';
 
 export default function RegisterPage() {
   return (
@@ -9,12 +10,7 @@ export default function RegisterPage() {
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">C</span>
-              </div>
-              <span className="text-xl font-bold text-gray-900">CYNAYD</span>
-            </div>
+            <BrandLink name="CYNAYD" />
             <div className="text-sm text-gray-600">
               Enterprise Platform
             </div>

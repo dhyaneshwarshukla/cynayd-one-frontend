@@ -6,6 +6,7 @@ import { Button } from '../common/Button';
 import { Menu } from '@headlessui/react';
 import { BellIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
+import { BrandLink } from '../common/BrandLink';
 
 interface UniversalHeaderProps {
   onMenuClick?: () => void;
@@ -28,15 +29,8 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
     <header className={`sticky top-0 z-50 ${isLanding ? 'bg-white/80 backdrop-blur-md' : 'bg-white'} shadow-sm border-b`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo/Brand */}
-          <div className="flex items-center">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">C</span>
-              </div>
-              <h1 className="text-xl font-bold text-gray-900">CYNAYD One</h1>
-            </div>
-          </div>
+          {/* Logo/Brand — home */}
+          <BrandLink />
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
@@ -48,9 +42,11 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                 <a href="/dashboard/profile" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                   Profile
                 </a>
-                <a href="/admin/apps" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                  Apps
-                </a>
+                {isAdmin && (
+                  <a href="/admin/apps" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Apps
+                  </a>
+                )}
                 {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                   <>
                     <a href="/audit" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">

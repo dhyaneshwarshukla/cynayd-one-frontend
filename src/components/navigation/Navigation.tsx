@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../common/Button';
+import { BrandLink } from '../common/BrandLink';
 
 const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): boolean => {
   // Map permissions to roles that can access them
@@ -37,10 +38,7 @@ export const Navigation: React.FC = () => {
     <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo/Brand */}
-          <div className="flex items-center">
-            <h1 className="text-xl font-bold text-gray-900">CYNAYD One</h1>
-          </div>
+          <BrandLink />
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">

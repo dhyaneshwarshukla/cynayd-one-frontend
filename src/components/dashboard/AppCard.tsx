@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 
 export interface App {
   id: string;
@@ -8,6 +9,7 @@ export interface App {
   slug: string;
   description?: string;
   icon?: string;
+  iconUrl?: string;
   color?: string;
   isActive: boolean;
   createdAt: string;
@@ -75,17 +77,13 @@ export const AppCard: React.FC<AppCardProps> = ({
     <Card className={`p-6 hover:shadow-xl transition-all duration-300 border-2 hover:border-blue-200 ${className}`}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          {app.icon && (
-            <div 
-              className="text-3xl p-3 rounded-xl shadow-sm"
-              style={{ 
-                backgroundColor: app.color ? `${app.color}15` : '#f3f4f6',
-                border: `2px solid ${app.color ? `${app.color}30` : '#e5e7eb'}`
-              }}
-            >
-              {app.icon}
-            </div>
-          )}
+          <AppIcon
+            name={app.name}
+            icon={app.icon}
+            iconUrl={app.iconUrl}
+            color={app.color}
+            size="md"
+          />
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900 mb-1">{app.name}</h3>
             {app.description && (

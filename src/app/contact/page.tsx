@@ -104,15 +104,15 @@ export default function ContactPage() {
             icon="📧"
             title="Email us"
             description="Reach our team directly. We typically respond within one business day."
-            actionLabel="support@cynayd.com"
-            href="mailto:support@cynayd.com"
+            actionLabel="contact[@]cynayd[.]com"
+            href="mailto:contact[@]cynayd[.]com"
           />
           <ContactCard
             icon="💼"
             title="Sales"
             description="Questions about plans, enterprise SSO, or custom deployments."
-            actionLabel="sales@cynayd.com"
-            href="mailto:sales@cynayd.com"
+            actionLabel="sales[@]cynayd[.]com"
+            href="mailto:sales[@]cynayd[.]com"
           />
           <ContactCard
             icon="🔐"
@@ -130,11 +130,11 @@ export default function ContactPage() {
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-gray-600">Monday – Friday</dt>
-                  <dd className="font-medium text-gray-900">9:00 AM – 6:00 PM IST</dd>
+                  <dd className="font-medium text-gray-900">10:00 AM – 7:00 PM IST</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-gray-600">Saturday</dt>
-                  <dd className="font-medium text-gray-900">10:00 AM – 4:00 PM IST</dd>
+                  <dd className="font-medium text-gray-900">10:00 AM – 2:00 PM IST</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-gray-600">Sunday</dt>

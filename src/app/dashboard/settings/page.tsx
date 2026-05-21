@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useSessionLock } from '@/contexts/SessionLockContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
 import { PINSetupModal } from '@/components/auth/PINSetupModal';
@@ -50,6 +51,7 @@ interface UserSettings {
 
 function SettingsPageContent() {
   const { user, isAuthenticated } = useAuth();
+  const { notifyPinSetupComplete } = useSessionLock();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('general');
   const [showMFASetup, setShowMFASetup] = useState(false);
@@ -195,17 +197,8 @@ function SettingsPageContent() {
   };
 
   const handlePINSetupSuccess = async () => {
-    // Refresh PIN status
     await fetchPINStatus();
-    
-    // Update activity to unlock session if it was locked
-    try {
-      await apiClient.updateActivity();
-      localStorage.setItem('lastActivity', Date.now().toString());
-    } catch (error) {
-      console.error('Failed to update activity:', error);
-    }
-    await fetchPINStatus();
+    notifyPinSetupComplete();
     setShowPINSetup(false);
     setIsUpdatingPIN(false);
   };

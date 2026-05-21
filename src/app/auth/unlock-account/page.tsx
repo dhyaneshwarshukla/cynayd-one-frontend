@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { Card } from '@/components/common/Card';
+import { BrandLink } from '@/components/common/BrandLink';
 import { apiClient } from '@/lib/api-client';
 
 function UnlockAccountContent() {
@@ -42,6 +43,9 @@ function UnlockAccountContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
+        <div className="flex justify-center">
+          <BrandLink variant="compact" name="CYNAYD" />
+        </div>
         <Card className="p-8 text-center">
           {status === 'unlocking' && (
             <>

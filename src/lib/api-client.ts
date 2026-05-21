@@ -5,6 +5,7 @@ export interface App {
   slug: string;
   description?: string;
   icon?: string;
+  iconUrl?: string;
   color?: string;
   url?: string;
   domain?: string;
@@ -1501,6 +1502,7 @@ class ApiClient {
     slug: string;
     description?: string;
     icon?: string;
+    iconUrl?: string;
     color?: string;
     url?: string;
     domain?: string;
