@@ -1,21 +1,9 @@
 /** @type {import('next').NextConfig} */
-const isDockerBuild = process.env.DOCKER_BUILD === 'true';
-
 const nextConfig = {
-  output: isDockerBuild ? 'standalone' : 'export',
-
-  trailingSlash: !isDockerBuild,
-  skipTrailingSlashRedirect: !isDockerBuild,
-
-  ...(isDockerBuild
-    ? {}
-    : {
-        distDir: 'out',
-      }),
+  output: 'standalone',
 
   images: {
     domains: ['localhost', 'ui-avatars.com'],
-    unoptimized: !isDockerBuild,
   },
 
   env: {
