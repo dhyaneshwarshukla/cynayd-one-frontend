@@ -13,6 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LoginCredentials } from '../../lib/api-client';
 import { MFAVerificationModal } from './MFAVerificationModal';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield } from 'lucide-react';
+import { LegalFooterLinks } from '../legal/LegalFooterLinks';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -524,6 +525,8 @@ export const LoginForm: React.FC = () => {
             </a>
           </p>
         </div>
+
+        <LegalFooterLinks className="mt-6 pt-6 border-t border-gray-100" />
       </Card>
 
       {/* MFA Verification Modal */}

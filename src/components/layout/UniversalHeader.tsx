@@ -66,10 +66,14 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
               </>
             ) : (
               <>
-                <a href="/#apps" className="text-gray-600 hover:text-gray-900 transition-colors">Apps</a>
-                <a href="/#features" className="text-gray-600 hover:text-gray-900 transition-colors">Features</a>
-                <a href="/#pricing" className="text-gray-600 hover:text-gray-900 transition-colors">Pricing</a>
-                <a href="/contact" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
+                <a href="/#apps" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Products</a>
+                <a href="/#benefits" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Solutions</a>
+                <a href="/#ai" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">AI</a>
+                <a href="/#enterprise" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Enterprise</a>
+                <a href="/#developers" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Developers</a>
+                <a href="/#pricing" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Pricing</a>
+                <a href="/api-docs" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Docs</a>
+                <a href="/contact" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">Contact</a>
               </>
             )}
           </div>
@@ -260,17 +264,11 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
               </>
             ) : (
               <>
-                <a
-                  href="/contact"
-                  className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Contact Us
-                </a>
                 <Button asChild variant="outline">
                   <a href="/auth/login">Login</a>
                 </Button>
                 <Button asChild>
-                  <a href="/auth/register">Get Started</a>
+                  <a href="/auth/register">Start Free</a>
                 </Button>
               </>
             )}

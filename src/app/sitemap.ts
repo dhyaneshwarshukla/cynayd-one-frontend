@@ -9,6 +9,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '/api-docs',
     '/auth/login',
     '/auth/register',
+    '/privacy',
+    '/terms',
+    '/acceptable-use',
+    '/dpa',
+    '/cookies',
   ];
 
   return routes.map((route) => ({

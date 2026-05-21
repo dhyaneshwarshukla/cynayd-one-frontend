@@ -628,16 +628,28 @@ export const RegisterForm: React.FC = () => {
               className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               required
             />
-            <label htmlFor="terms" className="text-sm text-gray-700">
+            <label htmlFor="terms" className="text-sm text-gray-700 leading-relaxed">
               I agree to the{' '}
-              <a href="/terms" className="text-blue-600 hover:text-blue-500 font-medium">
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500 font-medium">
                 Terms of Service
-              </a>{' '}
-              and{' '}
-              <a href="/privacy" className="text-blue-600 hover:text-blue-500 font-medium">
+              </a>
+              ,{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500 font-medium">
                 Privacy Policy
               </a>
-              . I understand that my organization data will be processed according to enterprise security standards.
+              , and{' '}
+              <a href="/acceptable-use" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500 font-medium">
+                Acceptable Use Policy
+              </a>
+              . I acknowledge the{' '}
+              <a href="/dpa" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500 font-medium">
+                Data Processing Agreement
+              </a>{' '}
+              applies to organization data and the{' '}
+              <a href="/cookies" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-500 font-medium">
+                Cookie Policy
+              </a>{' '}
+              describes how we use cookies.
             </label>
           </div>
 

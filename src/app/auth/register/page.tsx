@@ -2,6 +2,7 @@
 
 import { RegisterForm } from '@/components/auth/RegisterForm';
 import { BrandLink } from '@/components/common/BrandLink';
+import { LegalFooterLinks } from '@/components/legal/LegalFooterLinks';
 
 export default function RegisterPage() {
   return (
@@ -12,7 +13,7 @@ export default function RegisterPage() {
           <div className="flex justify-between items-center py-4">
             <BrandLink name="CYNAYD" />
             <div className="text-sm text-gray-600">
-              Enterprise Platform
+              AI Workspace Platform
             </div>
           </div>
         </div>
@@ -24,37 +25,36 @@ export default function RegisterPage() {
           {/* Hero Section */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              Join the <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">CYNAYD One</span> Business Ecosystem
+              Start your <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">CYNAYD One</span> workspace
             </h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Transform your business with our complete platform. Get built-in HR, secure communication, 
-              cloud storage, video conferencing, custom app integration, and website generation - 
-              all secured with enterprise-grade SSO.
+              Mail, drive, calendar, meetings, tasks and team collaboration in one secure AI-powered
+              workspace — with enterprise SSO and optional self-hosting.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm text-gray-500">
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                4+ Built-in Business Apps
+                Unified workspace apps
               </div>
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Custom App Integration
+                AI inside workflows
               </div>
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Website Generation
+                Self-hosted or cloud
               </div>
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Enterprise Security
+                Enterprise SSO
               </div>
             </div>
           </div>
@@ -67,73 +67,24 @@ export default function RegisterPage() {
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">What You Get</h3>
                 <div className="space-y-3">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
+                  {[
+                    { name: "Mail", desc: "AI summaries & smart actions", color: "bg-emerald-600" },
+                    { name: "Drive", desc: "Files & collaboration", color: "bg-violet-600" },
+                    { name: "Calendar", desc: "Scheduling & workflows", color: "bg-sky-600" },
+                    { name: "Connect", desc: "Team communication", color: "bg-rose-600" },
+                    { name: "Tasks", desc: "Work management", color: "bg-amber-600" },
+                    { name: "Meetings", desc: "Integrated video calls", color: "bg-cyan-600" },
+                  ].map((app) => (
+                    <div key={app.name} className="flex items-center">
+                      <div className={`w-8 h-8 ${app.color} rounded-lg flex items-center justify-center mr-3`}>
+                        <span className="text-white text-xs font-bold">{app.name.charAt(0)}</span>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900 text-sm">CYNAYD One {app.name}</h4>
+                        <p className="text-xs text-gray-500">{app.desc}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">HR Management</h4>
-                      <p className="text-xs text-gray-500">Employee management & payroll</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Secure Mail</h4>
-                      <p className="text-xs text-gray-500">Enterprise email & collaboration</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Cloud Drive</h4>
-                      <p className="text-xs text-gray-500">Secure storage & sync</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Connect</h4>
-                      <p className="text-xs text-gray-500">HD video conferencing</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Custom Apps</h4>
-                      <p className="text-xs text-gray-500">SSO integration</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-pink-600 rounded-lg flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Websites</h4>
-                      <p className="text-xs text-gray-500">Business site generation</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -148,8 +99,8 @@ export default function RegisterPage() {
                       </svg>
                     </div>
                     <div>
-                      <h4 className="font-medium text-gray-900 text-sm">Complete Platform</h4>
-                      <p className="text-xs text-gray-500">Everything in one place</p>
+                      <h4 className="font-medium text-gray-900 text-sm">Unified Workspace</h4>
+                      <p className="text-xs text-gray-500">One platform, no app switching</p>
                     </div>
                   </div>
                   <div className="flex items-start">
@@ -213,7 +164,7 @@ export default function RegisterPage() {
                       </div>
                     </div>
                     <p className="text-xs text-gray-600 italic">
-                      "The website generation feature was a game-changer. We launched our corporate site in minutes."
+                      "Mail-to-task and AI summaries cut our daily coordination time significantly."
                     </p>
                     <div className="flex text-yellow-400 mt-2">
                       {[...Array(5)].map((_, i) => (
@@ -257,12 +208,14 @@ export default function RegisterPage() {
           </div>
 
           {/* Footer */}
-          <div className="text-center mt-8 text-sm text-gray-500">
-            <p>Already have an organization account? 
-              <a href="/auth/login" className="text-blue-600 hover:text-blue-500 font-medium ml-1">
+          <div className="text-center mt-8 space-y-4">
+            <p className="text-sm text-gray-500">
+              Already have an organization account?{' '}
+              <a href="/auth/login" className="text-blue-600 hover:text-blue-500 font-medium">
                 Sign in to your dashboard
               </a>
             </p>
+            <LegalFooterLinks />
           </div>
         </div>
       </div>

@@ -4,8 +4,9 @@ import type { Metadata } from "next";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const siteName = "CYNAYD One";
-const defaultTitle = "CYNAYD One - Complete Business Ecosystem";
-const defaultDescription = "Transform your business with our comprehensive corporate platform. Manage your entire organization with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, and business website generation - all secured with enterprise-grade SSO, advanced security, and seamless payment processing.";
+const defaultTitle = "CYNAYD One — AI Workspace & Business Productivity Platform";
+const defaultDescription =
+  "CYNAYD One combines mail, drive, calendar, meetings, tasks and collaboration tools into one secure AI-powered workspace. Built for modern collaborative workflows with integrated AI.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -15,26 +16,23 @@ export const metadata: Metadata = {
   },
   description: defaultDescription,
   keywords: [
-    "business platform",
-    "enterprise software",
+    "AI workspace",
+    "business productivity platform",
+    "team collaboration",
+    "enterprise email",
+    "cloud drive",
+    "workflow automation",
     "SAML SSO",
-    "HR management",
-    "cloud storage",
-    "video conferencing",
-    "business website builder",
+    "self-hosted workspace",
+    "task management",
+    "video meetings",
+    "secure vault",
+    "forms automation",
     "enterprise security",
     "single sign-on",
-    "business ecosystem",
-    "corporate platform",
     "SaaS platform",
-    "business management",
-    "enterprise authentication",
-    "device trust",
-    "risk-based authentication",
-    "audit logging",
-    "Razorpay integration",
-    "business apps",
-    "custom app integration",
+    "REST API",
+    "webhooks",
   ],
   authors: [{ name: "CYNAYD" }],
   creator: "CYNAYD",
@@ -62,7 +60,7 @@ export const metadata: Metadata = {
         url: `${siteUrl}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: "CYNAYD One - Complete Business Ecosystem",
+        alt: "CYNAYD One — AI Workspace & Business Productivity Platform",
       },
     ],
   },

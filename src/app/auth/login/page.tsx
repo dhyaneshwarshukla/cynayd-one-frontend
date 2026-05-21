@@ -111,6 +111,13 @@ export default function LoginPage() {
           <div className="fade-in-up">
             <LoginForm />
           </div>
+
+          <p className="mt-6 text-center text-xs text-gray-500">
+            By signing in, you agree to our{' '}
+            <a href="/terms" className="text-blue-600 hover:text-blue-700 font-medium">Terms</a>
+            {' '}and{' '}
+            <a href="/privacy" className="text-blue-600 hover:text-blue-700 font-medium">Privacy Policy</a>.
+          </p>
         </div>
       </div>
     </div>
