@@ -1,3 +1,5 @@
+import type { PinLock } from './api-client';
+
 /**
  * Client-side session lock persistence.
  * - sessionLocked (sessionStorage): survives reload for no-PIN inactivity lock
@@ -54,7 +56,24 @@ export function clearAllSessionLockData(): void {
   localStorage.removeItem(LEGACY_LAST_ACTIVITY_KEY);
 }
 
-/** Lock on load when PIN is enabled (always) or session was locked without PIN */
+/** Server says PIN unlock is required (JWT pinVerifiedAt / cookie / lastActivity). */
+export function isPinLockedOnServer(pinLock: PinLock | null | undefined): boolean {
+  return !!pinLock?.requiresPin && !pinLock.unlocked;
+}
+
+/** Show PIN lock screen: server requires unlock or client inactivity marked lock. */
+export function shouldShowPinLockScreen(pinLock: PinLock | null | undefined): boolean {
+  if (!pinLock?.requiresPin) return false;
+  return isPinLockedOnServer(pinLock) || isSessionLocked();
+}
+
+/** Show no-PIN overlay after inactivity when user has not set up PIN. */
+export function shouldShowNoPinLockOverlay(pinLock: PinLock | null | undefined): boolean {
+  if (pinLock?.requiresPin) return false;
+  return isSessionLocked();
+}
+
+/** @deprecated Use shouldShowPinLockScreen / shouldShowNoPinLockOverlay with server pinLock */
 export function shouldLockOnInitialLoad(pinEnabled: boolean): boolean {
   return pinEnabled || isSessionLocked();
 }

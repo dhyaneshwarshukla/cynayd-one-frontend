@@ -16,7 +16,7 @@ export function NoPinLockOverlay({ onPinEnabled, onLogout }: NoPinLockOverlayPro
     const interval = setInterval(async () => {
       try {
         const status = await apiClient.getPINStatus();
-        if (status.pinEnabled) {
+        if (status.requiresPin || status.pinEnabled) {
           onPinEnabled();
         }
       } catch {

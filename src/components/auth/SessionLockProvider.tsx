@@ -1,18 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInactivityLock } from '../../hooks/useInactivityLock';
 import { LockScreen } from './LockScreen';
 import { NoPinLockOverlay } from './NoPinLockOverlay';
 import { SessionLockProviderBridge } from '../../contexts/SessionLockContext';
-import apiClient from '../../lib/api-client';
+import apiClient, { type PinLock } from '../../lib/api-client';
 import {
   markSessionLocked,
   clearSessionLocked,
   touchUserInteraction,
   clearAllSessionLockData,
-  shouldLockOnInitialLoad,
+  shouldShowPinLockScreen,
+  shouldShowNoPinLockOverlay,
 } from '../../lib/session-lock-storage';
 
 interface SessionLockProviderProps {
@@ -31,10 +33,9 @@ function LockLoadingShell() {
 
 export function SessionLockProvider({ children }: SessionLockProviderProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const pathname = usePathname();
   const [isLocked, setIsLocked] = useState(false);
-  const [pinStatus, setPinStatus] = useState<{ pinEnabled: boolean; hasPIN: boolean } | null>(
-    null
-  );
+  const [pinStatus, setPinStatus] = useState<PinLock | null>(null);
   const [checkingPinStatus, setCheckingPinStatus] = useState(true);
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | undefined>(
     undefined
@@ -60,7 +61,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     try {
       const status = await apiClient.getPINStatus();
       setPinStatus(status);
-      if (status.pinEnabled) {
+      if (status.requiresPin || status.pinEnabled) {
         await completeUnlock();
       }
     } catch (error) {
@@ -95,29 +96,47 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     }
   }, [isAuthenticated, isLoading]);
 
-  useEffect(() => {
-    const checkPINStatus = async () => {
-      if (!isAuthenticated || !user) {
-        setCheckingPinStatus(false);
-        return;
-      }
+  const syncPinLockFromServer = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      setCheckingPinStatus(false);
+      return;
+    }
 
-      setCheckingPinStatus(true);
-      try {
-        const status = await apiClient.getPINStatus();
-        setPinStatus(status);
-        if (shouldLockOnInitialLoad(status.pinEnabled)) {
-          setIsLocked(true);
+    setCheckingPinStatus(true);
+    try {
+      // Prefer /api/users/me pinLock; fall back to /api/auth/pin/status
+      let pinLock: PinLock | undefined = user.pinLock;
+      if (!pinLock) {
+        try {
+          const me = await apiClient.getCurrentUser();
+          pinLock = me.pinLock;
+        } catch {
+          // ignore; try dedicated status endpoint
         }
-      } catch (error) {
-        console.error('Failed to check PIN status:', error);
-      } finally {
-        setCheckingPinStatus(false);
       }
-    };
+      if (!pinLock) {
+        pinLock = await apiClient.getPINStatus();
+      }
+      setPinStatus(pinLock);
 
-    checkPINStatus();
+      if (shouldShowPinLockScreen(pinLock) || shouldShowNoPinLockOverlay(pinLock)) {
+        setIsLocked(true);
+      } else {
+        clearSessionLocked();
+        setIsLocked(false);
+      }
+    } catch (error) {
+      console.error('Failed to check PIN status:', error);
+    } finally {
+      setCheckingPinStatus(false);
+    }
   }, [isAuthenticated, user]);
+
+  // On load and route change: use server pinLock (not only sessionStorage)
+  useEffect(() => {
+    if (isLoading) return;
+    syncPinLockFromServer();
+  }, [syncPinLockFromServer, pathname, isLoading]);
 
   const handleLock = useCallback(() => {
     markSessionLocked();
@@ -206,7 +225,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
         onPinSetupComplete={handlePinSetupCompleteBridge}
         onLoginSuccess={handleLoginSuccessBridge}
       >
-        {pinStatus?.pinEnabled ? (
+        {pinStatus?.requiresPin ? (
           <LockScreen
             onUnlock={handleUnlock}
             userName={user?.name || undefined}

@@ -81,6 +81,15 @@ export interface AuthResponse {
   email?: string;
 }
 
+export interface PinLock {
+  pinEnabled: boolean;
+  hasPIN: boolean;
+  requiresPin: boolean;
+  unlocked: boolean;
+  lastActivity?: string | Date | null;
+  inactivityTimeoutMs?: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -92,6 +101,7 @@ export interface User {
   isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
+  pinLock?: PinLock;
 }
 
 export interface Organization {
@@ -1745,12 +1755,26 @@ class ApiClient {
     });
   }
 
-  async verifyPIN(pin: string): Promise<{ message: string; verified: boolean }> {
+  async verifyPIN(pin: string): Promise<{
+    message: string;
+    verified: boolean;
+    accessToken?: string;
+    unlocked?: boolean;
+  }> {
     try {
-      return await this.request<{ message: string; verified: boolean }>('/api/auth/pin/verify', {
+      const response = await this.request<{
+        message: string;
+        verified: boolean;
+        accessToken?: string;
+        unlocked?: boolean;
+      }>('/api/auth/pin/verify', {
         method: 'POST',
         body: JSON.stringify({ pin }),
       });
+      if (response.accessToken) {
+        this.setStoredToken(response.accessToken);
+      }
+      return response;
     } catch (error: any) {
       // Re-throw with response data for better error handling
       if (error.response?.data) {
@@ -1768,14 +1792,22 @@ class ApiClient {
     });
   }
 
-  async getPINStatus(): Promise<{ pinEnabled: boolean; hasPIN: boolean }> {
-    return this.request('/api/auth/pin/status');
+  async getPINStatus(): Promise<PinLock> {
+    return this.request<PinLock>('/api/auth/pin/status');
   }
 
-  async updateActivity(): Promise<{ message: string }> {
-    return this.request('/api/auth/activity', {
+  async updateActivity(): Promise<{ message: string; accessToken?: string; unlocked?: boolean }> {
+    const response = await this.request<{
+      message: string;
+      accessToken?: string;
+      unlocked?: boolean;
+    }>('/api/auth/activity', {
       method: 'POST',
     });
+    if (response?.accessToken) {
+      this.setStoredToken(response.accessToken);
+    }
+    return response;
   }
 
   async unlockAccount(password: string): Promise<{ message: string }> {
