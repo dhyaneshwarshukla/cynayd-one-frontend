@@ -316,7 +316,25 @@ export default function UserDashboard({ user }: UserDashboardProps) {
         </p>
       )}
 
-     
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatsCard
+          title="Your apps"
+          value={stats.totalApps}
+          description="Assigned to you"
+        />
+        <StatsCard
+          title="Ready to open"
+          value={stats.activeApps}
+          description="Currently active"
+        />
+        {stats.totalQuota > 0 && (
+          <StatsCard
+            title="Usage"
+            value={`${stats.usedQuota}/${stats.totalQuota}`}
+            description="Quota consumed"
+          />
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_280px]">
         <section aria-labelledby="apps-heading">
@@ -396,27 +414,7 @@ export default function UserDashboard({ user }: UserDashboardProps) {
           )}
         </section>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatsCard
-          title="Your apps"
-          value={stats.totalApps}
-          description="Assigned to you"
-        />
-        <StatsCard
-          title="Ready to open"
-          value={stats.activeApps}
-          description="Currently active"
-        />
-        {stats.totalQuota > 0 && (
-          <StatsCard
-            title="Usage"
-            value={`${stats.usedQuota}/${stats.totalQuota}`}
-            description="Quota consumed"
-          />
-        )}
-      </div>
-
-        <div className="space-y-4" aria-label="Quick links">
+        <aside className="space-y-4" aria-label="Quick links">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             Quick links
           </h2>
@@ -437,7 +435,7 @@ export default function UserDashboard({ user }: UserDashboardProps) {
               </Link>
             ))}
           </nav>
-        </div>
+        </aside>
       </div>
     </div>
   );
