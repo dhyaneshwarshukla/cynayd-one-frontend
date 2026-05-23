@@ -28,17 +28,22 @@ export default function SAMLIntegrationPage() {
   const userRole = user?.role?.toUpperCase();
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
   
-  // Get base URL from environment or use current origin
+  // API base URL (auth backend) — must match NEXT_PUBLIC_API_URL for SAML/metadata links
   const getBaseUrl = () => {
+    if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+    }
     if (typeof window !== 'undefined') {
       const origin = window.location.origin;
-      // For localhost, use port 4000 for backend
       if (origin.includes('localhost')) {
         return origin.replace(':3000', ':4000');
       }
+      if (origin.includes('one.cynayd.com')) {
+        return 'https://auth.one.cynayd.com';
+      }
       return origin;
     }
-    return 'https://one.cynayd.com';
+    return 'https://auth.one.cynayd.com';
   };
 
   const baseUrl = getBaseUrl();
@@ -161,7 +166,8 @@ export default function SAMLIntegrationPage() {
       });
       
       await apiClient.configureSaml(configToSave);
-      setNotification({ type: 'success', message: 'SAML configuration saved successfully!' });
+      await apiClient.enableSaml(true);
+      setNotification({ type: 'success', message: 'SAML configuration saved and enabled successfully!' });
       setShowOrgConfigForm(false);
       await fetchOrgSamlConfig();
     } catch (error: any) {
@@ -244,25 +250,39 @@ export default function SAMLIntegrationPage() {
     }
   };
 
+  // IdP metadata is per-organization (use for AWS IAM, Okta, etc.). App slug in URL is optional.
+  const getOrgMetadataUrl = () =>
+    orgId
+      ? `${baseUrl}/api/saml/metadata?organizationId=${orgId}`
+      : `${baseUrl}/api/saml/metadata?organizationId={your-org-id}`;
+
+  const getAppMetadataUrl = (appSlug: string) =>
+    orgId
+      ? `${baseUrl}/api/apps/${appSlug}/saml/metadata?organizationId=${orgId}`
+      : `${baseUrl}/api/apps/${appSlug}/saml/metadata?organizationId={your-org-id}`;
+
   // Get app-specific information
   const getAppInfo = () => {
+    const orgMetadataUrl = getOrgMetadataUrl();
     if (!selectedApp) {
       return {
         appSlug: '{app-slug}',
         appName: 'Your Application',
-        metadataUrl: '',
+        metadataUrl: orgMetadataUrl,
+        orgMetadataUrl,
+        appMetadataUrl: '',
         entityId: orgSamlConfig?.entityId || `${baseUrl}/saml`,
         ssoUrl: orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`,
         sloUrl: orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`,
       };
     }
 
-    const metadataUrl = `${baseUrl}/api/apps/${selectedApp.slug}/saml/metadata${orgId ? `?organizationId=${orgId}` : ''}`;
-    
     return {
       appSlug: selectedApp.slug,
       appName: selectedApp.name,
-      metadataUrl,
+      metadataUrl: orgMetadataUrl,
+      orgMetadataUrl,
+      appMetadataUrl: getAppMetadataUrl(selectedApp.slug),
       entityId: orgSamlConfig?.entityId || `${baseUrl}/saml`,
       ssoUrl: orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`,
       sloUrl: orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`,
@@ -954,27 +974,45 @@ export default function SAMLIntegrationPage() {
                     Use Metadata URL (Recommended)
                   </h3>
                   <p className="text-gray-600 text-sm mb-4">
-                    You can automatically import IdP configuration using the metadata URL. Your SP will automatically pull Entity ID, SSO URL, SLO URL, and Public certificate.
+                    Use the <strong>organization</strong> metadata URL for AWS IAM, Google Workspace, and other IdP setups.
+                    The browser may show &quot;no style information&quot; — that is normal for raw XML. App SAML (Entity ID / ACS) is configured separately in step 3.
                   </p>
                   
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="bg-gray-50 rounded-lg p-4 mb-3">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-700">Metadata URL:</span>
+                      <span className="font-semibold text-gray-700">Organization metadata URL (for AWS IAM):</span>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(appInfo.metadataUrl);
+                          navigator.clipboard.writeText(appInfo.orgMetadataUrl);
                         }}
                         className="text-blue-600 hover:text-blue-800 text-sm"
                       >
                         Copy
                       </button>
                     </div>
-                    <code className="text-sm text-gray-900 break-all">{appInfo.metadataUrl}</code>
+                    <code className="text-sm text-gray-900 break-all">{appInfo.orgMetadataUrl}</code>
                   </div>
+
+                  {selectedApp && appInfo.appMetadataUrl && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-gray-700">App metadata URL (same IdP XML):</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(appInfo.appMetadataUrl);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <code className="text-sm text-gray-900 break-all">{appInfo.appMetadataUrl}</code>
+                    </div>
+                  )}
 
                   <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-sm text-green-800">
-                      <strong>💡 Tip:</strong> If your SP supports metadata auto-refresh, enable it to automatically receive certificate updates when CYNAYD rotates certificates.
+                      <strong>AWS:</strong> In IAM → SAML identity provider, paste the organization metadata URL above (not the frontend URL). Then enable SAML on the AWS app with Entity ID <code className="bg-white px-1 rounded">urn:amazon:webservices</code> and ACS <code className="bg-white px-1 rounded">https://signin.aws.amazon.com/saml</code>.
                     </p>
                   </div>
                 </div>
@@ -1134,7 +1172,7 @@ export default function SAMLIntegrationPage() {
                     If your SP supports metadata auto-refresh, you can enable automatic certificate updates:
                   </p>
                   <ol className="space-y-2 text-sm text-green-800 ml-4">
-                    <li>1. Add the Metadata URL: <code className="bg-white px-1 rounded text-xs">{appInfo.metadataUrl}</code></li>
+                    <li>1. Add the Metadata URL: <code className="bg-white px-1 rounded text-xs">{appInfo.orgMetadataUrl}</code></li>
                     <li>2. Enable auto-refresh in your SP configuration</li>
                     <li>3. Certificate updates automatically when CYNAYD rotates certificates</li>
                   </ol>
