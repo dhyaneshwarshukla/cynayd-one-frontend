@@ -87,6 +87,14 @@
   --radius: 0.5rem;
 }
 
+/* Dashboard workspace surface */
+.dashboard-workspace {
+  background-color: rgb(248 250 252 / 0.95);
+  background-image:
+    radial-gradient(at 0% 0%, rgb(59 130 246 / 0.04) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgb(99 102 241 / 0.04) 0px, transparent 50%);
+}
+
 /* Custom Enterprise Login Animations */
 @keyframes float {
   0%, 100% {

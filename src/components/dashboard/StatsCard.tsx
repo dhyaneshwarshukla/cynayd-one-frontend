@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card } from '../common/Card';
+import type { ComponentType, SVGProps } from 'react';
+import { cn } from '@/utils/cn';
 
 interface StatsCardProps {
   title: string;
@@ -8,32 +9,69 @@ interface StatsCardProps {
     value: number;
     type: 'increase' | 'decrease' | 'neutral';
   };
-  icon?: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
   description?: string;
   loading?: boolean;
   className?: string;
+  variant?: 'default' | 'blue' | 'emerald' | 'violet' | 'amber' | 'slate';
 }
+
+const variantStyles = {
+  default: {
+    card: 'border-slate-200/80 bg-white',
+    icon: 'bg-slate-100 text-slate-600',
+    accent: 'bg-slate-500',
+  },
+  blue: {
+    card: 'border-blue-100 bg-gradient-to-br from-white to-blue-50/50',
+    icon: 'bg-blue-100 text-blue-700',
+    accent: 'bg-blue-600',
+  },
+  emerald: {
+    card: 'border-emerald-100 bg-gradient-to-br from-white to-emerald-50/50',
+    icon: 'bg-emerald-100 text-emerald-700',
+    accent: 'bg-emerald-600',
+  },
+  violet: {
+    card: 'border-violet-100 bg-gradient-to-br from-white to-violet-50/50',
+    icon: 'bg-violet-100 text-violet-700',
+    accent: 'bg-violet-600',
+  },
+  amber: {
+    card: 'border-amber-100 bg-gradient-to-br from-white to-amber-50/50',
+    icon: 'bg-amber-100 text-amber-700',
+    accent: 'bg-amber-600',
+  },
+  slate: {
+    card: 'border-slate-200/80 bg-white',
+    icon: 'bg-slate-100 text-slate-600',
+    accent: 'bg-slate-600',
+  },
+};
 
 export const StatsCard: React.FC<StatsCardProps> = ({
   title,
   value,
   change,
-  icon,
+  icon: Icon,
   description,
   loading = false,
   className = '',
+  variant = 'default',
 }) => {
+  const styles = variantStyles[variant];
+
   const getChangeColor = () => {
     if (!change) return '';
     switch (change.type) {
       case 'increase':
-        return 'text-green-600';
+        return 'text-emerald-600';
       case 'decrease':
         return 'text-red-600';
       case 'neutral':
-        return 'text-gray-600';
+        return 'text-slate-500';
       default:
-        return 'text-gray-600';
+        return 'text-slate-500';
     }
   };
 
@@ -53,40 +91,61 @@ export const StatsCard: React.FC<StatsCardProps> = ({
 
   if (loading) {
     return (
-      <Card className={`p-6 ${className}`}>
-        <div className="animate-pulse">
-          <div className="flex items-center justify-between mb-2">
-            <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-            {icon && <div className="h-6 w-6 bg-gray-200 rounded"></div>}
-          </div>
-          <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
-          <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+      <div
+        className={cn(
+          'relative overflow-hidden rounded-xl border p-5 shadow-sm',
+          styles.card,
+          className
+        )}
+      >
+        <div className="animate-pulse space-y-3">
+          <div className="h-3 w-24 rounded bg-slate-200" />
+          <div className="h-8 w-16 rounded bg-slate-200" />
+          <div className="h-3 w-32 rounded bg-slate-200" />
         </div>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <Card className={`p-6 ${className}`}>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-gray-600">{title}</h3>
-        {icon && (
-          <div className="text-2xl">{icon}</div>
-        )}
-      </div>
-      
-      <div className="flex items-baseline">
-        <p className="text-2xl font-semibold text-gray-900">{value}</p>
-        {change && (
-          <span className={`ml-2 text-sm font-medium ${getChangeColor()}`}>
-            {getChangeIcon()} {Math.abs(change.value)}%
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-xl border p-5 shadow-sm transition-shadow hover:shadow-md',
+        styles.card,
+        className
+      )}
+    >
+      <div className={cn('absolute left-0 top-0 h-full w-1', styles.accent)} aria-hidden />
+      <div className="flex items-start justify-between gap-3 pl-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {title}
+          </p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">
+              {value}
+            </p>
+            {change && (
+              <span className={cn('text-xs font-medium', getChangeColor())}>
+                {getChangeIcon()} {Math.abs(change.value)}%
+              </span>
+            )}
+          </div>
+          {description && (
+            <p className="mt-1 text-xs text-slate-500">{description}</p>
+          )}
+        </div>
+        {Icon && (
+          <span
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+              styles.icon
+            )}
+          >
+            <Icon className="h-5 w-5" aria-hidden />
           </span>
         )}
       </div>
-      
-      {description && (
-        <p className="mt-1 text-sm text-gray-500">{description}</p>
-      )}
-    </Card>
+    </div>
   );
 };

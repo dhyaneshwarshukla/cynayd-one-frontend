@@ -16,16 +16,20 @@ function getTimeGreeting(): string {
   return 'Good evening';
 }
 
+function formatRoleLabel(role?: string): string {
+  if (!role) return 'Member';
+  const normalized = role.replace(/_/g, ' ').toLowerCase();
+  return normalized.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
-  // Set page title
   useEffect(() => {
     document.title = 'Dashboard | CYNAYD One';
   }, []);
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push('/auth/login');
@@ -39,62 +43,62 @@ export default function DashboardPage() {
     return user.email?.split('@')[0] || 'there';
   }, [user]);
 
-  // Show loading state while checking authentication
   if (isLoading) {
     return (
-      <UnifiedLayout variant="dashboard">
+      <UnifiedLayout variant="dashboard" breadcrumb={[{ label: 'Home', href: '/dashboard' }, { label: 'Dashboard' }]}>
         <DashboardSkeleton />
       </UnifiedLayout>
     );
   }
 
-  // Don't render anything if not authenticated (will redirect)
   if (!isAuthenticated || !user) {
     return null;
   }
 
-  // Determine user role for dashboard routing (case-insensitive)
   const userRole = user?.role?.toUpperCase();
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
   const isAdmin = userRole === 'ADMIN';
   const greeting = getTimeGreeting();
 
-  const getWelcomeMessage = () => {
+  const welcome = (() => {
     if (isSuperAdmin) {
       return {
-        title: 'Super Admin Dashboard',
+        title: 'Platform overview',
         subtitle:
-          'Manage organizations, system apps, and platform-wide settings from one place.',
+          'Manage organizations, system applications, and platform-wide configuration.',
       };
     }
     if (isAdmin) {
       return {
         title: `${greeting}, ${displayName}`,
         subtitle:
-          'Overview of your organization — users, apps, and recent activity.',
+          'Monitor your organization — users, applications, security, and activity.',
       };
     }
     return {
       title: `${greeting}, ${displayName}`,
-      subtitle: 'Open your assigned apps and manage your account settings.',
+      subtitle: 'Launch your assigned applications and manage your workspace settings.',
     };
-  };
+  })();
 
-  const welcome = getWelcomeMessage();
+  const breadcrumb = [
+    { label: 'Home', href: '/dashboard' },
+    { label: isSuperAdmin ? 'Platform' : 'Dashboard' },
+  ];
 
   return (
     <UnifiedLayout
       title={welcome.title}
       subtitle={welcome.subtitle}
       variant="dashboard"
+      breadcrumb={breadcrumb}
     >
-      {/* Route to appropriate dashboard based on user role */}
       {isSuperAdmin ? (
         <SuperAdminDashboard user={user} />
       ) : isAdmin ? (
         <AdminDashboard user={user} />
       ) : (
-        <UserDashboard user={user} />
+        <UserDashboard user={user} roleLabel={formatRoleLabel(user.role)} />
       )}
     </UnifiedLayout>
   );

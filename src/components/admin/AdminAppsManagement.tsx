@@ -13,6 +13,7 @@ import { apiClient, App } from '@/lib/api-client';
 import { filterOrgScopedApps } from '@/lib/app-scope';
 import { launchAppWithFallback } from '@/lib/launch-app';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
+import { AppFederationPanel } from '@/components/admin/AppFederationPanel';
 
 // Define UserAppAccess interface locally (aligned with GET /api/apps/user-access)
 interface UserAppAccess {
@@ -140,8 +141,12 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
   const [assignmentData, setAssignmentData] = useState({
     userId: '',
     quota: '',
-    expiresAt: ''
+    expiresAt: '',
+    roleTemplateId: '',
   });
+  const [assignRoleTemplates, setAssignRoleTemplates] = useState<
+    Array<{ id: string; displayName: string }>
+  >([]);
 
   const [accessSearchTerm, setAccessSearchTerm] = useState('');
   const [accessFilterStatus, setAccessFilterStatus] = useState<'all' | 'active' | 'expired' | 'inactive'>('all');
@@ -304,10 +309,12 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     try {
       await apiClient.assignAppAccess(selectedApp.id, assignmentData.userId, {
         quota: assignmentData.quota ? parseInt(assignmentData.quota) : undefined,
-        expiresAt: assignmentData.expiresAt ? new Date(assignmentData.expiresAt) : undefined
+        expiresAt: assignmentData.expiresAt ? new Date(assignmentData.expiresAt) : undefined,
+        roleTemplateId: assignmentData.roleTemplateId || undefined,
       });
       setShowAssignModal(false);
-      setAssignmentData({ userId: '', quota: '', expiresAt: '' });
+      setAssignmentData({ userId: '', quota: '', expiresAt: '', roleTemplateId: '' });
+      setAssignRoleTemplates([]);
       setSelectedApp(null);
       await fetchData();
       notify('success', 'Access assigned successfully');
@@ -403,6 +410,18 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     setShowEditModal(true);
   };
 
+  const openAssignModal = async (app: App) => {
+    setSelectedApp(app);
+    setAssignmentData({ userId: '', quota: '', expiresAt: '', roleTemplateId: '' });
+    setShowAssignModal(true);
+    try {
+      const templates = await apiClient.getAppRoleTemplates(app.slug);
+      setAssignRoleTemplates(templates.map((t) => ({ id: t.id, displayName: t.displayName })));
+    } catch {
+      setAssignRoleTemplates([]);
+    }
+  };
+
   const openSamlConfigModal = (app: App) => {
     setSelectedApp(app);
     try {
@@ -469,9 +488,9 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
   const canConfigureApp = (app: App): boolean => {
     if (!user) return false;
     
-    // For system apps: Only SUPER_ADMIN can configure
+    // System apps: org admins configure federation overlay; SUPER_ADMIN configures global app metadata
     if (app.systemApp) {
-      return user.role === 'SUPER_ADMIN';
+      return user.role === 'SUPER_ADMIN' || (user.role === 'ADMIN' && !!user.organizationId);
     }
     
     // For org apps: Only owner org admin or SUPER_ADMIN can configure
@@ -1092,10 +1111,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                     <div className="flex gap-2 items-stretch">
                       <Button
                         type="button"
-                        onClick={() => {
-                          setSelectedApp(app);
-                          setShowAssignModal(true);
-                        }}
+                        onClick={() => void openAssignModal(app)}
                         className="flex-1 min-w-0 h-10 bg-green-600 hover:bg-green-700 text-white text-sm"
                       >
                         <UserPlusIcon className="w-4 h-4 mr-1 shrink-0" />
@@ -1636,10 +1652,10 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
         {/* SAML Configuration Modal */}
         {showSamlConfigModal && selectedApp && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
                 <KeyIcon className="w-5 h-5 mr-2 text-blue-600" />
-                SAML Configuration - {selectedApp.name}
+                App SSO &amp; Authorization - {selectedApp.name}
               </h3>
               <div className="space-y-4">
                 <div className="flex items-center space-x-2">
@@ -1691,6 +1707,10 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                       <p className="mt-1 text-xs text-gray-500">Single Logout URL (optional)</p>
                     </div>
                   </div>
+                )}
+
+                {user?.organizationId && (
+                  <AppFederationPanel app={selectedApp} users={users} />
                 )}
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
@@ -1769,6 +1789,25 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   value={assignmentData.expiresAt}
                   onChange={(e) => setAssignmentData({ ...assignmentData, expiresAt: e.target.value })}
                 />
+                {assignRoleTemplates.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">App role (optional)</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      value={assignmentData.roleTemplateId}
+                      onChange={(e) =>
+                        setAssignmentData({ ...assignmentData, roleTemplateId: e.target.value })
+                      }
+                    >
+                      <option value="">Default / from group mapping</option>
+                      {assignRoleTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
                     onClick={() => setShowAssignModal(false)}

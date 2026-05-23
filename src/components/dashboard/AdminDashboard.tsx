@@ -6,6 +6,17 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
+import { StatsCard } from '@/components/dashboard/StatsCard';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import {
+  UsersIcon,
+  Squares2X2Icon,
+  KeyIcon,
+  ShieldExclamationIcon,
+  UserGroupIcon,
+  Cog6ToothIcon,
+  CubeIcon,
+} from '@heroicons/react/24/outline';
 
 interface App {
   id: string;
@@ -282,11 +293,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -298,54 +305,35 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       )}
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-blue-500 rounded-lg">
-              <span className="text-2xl text-white">👤</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Users</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-green-500 rounded-lg">
-              <span className="text-2xl text-white">📦</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Apps</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalApps}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-purple-500 rounded-lg">
-              <span className="text-2xl text-white">🔓</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Active Access</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeAppAccess}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-red-500 rounded-lg">
-              <span className="text-2xl text-white">🛡️</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Security Events</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.securityEvents}</p>
-            </div>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatsCard
+          title="Total users"
+          value={stats.activeUsers}
+          description="Active in organization"
+          icon={UsersIcon}
+          variant="blue"
+        />
+        <StatsCard
+          title="Applications"
+          value={stats.totalApps}
+          description="Configured in workspace"
+          icon={Squares2X2Icon}
+          variant="emerald"
+        />
+        <StatsCard
+          title="Active access"
+          value={stats.activeAppAccess}
+          description="User-app assignments"
+          icon={KeyIcon}
+          variant="violet"
+        />
+        <StatsCard
+          title="Security events"
+          value={stats.securityEvents}
+          description="Recent platform activity"
+          icon={ShieldExclamationIcon}
+          variant="amber"
+        />
       </div>
 
       {/* Plan Details */}
@@ -422,46 +410,59 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       )}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
-          <div className="text-center">
-            <div className="p-4 bg-blue-100 rounded-2xl mx-auto w-fit mb-4">
-              <span className="text-3xl">👤</span>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            href: '/users',
+            title: 'Manage users',
+            description: 'Add, invite, and assign roles',
+            icon: UsersIcon,
+            iconBg: 'bg-blue-100 text-blue-700',
+          },
+          {
+            href: '/users',
+            title: 'Teams',
+            description: 'Organize members into groups',
+            icon: UserGroupIcon,
+            iconBg: 'bg-emerald-100 text-emerald-700',
+          },
+          {
+            href: '/admin/apps',
+            title: 'Applications',
+            description: 'Configure access and SSO',
+            icon: CubeIcon,
+            iconBg: 'bg-violet-100 text-violet-700',
+          },
+          {
+            href: '/dashboard/settings',
+            title: 'Settings',
+            description: 'Organization preferences',
+            icon: Cog6ToothIcon,
+            iconBg: 'bg-slate-100 text-slate-700',
+          },
+        ].map((action) => (
+          <Card
+            key={action.title}
+            className="group cursor-pointer border-slate-200/80 p-5 transition-all hover:-translate-y-0.5 hover:border-blue-200/80 hover:shadow-md"
+            onClick={() => {
+              window.location.href = action.href;
+            }}
+          >
+            <div className="flex items-start gap-4">
+              <span
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${action.iconBg}`}
+              >
+                <action.icon className="h-6 w-6" aria-hidden />
+              </span>
+              <div>
+                <h3 className="font-semibold text-slate-900 group-hover:text-blue-800">
+                  {action.title}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">{action.description}</p>
+              </div>
             </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Manage Users</h3>
-            <p className="text-sm text-gray-600">Add and manage users</p>
-          </div>
-        </Card>
-
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/users'}>
-          <div className="text-center">
-            <div className="p-4 bg-green-100 rounded-2xl mx-auto w-fit mb-4">
-              <span className="text-3xl">👥</span>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Manage Teams</h3>
-            <p className="text-sm text-gray-600">Team management</p>
-          </div>
-        </Card>
-
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/admin/apps'}>
-          <div className="text-center">
-            <div className="p-4 bg-purple-100 rounded-2xl mx-auto w-fit mb-4">
-              <span className="text-3xl">📦</span>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Manage Apps</h3>
-            <p className="text-sm text-gray-600">Configure access</p>
-          </div>
-        </Card>
-
-        <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = '/dashboard/settings'}>
-          <div className="text-center">
-            <div className="p-4 bg-red-100 rounded-2xl mx-auto w-fit mb-4">
-              <span className="text-3xl">🛡️</span>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Settings</h3>
-            <p className="text-sm text-gray-600">Configure organization settings</p>
-          </div>
-        </Card>
+          </Card>
+        ))}
       </div>
 
       {/* Admin Analytics & Reports */}

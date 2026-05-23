@@ -1570,6 +1570,7 @@ class ApiClient {
   async assignAppAccess(appId: string, userId: string, options?: {
     quota?: number;
     expiresAt?: Date;
+    roleTemplateId?: string;
   }): Promise<UserAppAccess> {
     return this.request<UserAppAccess>(`/api/apps/${appId}/assign`, {
       method: 'POST',
@@ -1654,6 +1655,78 @@ class ApiClient {
     return this.request(`/api/apps/${appSlug}/saml/config`, {
       method: 'PATCH',
       body: JSON.stringify(config),
+    });
+  }
+
+  async getAppFederation(appSlug: string): Promise<{
+    app: { id: string; slug: string; authorizationMode: string; claimProviderId?: string | null; protocol: string };
+    federation: { samlProviderArn?: string | null; config?: Record<string, unknown> } | null;
+  }> {
+    return this.request(`/api/apps/${appSlug}/federation`);
+  }
+
+  async putAppFederation(
+    appSlug: string,
+    body: {
+      authorizationMode?: string;
+      claimProviderId?: string;
+      protocol?: string;
+      samlProviderArn?: string | null;
+      config?: Record<string, unknown>;
+      enabled?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request(`/api/apps/${appSlug}/federation`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getAppRoleTemplates(appSlug: string): Promise<
+    Array<{ id: string; roleKey: string; displayName: string; externalValue: string; isDefault: boolean }>
+  > {
+    return this.request(`/api/apps/${appSlug}/role-templates`);
+  }
+
+  async createAppRoleTemplate(
+    appSlug: string,
+    body: { roleKey: string; displayName: string; externalValue: string; isDefault?: boolean }
+  ): Promise<unknown> {
+    return this.request(`/api/apps/${appSlug}/role-templates`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteAppRoleTemplate(appSlug: string, templateId: string): Promise<void> {
+    return this.request(`/api/apps/${appSlug}/role-templates/${templateId}`, { method: 'DELETE' });
+  }
+
+  async getClaimPreview(appSlug: string, userId: string): Promise<Record<string, unknown>> {
+    return this.request(`/api/apps/${appSlug}/claim-preview?userId=${encodeURIComponent(userId)}`);
+  }
+
+  async getGroups(): Promise<Array<{ id: string; name: string; slug: string }>> {
+    return this.request('/api/groups');
+  }
+
+  async createGroup(body: { name: string; slug: string; description?: string }): Promise<unknown> {
+    return this.request('/api/groups', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  async getAppGroupRoles(appSlug: string): Promise<
+    Array<{ groupId: string; roleTemplateId: string; group?: { name: string }; roleTemplate?: { displayName: string } }>
+  > {
+    return this.request(`/api/apps/${appSlug}/group-roles`);
+  }
+
+  async putAppGroupRoles(
+    appSlug: string,
+    mappings: Array<{ groupId: string; roleTemplateId: string }>
+  ): Promise<unknown> {
+    return this.request(`/api/apps/${appSlug}/group-roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ mappings }),
     });
   }
 

@@ -17,6 +17,7 @@ interface UnifiedLayoutProps {
   subtitle?: string;
   variant?: 'landing' | 'dashboard';
   actions?: React.ReactNode;
+  breadcrumb?: { label: string; href?: string }[];
 }
 
 export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
@@ -24,7 +25,8 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
   title,
   subtitle,
   variant = 'dashboard',
-  actions
+  actions,
+  breadcrumb,
 }) => {
   const { user, isLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -54,7 +56,7 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
 
   // For dashboard pages, show sidebar if user is admin
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="dashboard-workspace min-h-screen bg-slate-50/90">
       {/* Mobile sidebar */}
       <Transition.Root show={sidebarOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50 lg:hidden" onClose={setSidebarOpen}>
@@ -131,22 +133,47 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
         
         <main className="py-6 sm:py-8">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {(title || subtitle || actions) && (
-              <header className="mb-6 sm:mb-8">
+            {(title || subtitle || actions || breadcrumb?.length) && (
+              <header className="mb-6 border-b border-slate-200/80 pb-6 sm:mb-8">
+                {breadcrumb && breadcrumb.length > 0 && (
+                  <nav aria-label="Breadcrumb" className="mb-3">
+                    <ol className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                      {breadcrumb.map((item, index) => (
+                        <li key={`${item.label}-${index}`} className="flex items-center gap-1.5">
+                          {index > 0 && (
+                            <span className="text-slate-300" aria-hidden>
+                              /
+                            </span>
+                          )}
+                          {item.href ? (
+                            <a
+                              href={item.href}
+                              className="font-medium transition-colors hover:text-slate-800"
+                            >
+                              {item.label}
+                            </a>
+                          ) : (
+                            <span className="font-medium text-slate-700">{item.label}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </nav>
+                )}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div className="min-w-0 flex-1">
                     {title && (
-                      <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                      <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
                         {title}
                       </h1>
                     )}
                     {subtitle && (
-                      <p className="mt-1.5 max-w-2xl text-sm text-gray-600 sm:text-base">
+                      <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
                         {subtitle}
                       </p>
                     )}
                   </div>
-                  {actions && <div className="shrink-0">{actions}</div>}
+                  {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
                 </div>
               </header>
             )}
