@@ -7,10 +7,11 @@ import { z } from 'zod';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Card } from '../common/Card';
-import { Alert } from '../common/Alert';
 import { useAuth } from '../../contexts/AuthContext';
 import { RegisterData } from '../../lib/api-client';
 import { apiClient, Plan } from '../../lib/api-client';
+import { RegisterResultModal } from './RegisterResultModal';
+import { formatApiErrorMessage } from '../../utils/api-error';
 
 declare global {
   interface Window {
@@ -42,20 +43,53 @@ const registerSchema = z.object({
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
+type ResultModalState = {
+  variant: 'success' | 'error';
+  title: string;
+  message: string;
+  email?: string;
+  requiresVerification?: boolean;
+};
+
 export const RegisterForm: React.FC = () => {
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [resultModal, setResultModal] = useState<ResultModalState | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
-  const { register: registerUser, isLoading } = useAuth();
-  const { register, handleSubmit, formState: { errors }, getValues } = useForm<RegisterFormData>({
+  const { register: registerUser } = useAuth();
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   });
+
+  const showError = (message: string, title = 'Registration failed') => {
+    setResultModal({ variant: 'error', title, message });
+  };
+
+  const showSuccess = (
+    message: string,
+    options?: { email?: string; requiresVerification?: boolean }
+  ) => {
+    setResultModal({
+      variant: 'success',
+      title: options?.requiresVerification ? 'Registration successful' : 'Account created',
+      message,
+      email: options?.email,
+      requiresVerification: options?.requiresVerification,
+    });
+  };
+
+  const closeResultModal = () => setResultModal(null);
+
+  const handleRegisterAnother = () => {
+    closeResultModal();
+    reset();
+    const freePlan = plans.find((p) => p.slug === 'free');
+    if (freePlan) setSelectedPlan(freePlan.id);
+  };
 
   useEffect(() => {
     fetchPlans();
@@ -75,7 +109,7 @@ export const RegisterForm: React.FC = () => {
       setRazorpayLoaded(true);
     };
     script.onerror = () => {
-      setError('Failed to load payment gateway. Please refresh the page.');
+      showError('Failed to load payment gateway. Please refresh the page and try again.');
     };
     document.body.appendChild(script);
   };
@@ -117,10 +151,11 @@ export const RegisterForm: React.FC = () => {
     paymentSignature: string;
     pricingId: string;
   }) => {
+    const normalizedEmail = data.email.trim().toLowerCase();
+
     try {
-      // Normalize email: trim and convert to lowercase before registration
-      const normalizedEmail = data.email.trim().toLowerCase();
-      
+      setIsRegistering(true);
+
       const registerData: RegisterData = {
         email: normalizedEmail,
         password: data.password,
@@ -138,31 +173,33 @@ export const RegisterForm: React.FC = () => {
         paymentId: paymentData?.paymentId,
         paymentSignature: paymentData?.paymentSignature,
       };
-      
+
       const result = await registerUser(registerData);
-      
+
       if (result.requiresVerification) {
-        setSuccess(result.message);
-        setShowVerificationMessage(true);
+        showSuccess(
+          result.message ||
+            'We sent a verification link to your email. Please verify your account before signing in.',
+          { email: normalizedEmail, requiresVerification: true }
+        );
       } else {
-        setSuccess('Registration successful! You can now log in.');
+        showSuccess('Your account is ready. You can sign in now.', {
+          email: normalizedEmail,
+          requiresVerification: false,
+        });
       }
-      setProcessingPayment(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to complete registration');
+      showError(formatApiErrorMessage(err, 'Failed to complete registration. Please try again.'));
+    } finally {
+      setIsRegistering(false);
       setProcessingPayment(false);
     }
   };
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
-      setError(null);
-      setSuccess(null);
-      setShowVerificationMessage(false);
-      
-      // Validate plan selection
       if (!selectedPlan) {
-        setError('Please select a plan to continue');
+        showError('Please select a plan to continue.', 'Plan required');
         return;
       }
 
@@ -178,7 +215,7 @@ export const RegisterForm: React.FC = () => {
 
       // For paid plans, process payment first
       if (!razorpayLoaded) {
-        setError('Payment gateway is loading. Please wait a moment and try again.');
+        showError('Payment gateway is still loading. Please wait a moment and try again.');
         return;
       }
 
@@ -232,7 +269,7 @@ export const RegisterForm: React.FC = () => {
               pricingId: pricing.id,
             });
           } catch (err) {
-            setError(err instanceof Error ? err.message : 'Payment verification failed');
+            showError(formatApiErrorMessage(err, 'Payment verification failed. Please try again.'));
             setProcessingPayment(false);
           }
         },
@@ -254,14 +291,16 @@ export const RegisterForm: React.FC = () => {
       const razorpay = new window.Razorpay(options);
       razorpay.open();
       razorpay.on('payment.failed', (response: any) => {
-        setError(`Payment failed: ${response.error.description || 'Unknown error'}`);
+        showError(`Payment failed: ${response.error?.description || 'Unknown error'}`);
         setProcessingPayment(false);
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process registration');
+      showError(formatApiErrorMessage(err, 'Failed to process registration. Please try again.'));
       setProcessingPayment(false);
     }
   };
+
+  const isSubmitting = isRegistering || processingPayment;
 
   return (
     <Card className="w-full max-w-4xl mx-auto p-8">
@@ -290,62 +329,26 @@ export const RegisterForm: React.FC = () => {
         </div>
       </div>
       
-      {error && (
-        <Alert variant="error" className="mb-6">
-          {error}
-        </Alert>
-      )}
+      <RegisterResultModal
+        isOpen={resultModal !== null}
+        variant={resultModal?.variant ?? 'success'}
+        title={resultModal?.title ?? ''}
+        message={resultModal?.message ?? ''}
+        email={resultModal?.email}
+        requiresVerification={resultModal?.requiresVerification}
+        onClose={closeResultModal}
+        onRegisterAnother={
+          resultModal?.variant === 'success' ? handleRegisterAnother : undefined
+        }
+      />
 
-      {success && (
-        <Alert variant="success" className="mb-6">
-          {success}
-        </Alert>
-      )}
-
-      {showVerificationMessage ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="p-4 bg-blue-100 rounded-full">
-              <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div className="max-w-md">
-              <h3 className="text-2xl font-bold text-blue-800 mb-3">Registration Successful!</h3>
-              <p className="text-blue-700 text-lg mb-4">
-                We've sent a verification link to your email address. Please check your inbox and click the link to verify your account.
-              </p>
-              <div className="bg-white rounded-lg p-4 mb-4">
-                <p className="text-sm text-gray-600 mb-2">Next steps:</p>
-                <ol className="text-sm text-gray-700 text-left space-y-1">
-                  <li>1. Check your email inbox (and spam folder)</li>
-                  <li>2. Click the verification link in the email</li>
-                  <li>3. Your account will be activated automatically</li>
-                  <li>4. Return here to log in to your dashboard</li>
-                </ol>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <a
-                  href="/auth/login"
-                  className="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Go to Login
-                </a>
-                <button
-                  onClick={() => {
-                    setShowVerificationMessage(false);
-                    setSuccess(null);
-                  }}
-                  className="bg-gray-200 text-gray-800 py-2 px-6 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                >
-                  Register Another Organization
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit(onSubmit)(e);
+        }}
+        className="space-y-8"
+      >
         {/* Personal Information Section */}
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -666,9 +669,9 @@ export const RegisterForm: React.FC = () => {
           <Button
             type="submit"
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
-            disabled={isLoading || processingPayment}
+            disabled={isSubmitting}
           >
-            {(isLoading || processingPayment) ? (
+            {isSubmitting ? (
               <div className="flex items-center justify-center">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                 {processingPayment ? 'Processing Payment...' : 'Creating Your Organization...'}
@@ -684,7 +687,6 @@ export const RegisterForm: React.FC = () => {
           </Button>
         </div>
       </form>
-      )}
     </Card>
   );
 }; 

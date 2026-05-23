@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/api-client';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { UserAvatar } from '@/components/common/UserAvatar';
 
 interface ProfileStats {
   apps: number;
@@ -116,14 +117,11 @@ export default function ProfilePage() {
             {/* Profile Header */}
             <div className="flex items-center space-x-4">
               <div className="relative">
-                <img
-                  className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-4 ring-white shadow-lg"
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email)}&background=3b82f6&color=ffffff&size=80`}
-                  alt={`${user.name || user.email} profile`}
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email)}&background=6b7280&color=ffffff&size=80`;
-                  }}
+                <UserAvatar
+                  name={user.name}
+                  email={user.email}
+                  size={80}
+                  className="h-20 w-20 bg-gradient-to-br from-blue-500 to-purple-600 ring-4 ring-white shadow-lg"
                 />
                 <span className="absolute -bottom-1 -right-1 h-6 w-6 bg-green-500 border-4 border-white rounded-full"></span>
               </div>

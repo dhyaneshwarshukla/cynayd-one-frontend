@@ -5,8 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../common/Button';
 import { Menu } from '@headlessui/react';
 import { BellIcon, Bars3Icon } from '@heroicons/react/24/outline';
-import Image from 'next/image';
 import { BrandLink } from '../common/BrandLink';
+import { UserAvatar } from '../common/UserAvatar';
 
 interface UniversalHeaderProps {
   onMenuClick?: () => void;
@@ -113,16 +113,11 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                     <span className="sr-only">Open user menu</span>
                     <div className="flex items-center space-x-3">
                       <div className="relative">
-                        <Image
-                          className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-2 ring-white shadow-sm"
-                          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'User')}&background=3b82f6&color=ffffff&size=40`}
-                          alt={`${user?.name || user?.email} profile`}
-                          width={40}
-                          height={40}
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'User')}&background=6b7280&color=ffffff&size=40`;
-                          }}
+                        <UserAvatar
+                          name={user?.name}
+                          email={user?.email}
+                          size={40}
+                          className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 ring-2 ring-white shadow-sm"
                         />
                         {/* Online status indicator */}
                         <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-green-500 border-2 border-white rounded-full"></span>
@@ -142,16 +137,11 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                     {/* User info header */}
                     <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50">
                       <div className="flex items-center space-x-3">
-                        <Image
-                          className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-2 ring-white"
-                          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'User')}&background=3b82f6&color=ffffff&size=48`}
-                          alt={`${user?.name || user?.email} profile`}
-                          width={48}
-                          height={48}
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'User')}&background=6b7280&color=ffffff&size=48`;
-                          }}
+                        <UserAvatar
+                          name={user?.name}
+                          email={user?.email}
+                          size={48}
+                          className="h-12 w-12 bg-gradient-to-br from-blue-500 to-purple-600 ring-2 ring-white"
                         />
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{user?.name || user?.email}</p>

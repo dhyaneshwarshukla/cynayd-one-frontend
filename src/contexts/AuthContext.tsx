@@ -143,36 +143,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }
   };
 
-  // Register function
+  // Register function — do not toggle global isLoading (avoids SessionLockProvider unmounting auth pages)
   const register = async (data: RegisterData) => {
     try {
-      setIsLoading(true);
       const response = await apiClient.register(data);
-      
+
       if (response.requiresVerification) {
-        // Don't set user or call success callback for email verification flow
         return {
           requiresVerification: true,
-          message: response.message || 'Please check your email to verify your account.'
+          message: response.message || 'Please check your email to verify your account.',
         };
       }
-      
-      // Fetch full user profile to get all required fields
+
       const fullUser = await apiClient.getCurrentUser();
       setUser(fullUser);
-      
-      // Call success callback if provided
       onRegisterSuccess?.();
-      
+
       return {
         requiresVerification: false,
-        message: 'Registration successful'
+        message: 'Registration successful',
       };
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -199,14 +192,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   // Resend verification email function
   const resendVerification = async (email: string) => {
     try {
-      setIsLoading(true);
-      const response = await apiClient.resendVerification(email);
-      return response;
+      return await apiClient.resendVerification(email);
     } catch (error) {
       console.error('Resend verification failed:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 

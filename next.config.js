@@ -3,7 +3,10 @@ const nextConfig = {
   output: 'standalone',
 
   images: {
-    domains: ['localhost', 'ui-avatars.com'],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'ui-avatars.com', pathname: '/api/**' },
+      { protocol: 'http', hostname: 'localhost', pathname: '/**' },
+    ],
   },
 
   env: {

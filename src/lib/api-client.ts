@@ -388,10 +388,29 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      
-      // Create an error object with axios-like structure
-      const errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
+      const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+      let errorMessage =
+        typeof errorData.message === 'string' ? errorData.message : '';
+
+      if (!errorMessage && Array.isArray(errorData.error)) {
+        errorMessage = (errorData.error as Array<{ message?: string; path?: string[] }>)
+          .map((item) =>
+            item.path?.length
+              ? `${item.path.join('.')}: ${item.message ?? 'Invalid'}`
+              : item.message
+          )
+          .filter(Boolean)
+          .join('; ');
+      }
+
+      if (!errorMessage && typeof errorData.error === 'string') {
+        errorMessage = errorData.error;
+      }
+
+      if (!errorMessage) {
+        errorMessage = `HTTP error! status: ${response.status}`;
+      }
       
       const error = new Error(errorMessage) as any;
       error.response = {
