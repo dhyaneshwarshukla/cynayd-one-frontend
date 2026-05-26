@@ -9,6 +9,9 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { AuditLogCard } from '@/components/audit/AuditLogCard';
+import { AuditLogDetailModal } from '@/components/audit/AuditLogDetailModal';
+import { detailsToSearchText, formatActionLabel } from '@/components/audit/audit-log-utils';
 
 // Define AuditLog interface locally
 interface AuditLog {
@@ -35,7 +38,6 @@ import {
   CheckCircleIcon,
   ArrowPathIcon,
   BellIcon,
-  EyeIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
   CalendarIcon,
@@ -123,8 +125,8 @@ export default function AuditPage() {
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const liveUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Determine user role - only SUPER_ADMIN can access audit logs
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const role = user?.role?.toUpperCase();
+  const canAccessAudit = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   // Connection status monitoring
   useEffect(() => {
@@ -139,14 +141,6 @@ export default function AuditPage() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchAuditLogs();
-      fetchAuditStats();
-      fetchDevices();
-    }
-  }, [isAuthenticated]);
 
   // Cleanup intervals on unmount
   useEffect(() => {
@@ -207,6 +201,14 @@ export default function AuditPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (isAuthenticated && canAccessAudit) {
+      void fetchAuditLogs();
+      void fetchAuditStats();
+      void fetchDevices();
+    }
+  }, [isAuthenticated, canAccessAudit, fetchAuditLogs, fetchAuditStats, fetchDevices]);
+
   const fetchLiveLogs = useCallback(async () => {
     try {
       const since = liveMonitoring.lastUpdate;
@@ -247,7 +249,6 @@ export default function AuditPage() {
 
   const handleViewDetails = (log: ExtendedAuditLog) => {
     setSelectedLog(log);
-    alert(`Viewing details for: ${log.action}... (Feature in development)`);
   };
 
   const toggleLiveMonitoring = () => {
@@ -292,10 +293,14 @@ export default function AuditPage() {
   };
 
   const filteredLogs = auditLogs.filter(log => {
-    const matchesSearch = log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.details?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (log as ExtendedAuditLog).user?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = searchTerm.toLowerCase();
+    const matchesSearch =
+      !q ||
+      log.action.toLowerCase().includes(q) ||
+      log.resource.toLowerCase().includes(q) ||
+      detailsToSearchText(log.details).includes(q) ||
+      (log as ExtendedAuditLog).user?.name?.toLowerCase().includes(q) ||
+      (log as ExtendedAuditLog).user?.email?.toLowerCase().includes(q);
     
     const matchesAction = actionFilter === 'all' || log.action.includes(actionFilter);
     const matchesUser = userFilter === 'all' || (log as ExtendedAuditLog).user?.email === userFilter;
@@ -340,15 +345,7 @@ export default function AuditPage() {
     return '📝';
   };
 
-  const getActionColor = (action: string) => {
-    if (action.includes('delete')) return 'text-red-600';
-    if (action.includes('security')) return 'text-orange-600';
-    if (action.includes('admin') || action.includes('role')) return 'text-purple-600';
-    if (action.includes('create') || action.includes('invite')) return 'text-green-600';
-    return 'text-blue-600';
-  };
-
-  if (!isSuperAdmin) {
+  if (!canAccessAudit) {
     return (
       <UnifiedLayout
         title="Access Denied"
@@ -358,7 +355,7 @@ export default function AuditPage() {
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h3>
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
-            You need Super Administrator privileges to access audit logs.
+            You need Administrator privileges to view audit logs for your organization.
           </p>
           <Button
             variant="outline"
@@ -638,38 +635,11 @@ export default function AuditPage() {
         ) : filteredLogs.length > 0 ? (
           <div className="space-y-3">
             {filteredLogs.map((log) => (
-              <Card key={log.id} className="p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <div className="text-2xl">{getActionIcon(log.action)}</div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h4 className={`font-medium ${getActionColor(log.action)}`}>
-                          {log.action.replace('.', ' ').toUpperCase()}
-                        </h4>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          {log.resource}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">{JSON.stringify(log.details)}</p>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span>User: {(log as ExtendedAuditLog).user?.name}</span>
-                        <span>IP: {log.ipAddress || 'No IP recorded'}</span>
-                        <span>{new Date(log.timestamp).toLocaleString()}</span>
-                        {(log as ExtendedAuditLog).organization && <span>Org: {(log as ExtendedAuditLog).organization?.name}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => handleViewDetails(log)}
-                    variant="outline"
-                    size="sm"
-                    className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                  >
-                    Details
-                  </Button>
-                </div>
-              </Card>
+              <AuditLogCard
+                key={log.id}
+                log={log}
+                onViewDetails={handleViewDetails}
+              />
             ))}
           </div>
         ) : (
@@ -854,16 +824,21 @@ export default function AuditPage() {
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <h4 className="font-medium text-gray-900 mb-2">Recent Activity</h4>
                     <div className="space-y-2">
-                      {auditLogs.slice(0, 5).map((log, index) => (
+                      {auditLogs.slice(0, 5).map((log) => (
                         <div key={log.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
-                          <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-3 min-w-0">
                             <div className="text-lg">{getActionIcon(log.action)}</div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{log.action}</p>
-                              <p className="text-xs text-gray-500">{(log as ExtendedAuditLog).user?.name}</p>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">
+                                {formatActionLabel(log.action)}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {(log as ExtendedAuditLog).user?.name ||
+                                  (log as ExtendedAuditLog).user?.email}
+                              </p>
                             </div>
                           </div>
-                          <span className="text-xs text-gray-500">
+                          <span className="shrink-0 text-xs text-gray-500">
                             {new Date(log.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
@@ -885,6 +860,8 @@ export default function AuditPage() {
           </ResponsiveContainer>
         </div>
       )}
+
+      <AuditLogDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} />
     </UnifiedLayout>
   );
 }

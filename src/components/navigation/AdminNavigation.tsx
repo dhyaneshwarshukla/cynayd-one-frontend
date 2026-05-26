@@ -62,7 +62,8 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
   const { user } = useAuth();
   const pathname = usePathname();
 
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const role = user?.role?.toUpperCase();
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   // Only show admin navigation for admin users
   if (!isAdmin) {
@@ -77,7 +78,7 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
   const managementNavigation = [
     { name: "Users", href: "/users", icon: UsersIcon, permission: 'users' },
     { name: "Apps", href: "/admin/apps", icon: Squares2X2Icon, permission: 'apps' },
-    ...(user?.role === 'SUPER_ADMIN'
+    ...(role === 'SUPER_ADMIN'
       ? [{ name: "All Apps", href: "/superadmin/apps", icon: CommandLineIcon, permission: 'apps' as const }]
       : []),
   ];
@@ -87,6 +88,8 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
     { name: "Plans & Pricing", href: "/admin/plans", icon: BanknotesIcon, permission: 'organizations' },
     { name: "Roles & Permissions", href: "/roles", icon: KeyIcon, permission: 'roles' },
     { name: "Security", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "Access Policies", href: "/admin/access-policies", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "Risk Insights", href: "/admin/risk-insights", icon: ChartBarIcon, permission: 'security' },
     { name: "SAML Integration", href: "/admin/saml-integration", icon: LinkIcon, permission: 'security' },
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
     { name: "Support", href: "/admin/support", icon: LifebuoyIcon, permission: 'support' },

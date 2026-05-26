@@ -18,6 +18,8 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   setUserDirectly: (user: User) => void;
   triggerLoginSuccess: () => void;
+  mustEnrollMfa: boolean;
+  clearMustEnrollMfa: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,6 +39,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [mustEnrollMfa, setMustEnrollMfa] = useState(false);
+
+  const syncMustEnrollMfa = () => {
+    setMustEnrollMfa(apiClient.getMustEnrollMfa());
+  };
+
+  const clearMustEnrollMfa = () => {
+    apiClient.clearMustEnrollMfa();
+    setMustEnrollMfa(false);
+  };
 
   // Check if user is authenticated on mount
   useEffect(() => {
@@ -59,6 +71,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           if (isMounted) {
             clearTimeout(timeoutId);
             setUser(userData);
+            syncMustEnrollMfa();
             setIsLoading(false);
           }
         } catch (error: any) {
@@ -125,15 +138,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     try {
       setIsLoading(true);
       const response = await apiClient.login(credentials);
-      
-      // Fetch full user profile to get all required fields
+
+      if (response.mustEnrollMfa) {
+        setMustEnrollMfa(true);
+      } else {
+        clearMustEnrollMfa();
+      }
+
       const fullUser = await apiClient.getCurrentUser();
       setUser(fullUser);
 
       clearSessionLocked();
       touchUserInteraction();
 
-      // Call success callback if provided
       onLoginSuccess?.();
     } catch (error) {
       console.error('Login failed:', error);
@@ -220,6 +237,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setIsLoading(true);
       await apiClient.logout();
       setUser(null);
+      clearMustEnrollMfa();
       
       // Call success callback if provided
       onLogoutSuccess?.();
@@ -247,6 +265,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     refreshUser,
     setUserDirectly,
     triggerLoginSuccess,
+    mustEnrollMfa,
+    clearMustEnrollMfa,
   };
 
   return (

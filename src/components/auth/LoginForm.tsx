@@ -64,6 +64,11 @@ export const LoginForm: React.FC = () => {
   const [mfaData, setMfaData] = useState<{userId: string, email: string, password: string} | null>(null);
   const { login, isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
   const router = useRouter();
+  const formLoadedAtRef = useRef(Date.now());
+  const [honeypot, setHoneypot] = useState('');
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [magicLinkBusy, setMagicLinkBusy] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -101,6 +106,8 @@ export const LoginForm: React.FC = () => {
         email: normalizedEmail,
         password: data.password,
         rememberMe: data.rememberMe,
+        honeypot,
+        formLoadedAt: formLoadedAtRef.current,
       };
       
       await login(credentials);
@@ -247,6 +254,63 @@ export const LoginForm: React.FC = () => {
   const handleMFAClose = () => {
     setShowMFA(false);
     setMfaData(null);
+  };
+
+  const handleMagicLink = async () => {
+    const email = (document.querySelector('input[type="email"]') as HTMLInputElement)?.value?.trim();
+    if (!email) {
+      setError('Enter your email to receive a magic link.');
+      return;
+    }
+    setMagicLinkBusy(true);
+    setMagicLinkSent(false);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      await apiClient.requestMagicLink(email.toLowerCase());
+      setMagicLinkSent(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send magic link');
+    } finally {
+      setMagicLinkBusy(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    const email = (document.querySelector('input[type="email"]') as HTMLInputElement)?.value?.trim().toLowerCase();
+    if (!email) {
+      setError('Enter your email before using a passkey.');
+      return;
+    }
+    if (!window.PublicKeyCredential) {
+      setError('Passkeys are not supported in this browser.');
+      return;
+    }
+    setPasskeyBusy(true);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      const { authenticateWithPasskey } = await import('../../lib/webauthn');
+      const options = await apiClient.webauthnAuthenticateStart(email);
+      const assertion = await authenticateWithPasskey(
+        options as import('@simplewebauthn/browser').PublicKeyCredentialRequestOptionsJSON
+      );
+      const response = await apiClient.webauthnAuthenticateFinish(
+        assertion as unknown as Record<string, unknown>
+      );
+      if (response.accessToken && response.user) {
+        apiClient.storeAuthToken(response.accessToken);
+        if (response.refreshToken) {
+          localStorage.setItem('refresh_token', response.refreshToken);
+        }
+        setUserDirectly(response.user);
+        triggerLoginSuccess();
+        router.push('/dashboard');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Passkey sign-in failed');
+    } finally {
+      setPasskeyBusy(false);
+    }
   };
 
   const isFormLoading = isLoading || isSubmitting;
@@ -401,6 +465,16 @@ export const LoginForm: React.FC = () => {
           }} 
           className="space-y-6"
         >
+          <input
+            type="text"
+            name="website"
+            tabIndex={-1}
+            autoComplete="off"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            className="absolute opacity-0 h-0 w-0 pointer-events-none"
+            aria-hidden
+          />
           {/* Email Field */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-gray-700">
@@ -512,6 +586,28 @@ export const LoginForm: React.FC = () => {
             )}
           </Button>
         </form>
+
+        <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={handleMagicLink}
+            disabled={magicLinkBusy || isFormLoading}
+            className="text-sm text-blue-600 hover:text-blue-500 font-medium disabled:opacity-50"
+          >
+            {magicLinkBusy ? 'Sending…' : 'Email me a magic link'}
+          </button>
+          {magicLinkSent && (
+            <p className="text-sm text-green-700">Check your inbox for a sign-in link.</p>
+          )}
+          <button
+            type="button"
+            onClick={handlePasskeyLogin}
+            disabled={passkeyBusy || isFormLoading}
+            className="text-sm text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
+          >
+            {passkeyBusy ? 'Waiting for passkey…' : 'Sign in with passkey'}
+          </button>
+        </div>
 
         {/* Sign Up Link */}
         <div className="mt-8 text-center">

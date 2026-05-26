@@ -1,228 +1,244 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient, SecurityEvent, AuditLog } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
-
-// Using SecurityEvent directly since it already has the correct user type
-
-interface SecurityStats {
-  totalEvents: number;
-  criticalEvents: number;
-  highEvents: number;
-  mediumEvents: number;
-  lowEvents: number;
-  recentEvents: number;
-  blockedAttempts: number;
-  suspiciousActivity: number;
-}
-
-interface SecuritySettings {
-  mfaRequired: boolean;
-  mfaRequiredForAllDevices: boolean;
-  passwordPolicy: {
-    minLength: number;
-    requireUppercase: boolean;
-    requireLowercase: boolean;
-    requireNumbers: boolean;
-    requireSymbols: boolean;
-  };
-  sessionTimeout: number;
-  ipWhitelist: string[];
-  failedLoginLimit: number;
-  accountLockoutDuration: number;
-}
-
-// Using AuditLog from UI package
+import { apiClient, SecurityEvent } from '@/lib/api-client';
+import { LiveSessionMonitor } from '@/components/security/LiveSessionMonitor';
+import { SecurityEventCard } from '@/components/security/SecurityEventCard';
+import { SecurityEventDetailModal } from '@/components/security/SecurityEventDetailModal';
+import { SecurityRelatedLinks } from '@/components/security/SecurityRelatedLinks';
+import {
+  COMMON_EVENT_TYPES,
+  normalizeSeverity,
+} from '@/components/security/security-event-utils';
+import {
+  SecuritySettingsPanel,
+  mapApiToSecuritySettings,
+  type SecuritySettingsFormState,
+} from '@/components/security/SecuritySettingsPanel';
+import ToastContainer from '@/components/common/ToastContainer';
+import { useToast } from '@/hooks/useToast';
+import { isAdminUser } from '@/utils/tenant';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
+import { DocumentArrowDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface ThreatAlert {
   id: string;
   type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: string;
   description: string;
   source: string;
   timestamp: string;
   acknowledged: boolean;
 }
 
-export default function SecurityPage() {
-  const { user, isAuthenticated } = useAuth();
-  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
-  const [stats, setStats] = useState<SecurityStats>({
-    totalEvents: 0,
-    criticalEvents: 0,
-    highEvents: 0,
-    mediumEvents: 0,
-    lowEvents: 0,
-    recentEvents: 0,
-    blockedAttempts: 0,
-    suspiciousActivity: 0
-  });
-  const [isLoading, setIsLoading] = useState(true);
+type TabId = 'events' | 'threats' | 'sessions' | 'settings';
+const VALID_TABS: TabId[] = ['events', 'threats', 'sessions', 'settings'];
+
+const DEFAULT_SETTINGS: SecuritySettingsFormState = {
+  mfaRequired: false,
+  passwordMinLength: 8,
+  passwordRequireUppercase: true,
+  passwordRequireLowercase: true,
+  passwordRequireNumbers: true,
+  passwordRequireSymbols: false,
+  sessionTimeout: 30,
+  failedLoginLimit: 5,
+  accountLockoutDuration: 15,
+  maxConcurrentSessions: 10,
+  botDetectionEnabled: true,
+  credentialStuffingEnabled: true,
+  impossibleTravelMaxKmh: 900,
+};
+
+function countBySeverity(events: SecurityEvent[], level: string): number {
+  return events.filter((e) => normalizeSeverity(e.severity) === level).length;
+}
+
+function SecurityPageContent() {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [toasts, { showToast, hideToast }] = useToast();
+  const isAdmin = isAdminUser(user?.role);
+
+  const [activeTab, setActiveTab] = useState<TabId>('events');
+  const [tabLoading, setTabLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'events' | 'audit' | 'threats' | 'settings'>('events');
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [threatAlerts, setThreatAlerts] = useState<ThreatAlert[]>([]);
-  const [settings, setSettings] = useState<SecuritySettings>({
-    mfaRequired: false,
-    mfaRequiredForAllDevices: false,
-    passwordPolicy: {
-      minLength: 8,
-      requireUppercase: true,
-      requireLowercase: true,
-      requireNumbers: true,
-      requireSymbols: false
-    },
-    sessionTimeout: 30,
-    ipWhitelist: [],
-    failedLoginLimit: 5,
-    accountLockoutDuration: 15
+
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([]);
+  const [eventStats, setEventStats] = useState({
+    total: 0,
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
   });
-  const [newIpAddress, setNewIpAddress] = useState('');
+  const [threatAlerts, setThreatAlerts] = useState<ThreatAlert[]>([]);
+  const [ipWhitelist, setIpWhitelist] = useState<string[]>([]);
+  const [settings, setSettings] = useState<SecuritySettingsFormState>(DEFAULT_SETTINGS);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   const [severityFilter, setSeverityFilter] = useState('all');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
+  const [newIpAddress, setNewIpAddress] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
 
-  // Determine user role - ADMIN and SUPER_ADMIN can access security features
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const notify = (title: string, type: 'success' | 'error', message?: string) => {
+    showToast({ type, title, message });
+  };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchSecurityData();
-      fetchAuditLogs();
-      fetchThreatAlerts();
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth/login');
     }
-  }, [isAuthenticated]);
+  }, [authLoading, isAuthenticated, router]);
 
-  const fetchSecurityData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const [apiEvents, apiStats] = await Promise.all([
-        apiClient.getSecurityEvents({
-          limit: 50,
-          offset: 0
-        }),
-        apiClient.getSecurityStats().catch(() => null)
-      ]);
-      
-      setSecurityEvents(apiEvents as SecurityEvent[]);
-      
-      if (apiStats) {
-        const securityStats: SecurityStats = {
-          totalEvents: apiStats.totalEvents,
-          criticalEvents: apiStats.eventsBySeverity.find(s => s.severity === 'critical')?.count || 0,
-          highEvents: apiStats.eventsBySeverity.find(s => s.severity === 'high' || s.severity === 'HIGH')?.count || 0,
-          mediumEvents: apiStats.eventsBySeverity.find(s => s.severity === 'medium')?.count || 0,
-          lowEvents: apiStats.eventsBySeverity.find(s => s.severity === 'low')?.count || 0,
-          recentEvents: apiStats.recentEvents,
-          blockedAttempts: apiEvents.filter(e => 
-            e.eventType.includes('attack') || e.eventType.includes('brute_force') || e.eventType.includes('LOGIN_FAILED')
-          ).length,
-          suspiciousActivity: apiEvents.filter(e => 
-            e.eventType.includes('suspicious') || e.eventType.includes('hijacking') || e.eventType.includes('SUSPICIOUS_ACTIVITY')
-          ).length
-        };
-        setStats(securityStats);
-      } else {
-        const securityStats: SecurityStats = {
-          totalEvents: apiEvents.length,
-          criticalEvents: apiEvents.filter(e => e.severity === 'critical').length,
-          highEvents: apiEvents.filter(e => e.severity === 'high' || e.severity === 'HIGH').length,
-          mediumEvents: apiEvents.filter(e => e.severity === 'medium').length,
-          lowEvents: apiEvents.filter(e => e.severity === 'low').length,
-          recentEvents: apiEvents.filter(e => 
-            new Date(e.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)
-          ).length,
-          blockedAttempts: apiEvents.filter(e => 
-            e.eventType.includes('attack') || e.eventType.includes('brute_force') || e.eventType.includes('LOGIN_FAILED')
-          ).length,
-          suspiciousActivity: apiEvents.filter(e => 
-            e.eventType.includes('suspicious') || e.eventType.includes('hijacking') || e.eventType.includes('SUSPICIOUS_ACTIVITY')
-          ).length
-        };
-        setStats(securityStats);
-      }
-    } catch (err) {
-      setError('Failed to load security data');
-      console.error('Security fetch error:', err);
-      setSecurityEvents([]);
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && VALID_TABS.includes(tab as TabId)) {
+      setActiveTab(tab as TabId);
     }
+  }, [searchParams]);
+
+  const selectTab = (tabId: TabId) => {
+    setActiveTab(tabId);
+    router.replace(`/security?tab=${tabId}`, { scroll: false });
   };
 
-  const fetchAuditLogs = async () => {
-    try {
-      const logs = await apiClient.getAuditLogs({
-        limit: 100,
-        offset: 0
+  const loadEvents = useCallback(async () => {
+    const [eventsRes, statsRes] = await Promise.all([
+      apiClient.getSecurityEvents({ limit: 50, offset: 0 }),
+      apiClient.getSecurityStats().catch(() => null),
+    ]);
+    const events = eventsRes ?? [];
+    setSecurityEvents(events);
+
+    if (statsRes) {
+      const findCount = (sev: string) =>
+        statsRes.eventsBySeverity.find(
+          (s) => s.severity.toLowerCase() === sev.toLowerCase()
+        )?.count ?? 0;
+      setEventStats({
+        total: statsRes.totalEvents,
+        critical: findCount('critical'),
+        high: findCount('high') + findCount('HIGH'),
+        medium: findCount('medium') + findCount('WARNING'),
+        low: findCount('low') + findCount('INFO'),
       });
-      setAuditLogs(logs);
-    } catch (err) {
-      console.error('Failed to fetch audit logs:', err);
-      setAuditLogs([]);
+      const fromApi = statsRes.eventsByType.map((t) => t.eventType);
+      setEventTypeOptions(Array.from(new Set([...COMMON_EVENT_TYPES, ...fromApi])).sort());
+    } else {
+      setEventStats({
+        total: events.length,
+        critical: countBySeverity(events, 'critical'),
+        high: countBySeverity(events, 'high'),
+        medium: countBySeverity(events, 'medium'),
+        low: countBySeverity(events, 'low'),
+      });
+      setEventTypeOptions(
+        Array.from(new Set([...COMMON_EVENT_TYPES, ...events.map((e) => e.eventType)])).sort()
+      );
     }
-  };
+  }, []);
 
-  const fetchThreatAlerts = async () => {
+  const loadThreats = useCallback(async () => {
+    const [threats, whitelist] = await Promise.all([
+      apiClient.getThreatAlerts().catch(() => []),
+      apiClient.getIpWhitelist().catch(() => []),
+    ]);
+    setThreatAlerts(threats);
+    setIpWhitelist(whitelist);
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    const secSettings = await apiClient.getSecuritySettings().catch(() => null);
+    if (secSettings) {
+      setSettings(mapApiToSecuritySettings(secSettings as Record<string, unknown>));
+    }
+  }, []);
+
+  const loadTab = useCallback(
+    async (tab: TabId) => {
+      if (!isAuthenticated || !isAdmin) return;
+      if (tab === 'sessions') return;
+
+      setTabLoading(true);
+      setError(null);
+      try {
+        if (tab === 'events') await loadEvents();
+        else if (tab === 'threats') await loadThreats();
+        else if (tab === 'settings') await loadSettings();
+      } catch {
+        setError('Failed to load security data');
+      } finally {
+        setTabLoading(false);
+      }
+    },
+    [isAuthenticated, isAdmin, loadEvents, loadThreats, loadSettings]
+  );
+
+  useEffect(() => {
+    if (isAdmin && isAuthenticated) {
+      void loadTab(activeTab);
+    }
+  }, [activeTab, isAdmin, isAuthenticated, loadTab]);
+
+  const filteredEvents = useMemo(() => {
+    return securityEvents.filter((event) => {
+      const matchesSeverity =
+        severityFilter === 'all' ||
+        normalizeSeverity(event.severity) === severityFilter;
+      const matchesType =
+        eventTypeFilter === 'all' || event.eventType === eventTypeFilter;
+      return matchesSeverity && matchesType;
+    });
+  }, [securityEvents, severityFilter, eventTypeFilter]);
+
+  const handleWhitelistIp = async (ip: string) => {
+    if (!ip.trim()) return;
     try {
-      const alerts = await apiClient.getThreatAlerts();
-      setThreatAlerts(alerts);
-    } catch (err) {
-      console.error('Failed to fetch threat alerts:', err);
-      setThreatAlerts([]);
+      await apiClient.addToIpWhitelist(ip.trim());
+      setIpWhitelist((prev) =>
+        prev.includes(ip.trim()) ? prev : [...prev, ip.trim()]
+      );
+      notify('IP whitelisted', 'success', `${ip} is on the allow list for this organization.`);
+    } catch {
+      notify('Failed to whitelist IP', 'error');
     }
   };
-
 
   const handleAcknowledgeThreat = async (alertId: string) => {
     try {
       await apiClient.acknowledgeThreatAlert(alertId);
-      setThreatAlerts(prev => prev.map(alert => 
-        alert.id === alertId ? { ...alert, acknowledged: true } : alert
-      ));
-    } catch (err) {
-      alert('Failed to acknowledge threat alert');
+      setThreatAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a))
+      );
+      notify('Threat acknowledged', 'success');
+    } catch {
+      notify('Failed to acknowledge threat', 'error');
     }
   };
 
-  const handleAddIpToWhitelist = async () => {
-    if (!newIpAddress.trim()) return;
-    
+  const handleRemoveIp = async (ip: string) => {
     try {
-      await apiClient.addToIpWhitelist(newIpAddress.trim());
-      setSettings(prev => ({
-        ...prev,
-        ipWhitelist: [...prev.ipWhitelist, newIpAddress.trim()]
-      }));
-      setNewIpAddress('');
-      alert('IP address added to whitelist successfully!');
-    } catch (err) {
-      alert('Failed to add IP address to whitelist');
+      await apiClient.removeFromIpWhitelist(ip);
+      setIpWhitelist((prev) => prev.filter((x) => x !== ip));
+      notify('IP removed', 'success');
+    } catch {
+      notify('Failed to remove IP', 'error');
     }
   };
 
-  const handleRemoveIpFromWhitelist = async (ipAddress: string) => {
-    try {
-      await apiClient.removeFromIpWhitelist(ipAddress);
-      setSettings(prev => ({
-        ...prev,
-        ipWhitelist: prev.ipWhitelist.filter(ip => ip !== ipAddress)
-      }));
-      alert('IP address removed from whitelist successfully!');
-    } catch (err) {
-      alert('Failed to remove IP address from whitelist');
-    }
-  };
-
-  const handleExportReport = async (format: 'pdf' | 'csv' | 'json') => {
+  const handleExportReport = async (format: 'csv' | 'json') => {
     try {
       const blob = await apiClient.exportSecurityReport(format);
       const url = window.URL.createObjectURL(blob);
@@ -233,164 +249,144 @@ export default function SecurityPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err) {
-      alert(`Failed to export ${format.toUpperCase()} report`);
+      notify('Report exported', 'success');
+    } catch {
+      notify('Export failed', 'error');
     }
   };
 
- 
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await apiClient.updateSecuritySettings(settings);
+      notify('Settings saved', 'success');
+    } catch {
+      notify('Failed to save settings', 'error');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
-  const filteredEvents = (Array.isArray(securityEvents) ? securityEvents : []).filter(event => {
-    if (!event || typeof event !== 'object') return false;
-    
-    const matchesSeverity = severityFilter === 'all' || event.severity === severityFilter;
-    const matchesType = eventTypeFilter === 'all' || event.eventType === eventTypeFilter;
-    
-    return matchesSeverity && matchesType;
-  });
+  const refresh = () => {
+    void loadTab(activeTab);
+  };
+
+  if (authLoading) {
+    return (
+      <UnifiedLayout title="Security Center" subtitle="Loading…">
+        <div className="flex justify-center py-16">
+          <LoadingSpinner size="lg" />
+        </div>
+      </UnifiedLayout>
+    );
+  }
 
   if (!isAdmin) {
     return (
-      <UnifiedLayout
-        title="Access Denied"
-        subtitle="You don't have permission to view this page"
-      >
-        <Card className="p-12 text-center bg-gradient-to-br from-red-50 to-red-100">
-          <div className="text-6xl mb-4">🚫</div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h3>
-          <p className="text-gray-600 mb-6 max-w-md mx-auto">
-            You need Super Administrator privileges to access security monitoring.
+      <UnifiedLayout title="Access Denied" subtitle="Administrator access required">
+        <Card className="p-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-900">Access restricted</h3>
+          <p className="mx-auto mt-2 max-w-md text-gray-600">
+            You need administrator privileges to use Security Center.
           </p>
-          <Button
-            variant="outline"
-            onClick={() => window.history.back()}
-            className="border-red-300 text-red-700 hover:bg-red-50"
-          >
-            Go Back
-          </Button>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/settings">
+              <Button variant="outline">Account settings</Button>
+            </Link>
+            <Button variant="outline" onClick={() => router.back()}>
+              Go back
+            </Button>
+          </div>
         </Card>
       </UnifiedLayout>
     );
   }
 
+  const tabs: { id: TabId; name: string }[] = [
+    { id: 'events', name: 'Events' },
+    { id: 'threats', name: 'Threats & allow list' },
+    { id: 'sessions', name: 'Sessions' },
+    { id: 'settings', name: 'Org settings' },
+  ];
+
   return (
     <UnifiedLayout
       title="Security Center"
-      subtitle="Monitor security events and manage security settings"
+      subtitle="Monitor sign-in activity, threats, sessions, and organization security policy"
       actions={
-        isAdmin ? (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              onClick={() => handleExportReport('pdf')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-            >
-              <span className="mr-2">📊</span>
-              Export Report
-            </Button>
-           
-            <Button
-              variant="outline"
-              onClick={fetchSecurityData}
-              className="border-blue-300 text-blue-700 hover:bg-blue-50"
-            >
-              <span className="mr-2">🔄</span>
-              Refresh
-            </Button>
-          </div>
-        ) : null
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => void handleExportReport('json')}>
+            <DocumentArrowDownIcon className="mr-1.5 h-4 w-4" />
+            Export JSON
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void handleExportReport('csv')}>
+            <DocumentArrowDownIcon className="mr-1.5 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={refresh}>
+            <ArrowPathIcon className="mr-1.5 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       }
     >
+      <ToastContainer toasts={toasts} onClose={hideToast} />
+      <SecurityRelatedLinks current="security" />
+      <SecurityEventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onWhitelistIp={(ip) => void handleWhitelistIp(ip)}
+      />
+
       {error && (
         <Alert variant="error" className="mb-6">
           {error}
         </Alert>
       )}
 
-      {/* Security Stats */}
-      <ResponsiveContainer maxWidth="full" className="mb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-6 bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-red-600">Critical Events</p>
-                <p className="text-2xl font-bold text-red-900">{stats.criticalEvents}</p>
-              </div>
-              <div className="text-2xl">🚨</div>
-            </div>
-          </Card>
-          
-          <Card className="p-6 bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-orange-600">High Priority</p>
-                <p className="text-2xl font-bold text-orange-900">{stats.highEvents}</p>
-              </div>
-              <div className="text-2xl">⚠️</div>
-            </div>
-          </Card>
-          
-          <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-600">Total Events</p>
-                <p className="text-2xl font-bold text-blue-900">{stats.totalEvents}</p>
-              </div>
-              <div className="text-2xl">🔍</div>
-            </div>
-          </Card>
-          
-          <Card className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-600">Blocked Attempts</p>
-                <p className="text-2xl font-bold text-green-900">{stats.blockedAttempts}</p>
-              </div>
-              <div className="text-2xl">🛡️</div>
-            </div>
-          </Card>
-        </div>
-      </ResponsiveContainer>
-
-      {/* Tab Navigation */}
-      <ResponsiveContainer maxWidth="full" className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'events', name: 'Security Events', icon: '🔍' },
-              { id: 'audit', name: 'Audit Logs', icon: '📋' },
-              { id: 'threats', name: 'Threat Detection', icon: '🚨' },
-          
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span className="mr-2">{tab.icon}</span>
-                {tab.name}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </ResponsiveContainer>
-
-      {/* Tab Content */}
       {activeTab === 'events' && (
-        <ResponsiveContainer maxWidth="full" className="mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Security Events</h2>
-              <div className="flex gap-3">
+        <ResponsiveContainer maxWidth="full" className="mb-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Critical" value={eventStats.critical} tone="text-red-700" />
+            <StatCard label="High" value={eventStats.high} tone="text-orange-700" />
+            <StatCard label="Medium" value={eventStats.medium} tone="text-amber-700" />
+            <StatCard label="Total" value={eventStats.total} tone="text-gray-900" />
+          </div>
+        </ResponsiveContainer>
+      )}
+
+      <nav className="mb-6 flex flex-wrap gap-2 border-b border-gray-200">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => selectTab(tab.id)}
+            className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.name}
+          </button>
+        ))}
+      </nav>
+
+      {tabLoading && activeTab !== 'sessions' ? (
+        <div className="flex justify-center py-12">
+          <LoadingSpinner size="lg" />
+        </div>
+      ) : (
+        <>
+          {activeTab === 'events' && (
+            <section className="space-y-4">
+              <div className="flex flex-wrap gap-3">
                 <select
                   value={severityFilter}
                   onChange={(e) => setSeverityFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="all">All Severities</option>
+                  <option value="all">All severities</option>
                   <option value="critical">Critical</option>
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
@@ -399,278 +395,193 @@ export default function SecurityPage() {
                 <select
                   value={eventTypeFilter}
                   onChange={(e) => setEventTypeFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="all">All Event Types</option>
-                  <option value="LOGIN_SUCCESS">Login Success</option>
-                  <option value="LOGIN_FAILED">Login Failed</option>
-                  <option value="MFA_ENABLED">MFA Enabled</option>
-                  <option value="PASSWORD_CHANGE">Password Change</option>
-                  <option value="SUSPICIOUS_ACTIVITY">Suspicious Activity</option>
-                  <option value="BRUTE_FORCE_ATTACK">Brute Force Attack</option>
+                  <option value="all">All event types</option>
+                  {eventTypeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
                 </select>
               </div>
-            </div>
-            
-            {isLoading ? (
-              <div className="flex justify-center py-8">
-                <LoadingSpinner size="lg" />
-              </div>
-            ) : filteredEvents.length > 0 ? (
-              <div className="space-y-3">
-                {filteredEvents.map((event) => (
-                  <div key={event.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className="text-lg">
-                            {event.eventType === 'LOGIN_SUCCESS' ? '✅' :
-                             event.eventType === 'LOGIN_FAILED' ? '❌' :
-                             event.eventType === 'MFA_ENABLED' ? '🔐' :
-                             event.eventType === 'PASSWORD_CHANGE' ? '🔑' :
-                             event.eventType === 'SUSPICIOUS_ACTIVITY' ? '⚠️' :
-                             event.eventType === 'BRUTE_FORCE_ATTACK' ? '🚫' : '🔍'}
-                          </span>
-                          <h4 className="font-medium text-gray-900 capitalize">
-                            {event.eventType.replace('_', ' ')}
-                          </h4>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            event.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                            event.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                            event.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {event.severity.toUpperCase()}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{event.details}</p>
-                        <div className="flex items-center space-x-4 text-xs text-gray-500">
-                          <span>IP: {event.ipAddress}</span>
-                          <span>{new Date(event.timestamp).toLocaleString()}</span>
-                          {event.user && <span>User: {event.user.name}</span>}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled
-                          onClick={() => {}}
-                          className="border-red-300 text-red-700 hover:bg-red-50 opacity-50 cursor-not-allowed"
-                        >
-                          Block IP
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled
-                          onClick={() => {}}
-                          className="border-blue-300 text-blue-700 hover:bg-blue-50 opacity-50 cursor-not-allowed"
-                        >
-                          Investigate
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-2">🔍</div>
-                <p className="text-gray-600">No security events found</p>
-                <p className="text-sm text-gray-500 mt-2">Security events will appear here when they occur</p>
-              </div>
-            )}
-          </Card>
-        </ResponsiveContainer>
-      )}
 
-      {activeTab === 'audit' && (
-        <ResponsiveContainer maxWidth="full" className="mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Audit Logs</h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => handleExportReport('csv')}
-                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  <span className="mr-2">📊</span>
-                  Export CSV
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={fetchAuditLogs}
-                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                >
-                  <span className="mr-2">🔄</span>
-                  Refresh
-                </Button>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              {auditLogs.length > 0 ? (
-                auditLogs.map((log) => (
-                  <div key={log.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className="text-lg">
-                            {log.action === 'LOGIN' ? '🔐' :
-                             log.action === 'PASSWORD_CHANGE' ? '🔑' :
-                             log.action === 'MFA_ENABLED' ? '🛡️' :
-                             log.action === 'LOGOUT' ? '🚪' :
-                             log.action === 'PROFILE_UPDATE' ? '👤' : '📝'}
-                          </span>
-                          <h4 className="font-medium text-gray-900">{log.action}</h4>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                            {log.resource}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{JSON.stringify(log.details)}</p>
-                        <div className="flex items-center space-x-4 text-xs text-gray-500">
-                          <span>User: {log.userId}</span>
-                          <span>IP: {log.ipAddress}</span>
-                          <span>{new Date(log.timestamp).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
+              {filteredEvents.length === 0 ? (
+                <Card className="p-8 text-center text-gray-500">No security events found.</Card>
               ) : (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-2">📋</div>
-                  <p className="text-gray-600">No audit logs found</p>
-                  <p className="text-sm text-gray-500 mt-2">Audit logs will appear here when users perform actions</p>
+                <div className="space-y-3">
+                  {filteredEvents.map((event) => (
+                    <SecurityEventCard
+                      key={event.id}
+                      event={event}
+                      onInvestigate={setSelectedEvent}
+                      onWhitelistIp={(ip) => void handleWhitelistIp(ip)}
+                    />
+                  ))}
                 </div>
               )}
-            </div>
-          </Card>
-        </ResponsiveContainer>
-      )}
+            </section>
+          )}
 
-      {activeTab === 'threats' && (
-        <ResponsiveContainer maxWidth="full" className="mb-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Threat Alerts */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Active Threats</h2>
-                <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                  {threatAlerts.filter(t => !t.acknowledged).length} Active
-                </span>
-              </div>
-              
-              <div className="space-y-3">
-                {threatAlerts.length > 0 ? (
-                  threatAlerts.map((threat) => (
-                    <div key={threat.id} className={`border rounded-lg p-4 ${
-                      threat.acknowledged 
-                        ? 'border-gray-200 bg-gray-50' 
-                        : 'border-red-200 bg-red-50'
-                    }`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <span className="text-lg">🚨</span>
-                            <h4 className="font-medium text-gray-900">{threat.type}</h4>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              threat.severity === 'critical' ? 'bg-red-200 text-red-800' :
-                              threat.severity === 'high' ? 'bg-orange-200 text-orange-800' :
-                              threat.severity === 'medium' ? 'bg-yellow-200 text-yellow-800' :
-                              'bg-green-200 text-green-800'
-                            }`}>
-                              {threat.severity.toUpperCase()}
-                            </span>
-                            {threat.acknowledged && (
-                              <span className="px-2 py-1 bg-green-200 text-green-800 text-xs rounded-full">
-                                ACKNOWLEDGED
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-700 mb-2">{threat.description}</p>
-                          <div className="flex items-center space-x-4 text-xs text-gray-600">
-                            <span>Source: {threat.source}</span>
-                            <span>{new Date(threat.timestamp).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        {!threat.acknowledged && (
-                          <Button
-                            onClick={() => handleAcknowledgeThreat(threat.id)}
-                            variant="outline"
-                            size="sm"
-                            className="border-red-300 text-red-700 hover:bg-red-100"
-                          >
-                            Acknowledge
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))
+          {activeTab === 'threats' && (
+            <section className="grid gap-6 lg:grid-cols-2">
+              <Card className="p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Threat alerts</h2>
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                    {threatAlerts.filter((t) => !t.acknowledged).length} open
+                  </span>
+                </div>
+                {threatAlerts.length === 0 ? (
+                  <p className="text-sm text-gray-500">No threat alerts.</p>
                 ) : (
-                  <div className="text-center py-8">
-                    <div className="text-4xl mb-2">✅</div>
-                    <p className="text-gray-600">No active threats detected</p>
-                    <p className="text-sm text-gray-500 mt-2">System is secure</p>
-                  </div>
+                  <ul className="space-y-3">
+                    {threatAlerts.map((threat) => (
+                      <li
+                        key={threat.id}
+                        className={`rounded-lg border p-4 ${
+                          threat.acknowledged
+                            ? 'border-gray-200 bg-gray-50'
+                            : 'border-red-200 bg-red-50/50'
+                        }`}
+                      >
+                        <div className="flex justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-gray-900">{threat.type}</p>
+                            <p className="mt-1 text-sm text-gray-600">{threat.description}</p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {threat.source} · {new Date(threat.timestamp).toLocaleString()}
+                            </p>
+                          </div>
+                          {!threat.acknowledged && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleAcknowledgeThreat(threat.id)}
+                            >
+                              Acknowledge
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-            </Card>
+                <p className="mt-4 text-sm text-gray-600">
+                  To <strong>block</strong> sign-ins (VPN, country, schedule), use{' '}
+                  <Link href="/admin/access-policies" className="text-indigo-600 hover:underline">
+                    access policies
+                  </Link>
+                  .
+                </p>
+              </Card>
 
-            {/* IP Whitelist Management */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">IP Whitelist</h2>
-                <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                  {settings.ipWhitelist.length} IPs
-                </span>
-              </div>
-              
-              <div className="space-y-4">
-                {/* Add IP Form */}
-                <div className="flex gap-2">
+              <Card className="p-6">
+                <h2 className="mb-2 text-lg font-semibold">IP allow list</h2>
+                <p className="mb-4 text-sm text-gray-600">
+                  These IPs are allowed when a policy or control references this list. This does
+                  not block unknown IPs — use access policies to deny sign-in.
+                </p>
+                <div className="mb-4 flex gap-2">
                   <input
                     type="text"
-                    placeholder="Enter IP address (e.g., 192.168.1.1)"
+                    placeholder="e.g. 192.168.1.1"
                     value={newIpAddress}
                     onChange={(e) => setNewIpAddress(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
                   />
                   <Button
-                    onClick={handleAddIpToWhitelist}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => {
+                      void handleWhitelistIp(newIpAddress);
+                      setNewIpAddress('');
+                    }}
                   >
                     Add IP
                   </Button>
                 </div>
-                
-                {/* IP List */}
-                <div className="space-y-2">
-                  {settings.ipWhitelist.length > 0 ? (
-                    settings.ipWhitelist.map((ip, index) => (
-                      <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                <ul className="space-y-2">
+                  {ipWhitelist.length === 0 ? (
+                    <li className="text-sm text-gray-500">No IPs on the allow list.</li>
+                  ) : (
+                    ipWhitelist.map((ip) => (
+                      <li
+                        key={ip}
+                        className="flex items-center justify-between rounded bg-gray-50 px-3 py-2"
+                      >
                         <span className="font-mono text-sm">{ip}</span>
                         <Button
-                          onClick={() => handleRemoveIpFromWhitelist(ip)}
-                          variant="outline"
                           size="sm"
-                          className="border-red-300 text-red-700 hover:bg-red-50"
+                          variant="ghost"
+                          className="text-red-600"
+                          onClick={() => void handleRemoveIp(ip)}
                         >
                           Remove
                         </Button>
-                      </div>
+                      </li>
                     ))
-                  ) : (
-                    <p className="text-sm text-gray-500 text-center py-4">No IP addresses whitelisted</p>
                   )}
-                </div>
-              </div>
-            </Card>
-          </div>
-        </ResponsiveContainer>
+                </ul>
+              </Card>
+            </section>
+          )}
+
+          {activeTab === 'sessions' && (
+            <section>
+              <p className="mb-4 text-sm text-gray-600">
+                Revoke active sessions for users in your organization. For your own passkeys and
+                MFA, use{' '}
+                <Link href="/settings?tab=security" className="text-indigo-600 hover:underline">
+                  account settings
+                </Link>
+                .
+              </p>
+              <LiveSessionMonitor />
+            </section>
+          )}
+
+          {activeTab === 'settings' && (
+            <SecuritySettingsPanel
+              settings={settings}
+              onChange={setSettings}
+              onSave={() => void handleSaveSettings()}
+              saving={settingsSaving}
+            />
+          )}
+        </>
       )}
     </UnifiedLayout>
+  );
+}
+
+export default function SecurityPage() {
+  return (
+    <Suspense
+      fallback={
+        <UnifiedLayout title="Security Center" subtitle="Loading…">
+          <div className="flex justify-center py-16">
+            <LoadingSpinner size="lg" />
+          </div>
+        </UnifiedLayout>
+      }
+    >
+      <SecurityPageContent />
+    </Suspense>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <Card className="p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${tone}`}>{value}</p>
+    </Card>
   );
 }

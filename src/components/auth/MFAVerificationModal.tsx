@@ -27,6 +27,20 @@ export function MFAVerificationModal({
   const [mfaCode, setMfaCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+
+  const handleSendEmailCode = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      await apiClient.sendMfaEmailCode(userId);
+      setEmailCodeSent(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send email code');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleVerify = async () => {
     if (!mfaCode || mfaCode.length !== 6) {
@@ -198,6 +212,15 @@ export function MFAVerificationModal({
                 {isLoading ? <LoadingSpinner size="sm" /> : 'Verify Code'}
               </Button>
               
+              <Button
+                onClick={handleSendEmailCode}
+                disabled={isLoading}
+                variant="outline"
+                className="w-full"
+              >
+                {emailCodeSent ? 'Email code sent' : 'Send code to email'}
+              </Button>
+
               <div className="text-center">
                 <span className="text-sm text-gray-500">or</span>
               </div>

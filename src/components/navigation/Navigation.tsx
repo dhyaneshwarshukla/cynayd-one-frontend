@@ -9,8 +9,8 @@ const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): 
     'apps': ['ADMIN', 'SUPER_ADMIN'],
     'organizations': ['SUPER_ADMIN'],
     'users': ['ADMIN', 'SUPER_ADMIN'],
-    'audit': ['SUPER_ADMIN'],
-    'security': ['SUPER_ADMIN'],
+    'audit': ['ADMIN', 'SUPER_ADMIN'],
+    'security': ['ADMIN', 'SUPER_ADMIN'],
     'roles': ['SUPER_ADMIN'],
     'settings': ['SUPER_ADMIN']
   };

@@ -267,9 +267,9 @@ export default function UserDashboard({ user, roleLabel = 'Member' }: UserDashbo
       icon: UserCircleIcon,
     },
     {
-      href: '/dashboard/settings',
+      href: '/settings',
       label: 'Settings',
-      description: 'Preferences and security',
+      description: 'Profile, security, and appearance',
       icon: Cog6ToothIcon,
     },
     {

@@ -42,6 +42,8 @@ export interface LoginCredentials {
   password: string;
   mfaToken?: string;
   rememberMe?: boolean;
+  honeypot?: string;
+  formLoadedAt?: number;
 }
 
 export interface RegisterData {
@@ -79,6 +81,8 @@ export interface AuthResponse {
   code?: string;
   userId?: string;
   email?: string;
+  mustEnrollMfa?: boolean;
+  enrollmentReason?: 'policy' | 'risk' | 'org_setting';
 }
 
 export interface PinLock {
@@ -349,6 +353,11 @@ class ApiClient {
     this.authToken = token;
   }
 
+  /** Store JWT after magic link or passkey login */
+  storeAuthToken(token: string): void {
+    this.setStoredToken(token);
+  }
+
   private removeStoredToken(): void {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
@@ -471,7 +480,25 @@ class ApiClient {
     if (response.accessToken) {
       this.setStoredToken(response.accessToken);
     }
+    if (typeof window !== 'undefined') {
+      if (response.mustEnrollMfa) {
+        sessionStorage.setItem('must_enroll_mfa', 'true');
+      } else {
+        sessionStorage.removeItem('must_enroll_mfa');
+      }
+    }
     return response;
+  }
+
+  getMustEnrollMfa(): boolean {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('must_enroll_mfa') === 'true';
+  }
+
+  clearMustEnrollMfa(): void {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('must_enroll_mfa');
+    }
   }
 
   async register(data: RegisterData): Promise<AuthResponse> {
@@ -523,6 +550,7 @@ class ApiClient {
       console.warn('Logout request failed, but clearing local state');
     } finally {
       this.removeStoredToken();
+      this.clearMustEnrollMfa();
     }
   }
 
@@ -864,7 +892,7 @@ class ApiClient {
   }
 
   async deleteUser(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/api/users/${id}`, {
+    return this.requestWithStepUp<{ success: boolean; message: string }>(`/api/users/${id}`, {
       method: 'DELETE',
     });
   }
@@ -1040,12 +1068,18 @@ class ApiClient {
   }
 
   // Security Reports
-  async exportSecurityReport(format: 'pdf' | 'csv' | 'json'): Promise<Blob> {
+  async exportSecurityReport(format: 'csv' | 'json'): Promise<Blob> {
     const response = await fetch(`${this.baseURL}/api/security/report?format=${format}`, {
       headers: {
-        'Authorization': `Bearer ${this.getToken()}`
-      }
+        Authorization: `Bearer ${this.getAuthToken()}`,
+      },
+      credentials: 'include',
     });
+
+    if (!response.ok) {
+      throw new Error('Failed to export security report');
+    }
+
     return response.blob();
   }
 
@@ -1801,11 +1835,25 @@ class ApiClient {
     });
   }
 
-  async enableMFA(token: string, backupCodes?: string[]): Promise<{ message: string }> {
-    return this.request('/api/mfa/enable', {
+  async enableMFA(
+    token: string,
+    backupCodes?: string[]
+  ): Promise<{ message: string; accessToken?: string; mustEnrollMfa?: boolean }> {
+    const response = await this.request<{
+      message: string;
+      accessToken?: string;
+      mustEnrollMfa?: boolean;
+    }>('/api/mfa/enable', {
       method: 'POST',
       body: JSON.stringify({ token, backupCodes }),
     });
+    if (response.accessToken) {
+      this.setStoredToken(response.accessToken);
+    }
+    if (response.mustEnrollMfa === false) {
+      this.clearMustEnrollMfa();
+    }
+    return response;
   }
 
   async disableMFA(password: string): Promise<{ message: string }> {
@@ -1987,6 +2035,177 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  async getAccessPolicies(): Promise<Array<Record<string, unknown>>> {
+    return this.request('/api/access-policies');
+  }
+
+  async createAccessPolicy(body: Record<string, unknown>): Promise<unknown> {
+    return this.request('/api/access-policies', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteAccessPolicy(id: string): Promise<void> {
+    return this.request(`/api/access-policies/${id}`, { method: 'DELETE' });
+  }
+
+  async getRequiredConsents(): Promise<{ required: Array<{ purpose: string; version: string; label: string }> }> {
+    return this.request('/api/privacy/consent/required');
+  }
+
+  async getUserConsents(): Promise<Array<{ purpose: string; version: string }>> {
+    return this.request('/api/privacy/consent');
+  }
+
+  async grantConsent(purpose: string, version: string): Promise<unknown> {
+    return this.request('/api/privacy/consent', {
+      method: 'POST',
+      body: JSON.stringify({ purpose, version }),
+    });
+  }
+
+  async requestMagicLink(email: string): Promise<{ message: string }> {
+    return this.request('/api/auth/magic-link/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async sendMfaEmailCode(userId?: string): Promise<{ message: string }> {
+    if (userId) {
+      return this.request('/api/mfa/email/send-login', {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+    }
+    return this.request('/api/mfa/email/send', { method: 'POST' });
+  }
+
+  async getRiskInsightsDashboard(): Promise<Record<string, unknown>> {
+    return this.request('/api/risk-insights/dashboard');
+  }
+
+  async getAdminSessions(): Promise<{ count: number; sessions: unknown[] }> {
+    return this.request('/api/admin/sessions');
+  }
+
+  async revokeAdminSession(sessionId: string): Promise<void> {
+    return this.request(`/api/admin/sessions/${sessionId}`, { method: 'DELETE' });
+  }
+
+  async listWebAuthnCredentials(): Promise<
+    Array<{ id: string; deviceName: string | null; createdAt: string; lastUsedAt: string | null }>
+  > {
+    return this.request('/api/auth/webauthn/credentials');
+  }
+
+  async deleteWebAuthnCredential(id: string): Promise<void> {
+    return this.request(`/api/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
+  }
+
+  async updateAccessPolicy(
+    id: string,
+    body: Record<string, unknown>
+  ): Promise<unknown> {
+    return this.request(`/api/access-policies/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async webauthnAuthenticateStart(email: string): Promise<Record<string, unknown>> {
+    return this.request('/api/auth/webauthn/authenticate/start', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async webauthnAuthenticateFinish(
+    response: Record<string, unknown>
+  ): Promise<AuthResponse> {
+    return this.request('/api/auth/webauthn/authenticate/finish', {
+      method: 'POST',
+      body: JSON.stringify({ response }),
+    });
+  }
+
+  async webauthnRegisterStart(): Promise<Record<string, unknown>> {
+    return this.request('/api/auth/webauthn/register/start', { method: 'POST' });
+  }
+
+  async webauthnRegisterFinish(
+    response: Record<string, unknown>,
+    deviceName?: string
+  ): Promise<{ success: boolean }> {
+    return this.request('/api/auth/webauthn/register/finish', {
+      method: 'POST',
+      body: JSON.stringify({ response, deviceName }),
+    });
+  }
+
+  async performStepUp(password: string, mfaToken?: string): Promise<string> {
+    const data = await this.request<{ stepUpToken: string }>('/api/auth/step-up', {
+      method: 'POST',
+      body: JSON.stringify({ password, mfaToken }),
+    });
+    return data.stepUpToken;
+  }
+
+  getStepUpToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem('step_up_token');
+  }
+
+  async withStepUp<T>(fn: (stepUpToken: string) => Promise<T>): Promise<T> {
+    const token = this.getStepUpToken();
+    if (token) {
+      try {
+        return await fn(token);
+      } catch (err: unknown) {
+        const e = err as { response?: { data?: { code?: string } } };
+        if (e.response?.data?.code !== 'STEP_UP_REQUIRED') throw err;
+      }
+    }
+    const password = typeof window !== 'undefined'
+      ? window.prompt('Enter your password to confirm this action:')
+      : null;
+    if (!password) throw new Error('Step-up cancelled');
+    const newToken = await this.performStepUp(password);
+    sessionStorage.setItem('step_up_token', newToken);
+    return fn(newToken);
+  }
+
+  async requestWithStepUp<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    return this.withStepUp((stepUpToken) =>
+      this.request<T>(endpoint, {
+        ...options,
+        headers: {
+          ...(options.headers as Record<string, string>),
+          'X-Step-Up-Token': stepUpToken,
+        },
+      })
+    );
+  }
+
+  async verifyMfaEmailCode(code: string): Promise<{ valid: boolean }> {
+    return this.request('/api/mfa/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async requestPrivacyExport(): Promise<Record<string, unknown>> {
+    return this.request('/api/privacy/export');
+  }
+
+  async requestPrivacyDelete(): Promise<unknown> {
+    return this.request('/api/privacy/delete-request', { method: 'POST' });
   }
 
   // Utility methods

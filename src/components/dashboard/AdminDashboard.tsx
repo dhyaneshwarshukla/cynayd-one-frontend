@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { apiClient, Organization, Plan, Pricing } from '@/lib/api-client';
+import { useRouter } from 'next/navigation';
+import { apiClient, Organization, Plan, Pricing, type SecurityEvent } from '@/lib/api-client';
+import {
+  formatEventTypeLabel,
+  normalizeSeverity,
+  summarizeEventDetails,
+} from '@/components/security/security-event-utils';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -63,6 +69,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ user }: AdminDashboardProps) {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({ 
     activeUsers: 0, 
     totalTeams: 0, 
@@ -75,7 +82,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
-  const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<SecurityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -327,13 +334,24 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           icon={KeyIcon}
           variant="violet"
         />
-        <StatsCard
-          title="Security events"
-          value={stats.securityEvents}
-          description="Recent platform activity"
-          icon={ShieldExclamationIcon}
-          variant="amber"
-        />
+        <div
+          className="cursor-pointer"
+          role="link"
+          tabIndex={0}
+          onClick={() => router.push('/security')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') router.push('/security');
+          }}
+        >
+          <StatsCard
+            title="Security events"
+            value={stats.securityEvents}
+            description="Open Security Center"
+            icon={ShieldExclamationIcon}
+            variant="amber"
+            className="hover:border-amber-300"
+          />
+        </div>
       </div>
 
       {/* Plan Details */}
@@ -410,7 +428,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       )}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {[
           {
             href: '/users',
@@ -434,9 +452,16 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             iconBg: 'bg-violet-100 text-violet-700',
           },
           {
-            href: '/dashboard/settings',
+            href: '/security',
+            title: 'Security Center',
+            description: 'Events, sessions, and policies',
+            icon: ShieldExclamationIcon,
+            iconBg: 'bg-amber-100 text-amber-700',
+          },
+          {
+            href: '/settings',
             title: 'Settings',
-            description: 'Organization preferences',
+            description: 'Profile, plan, and organization',
             icon: Cog6ToothIcon,
             iconBg: 'bg-slate-100 text-slate-700',
           },
@@ -506,16 +531,20 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 <p className="text-sm text-purple-600">Active</p>
               </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-amber-50"
+              onClick={() => router.push('/security')}
+            >
               <div>
                 <p className="font-medium text-gray-900">Security Events</p>
-                <p className="text-sm text-gray-600">Last 24 hours</p>
+                <p className="text-sm text-gray-600">View in Security Center</p>
               </div>
               <div className="text-right">
                 <p className="text-xl font-bold text-gray-900">{stats.securityEvents}</p>
-                <p className="text-sm text-red-600">Events</p>
+                <p className="text-sm text-amber-700">Open →</p>
               </div>
-            </div>
+            </button>
           </div>
         </Card>
       </div>
@@ -562,31 +591,60 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
         {/* Security Alerts */}
         <Card className="p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <span className="text-xl">🚨</span>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="rounded-lg bg-red-100 p-2">
+                <span className="text-xl">🚨</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Security Alerts</h3>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Security Alerts</h3>
+            <Button variant="outline" size="sm" onClick={() => router.push('/security')}>
+              View all
+            </Button>
           </div>
           <div className="space-y-3">
-            {Array.isArray(securityAlerts) && securityAlerts.length > 0 ? (
-              securityAlerts.slice(0, 4).map((alert, index) => (
-                <div key={index} className={`p-3 rounded-lg border-l-4 ${
-                  alert.severity === 'high' || alert.severity === 'critical' ? 'bg-red-50 border-red-400' :
-                  alert.severity === 'medium' ? 'bg-yellow-50 border-yellow-400' :
-                  alert.severity === 'low' ? 'bg-blue-50 border-blue-400' :
-                  'bg-green-50 border-green-400'
-                }`}>
-                  <p className="font-medium text-gray-900">{alert.details}</p>
-                  <p className="text-sm text-gray-600">
-                    {new Date(alert.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              ))
+            {securityAlerts.length > 0 ? (
+              securityAlerts.slice(0, 4).map((alert) => {
+                const sev = normalizeSeverity(alert.severity);
+                return (
+                  <button
+                    key={alert.id}
+                    type="button"
+                    className={`w-full rounded-lg border-l-4 p-3 text-left transition-opacity hover:opacity-90 ${
+                      sev === 'critical' || sev === 'high'
+                        ? 'border-red-400 bg-red-50'
+                        : sev === 'medium'
+                          ? 'border-yellow-400 bg-yellow-50'
+                          : sev === 'low'
+                            ? 'border-blue-400 bg-blue-50'
+                            : 'border-emerald-400 bg-emerald-50'
+                    }`}
+                    onClick={() => router.push('/security')}
+                  >
+                    <p className="font-medium text-gray-900">
+                      {formatEventTypeLabel(alert.eventType)}
+                    </p>
+                    <p className="mt-0.5 text-sm text-gray-600 line-clamp-2">
+                      {summarizeEventDetails(alert)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {new Date(alert.timestamp).toLocaleString()}
+                    </p>
+                  </button>
+                );
+              })
             ) : (
-              <div className="text-center py-8">
-                <span className="text-4xl mb-4 block">🚨</span>
+              <div className="py-8 text-center">
+                <span className="mb-4 block text-4xl">🚨</span>
                 <p className="text-gray-600">No security alerts to display</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => router.push('/security')}
+                >
+                  Open Security Center
+                </Button>
               </div>
             )}
           </div>

@@ -1,920 +1,791 @@
-"use client";
+'use client';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSessionLock } from '@/contexts/SessionLockContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient, UserSettings, SystemSettings } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
+import { PINSetupModal } from '@/components/auth/PINSetupModal';
+import { PasskeyManager } from '@/components/security/PasskeyManager';
 import PlanManagement from '@/components/admin/PlanManagement';
+import { isAdminUser, isOrgAdmin } from '@/utils/tenant';
 
-// Define interfaces locally
-// Using UserSettings and SystemSettings from api-client
+const VALID_TABS = ['profile', 'security', 'preferences', 'plan', 'organization'] as const;
+type TabId = (typeof VALID_TABS)[number];
+
+const DEFAULT_USER_SETTINGS: UserSettings = {
+  profile: { name: '', email: '', bio: '', timezone: 'UTC', language: 'en' },
+  notifications: {
+    email: true,
+    push: true,
+    sms: false,
+    security: true,
+    updates: true,
+    marketing: false,
+  },
+  privacy: {
+    profileVisibility: 'organization',
+    showEmail: false,
+    showLastSeen: true,
+    allowDirectMessages: true,
+  },
+  security: {
+    mfaEnabled: false,
+    mfaMethod: 'email',
+    sessionTimeout: 30,
+    loginNotifications: true,
+  },
+  preferences: {
+    theme: 'light',
+    sidebarCollapsed: false,
+    compactMode: false,
+    animations: true,
+  },
+};
+
+const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+  organization: { name: '', slug: '', timezone: 'UTC', language: 'en', theme: 'blue' },
+  features: { hr: true, drive: true, connect: true, mail: true },
+  limits: { maxUsers: 100, maxTeams: 20, maxStorage: 1000, maxApps: 10 },
+};
+
+function applyPreferences(preferences: UserSettings['preferences']) {
+  const root = document.documentElement;
+  if (preferences.theme === 'dark') {
+    root.classList.add('dark');
+  } else if (preferences.theme === 'light') {
+    root.classList.remove('dark');
+  } else if (preferences.theme === 'auto') {
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }
+  localStorage.setItem('theme', preferences.theme);
+  localStorage.setItem('compactMode', String(preferences.compactMode));
+  localStorage.setItem('animations', String(preferences.animations));
+  if (preferences.compactMode) {
+    document.body.classList.add('compact-mode');
+  } else {
+    document.body.classList.remove('compact-mode');
+  }
+  if (!preferences.animations) {
+    document.body.classList.add('no-animations');
+  } else {
+    document.body.classList.remove('no-animations');
+  }
+}
 
 function SettingsPageContent() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { notifyPinSetupComplete } = useSessionLock();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [userSettings, setUserSettings] = useState<UserSettings>({
-    profile: {
-      name: '',
-      email: '',
-      bio: '',
-      timezone: 'UTC',
-      language: 'en'
-    },
-    notifications: {
-      email: true,
-      push: true,
-      sms: false,
-      security: true,
-      updates: true,
-      marketing: false
-    },
-    privacy: {
-      profileVisibility: 'organization',
-      showEmail: false,
-      showLastSeen: true,
-      allowDirectMessages: true
-    },
-    security: {
-      mfaEnabled: false,
-      mfaMethod: 'email',
-      sessionTimeout: 30,
-      loginNotifications: true
-    },
-    preferences: {
-      theme: 'light',
-      sidebarCollapsed: false,
-      compactMode: false,
-      animations: true
-    }
-  });
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    organization: {
-      name: '',
-      slug: '',
-      timezone: 'UTC',
-      language: 'en',
-      theme: 'blue'
-    },
-    features: {
-      hr: true,
-      drive: true,
-      connect: true,
-      mail: true
-    },
-    limits: {
-      maxUsers: 100,
-      maxTeams: 20,
-      maxStorage: 1000,
-      maxApps: 10
-    }
-  });
+
+  const userIsAdmin = isAdminUser(user?.role);
+  const userIsOrgAdmin = isOrgAdmin(user?.role);
+
+  const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
+  const [originalUser, setOriginalUser] = useState<UserSettings | null>(null);
+  const [originalSystem, setOriginalSystem] = useState<SystemSettings | null>(null);
+
+  const [pinStatus, setPinStatus] = useState<{ pinEnabled: boolean; hasPIN: boolean } | null>(
+    null
+  );
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('profile');
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+
   const [showMFASetup, setShowMFASetup] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [originalUserSettings, setOriginalUserSettings] = useState<UserSettings | null>(null);
-  const [originalSystemSettings, setOriginalSystemSettings] = useState<SystemSettings | null>(null);
+  const [showPINSetup, setShowPINSetup] = useState(false);
+  const [pinUpdating, setPinUpdating] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchSettings();
-      setIsSuperAdmin(user?.role === 'SUPER_ADMIN');
-      setIsAdmin(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN');
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth/login');
     }
-  }, [isAuthenticated, user]);
+  }, [authLoading, isAuthenticated, router]);
 
-  // Handle tab query parameter
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['profile', 'notifications', 'privacy', 'security', 'preferences', 'plan', 'system'].includes(tabParam)) {
-      setActiveTab(tabParam);
+    const normalized =
+      tabParam === 'system' ? 'organization' : tabParam;
+    if (normalized && VALID_TABS.includes(normalized as TabId)) {
+      setActiveTab(normalized as TabId);
     }
   }, [searchParams]);
 
-  // Listen for system theme changes when auto theme is enabled
-  useEffect(() => {
-    if (userSettings.preferences.theme === 'auto') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleThemeChange = (e: MediaQueryListEvent) => {
-        const root = document.documentElement;
-        if (e.matches) {
-          root.classList.add('dark');
-        } else {
-          root.classList.remove('dark');
-        }
-      };
+  const selectTab = (tabId: TabId) => {
+    setActiveTab(tabId);
+    router.replace(`/settings?tab=${tabId}`, { scroll: false });
+  };
 
-      mediaQuery.addEventListener('change', handleThemeChange);
-      return () => mediaQuery.removeEventListener('change', handleThemeChange);
-    }
-  }, [userSettings.preferences.theme]);
-
-  const fetchSettings = async () => {
-    try {
-      setIsLoading(true);
+  const flash = (message: string, isError = false) => {
+    if (isError) {
+      setError(message);
+      setSuccess(null);
+    } else {
+      setSuccess(message);
       setError(null);
-      
-      // Fetch settings from API
-      const [apiUserSettings, apiSystemSettings, mfaStatus] = await Promise.all([
+    }
+    setTimeout(() => {
+      setError(null);
+      setSuccess(null);
+    }, 4000);
+  };
+
+  const load = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [apiUser, mfaStatus, pin] = await Promise.all([
         apiClient.getUserSettings(),
-        apiClient.getSystemSettings(),
-        apiClient.getMFAStatus().catch(() => ({ enabled: false })) // Fallback if MFA status fails
+        apiClient.getMFAStatus().catch(() => ({ enabled: false })),
+        apiClient.getPINStatus().catch(() => ({ pinEnabled: false, hasPIN: false })),
       ]);
 
-      // Store original settings for reset functionality
-      setOriginalUserSettings(JSON.parse(JSON.stringify(apiUserSettings)));
-      setOriginalSystemSettings(JSON.parse(JSON.stringify(apiSystemSettings)));
-      
-      setUserSettings(apiUserSettings);
-      setSystemSettings(apiSystemSettings);
-      
-      // Update MFA status from backend
-      setUserSettings(prev => ({
-        ...prev,
-        security: {
-          ...prev.security,
-          mfaEnabled: mfaStatus.enabled
-        }
-      }));
+      const merged: UserSettings = {
+        ...apiUser,
+        security: { ...apiUser.security, mfaEnabled: mfaStatus.enabled },
+      };
+      setUserSettings(merged);
+      setOriginalUser(JSON.parse(JSON.stringify(merged)));
+      setPinStatus(pin);
+      applyPreferences(merged.preferences);
 
-      // Apply preferences immediately
-      applyPreferences(apiUserSettings.preferences);
-    } catch (err) {
-      setError('Failed to load settings');
-      console.error('Settings fetch error:', err);
+      if (userIsAdmin) {
+        try {
+          const sys = await apiClient.getSystemSettings();
+          setSystemSettings(sys);
+          setOriginalSystem(JSON.parse(JSON.stringify(sys)));
+        } catch {
+          /* org admin without org — system tab shows message */
+        }
+      }
+    } catch {
+      flash('Failed to load settings', true);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isAuthenticated, userIsAdmin]);
 
-  // Apply preferences to the application
-  const applyPreferences = (preferences: UserSettings['preferences']) => {
-    // Apply theme
-    if (preferences.theme) {
-      const root = document.documentElement;
-      if (preferences.theme === 'dark') {
-        root.classList.add('dark');
-      } else if (preferences.theme === 'light') {
-        root.classList.remove('dark');
-      } else if (preferences.theme === 'auto') {
-        // Auto theme based on system preference
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          root.classList.add('dark');
-        } else {
-          root.classList.remove('dark');
-        }
-      }
-      // Store theme in localStorage for persistence across sessions
-      localStorage.setItem('theme', preferences.theme);
-    }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    // Apply other preferences
-    if (preferences.sidebarCollapsed !== undefined) {
-      localStorage.setItem('sidebarCollapsed', String(preferences.sidebarCollapsed));
+  const handleSaveProfile = async () => {
+    if (!userSettings.profile.name?.trim()) {
+      flash('Name is required', true);
+      return;
     }
-    
-    if (preferences.compactMode !== undefined) {
-      localStorage.setItem('compactMode', String(preferences.compactMode));
-      if (preferences.compactMode) {
-        document.body.classList.add('compact-mode');
-      } else {
-        document.body.classList.remove('compact-mode');
-      }
-    }
-
-    if (preferences.animations !== undefined) {
-      localStorage.setItem('animations', String(preferences.animations));
-      if (!preferences.animations) {
-        document.body.classList.add('no-animations');
-      } else {
-        document.body.classList.remove('no-animations');
-      }
-    }
-  };
-
-  const handleSaveUserSettings = async () => {
     try {
-      setError(null);
-      
-      // Validation
-      if (!userSettings.profile.name || !userSettings.profile.name.trim()) {
-        setError('Name is required');
-        return;
-      }
-      
-      if (!userSettings.profile.email || !userSettings.profile.email.trim()) {
-        setError('Email is required');
-        return;
-      }
-      
-      // Email validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(userSettings.profile.email)) {
-        setError('Please enter a valid email address');
-        return;
-      }
-      
       await apiClient.updateUserSettings(userSettings);
-      
-      // Apply preferences immediately after saving
+      setOriginalUser(JSON.parse(JSON.stringify(userSettings)));
       applyPreferences(userSettings.preferences);
-      
-      // Update original settings after successful save
-      setOriginalUserSettings(JSON.parse(JSON.stringify(userSettings)));
-      
-      setSuccess('User settings saved successfully!');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save user settings');
-      console.error('Save user settings error:', err);
+      flash('Profile saved');
+    } catch (err: unknown) {
+      flash(err instanceof Error ? err.message : 'Failed to save profile', true);
     }
   };
 
-  const handleSaveSystemSettings = async () => {
+  const handleSavePreferences = async () => {
     try {
-      setError(null);
-      
-      // Validation
-      if (!systemSettings.organization.name || !systemSettings.organization.name.trim()) {
-        setError('Organization name is required');
-        return;
-      }
-      
-      if (!systemSettings.organization.slug || !systemSettings.organization.slug.trim()) {
-        setError('Organization slug is required');
-        return;
-      }
-      
-      // Slug validation (alphanumeric and hyphens only)
-      const slugRegex = /^[a-z0-9-]+$/;
-      if (!slugRegex.test(systemSettings.organization.slug)) {
-        setError('Slug must contain only lowercase letters, numbers, and hyphens');
-        return;
-      }
-      
-      await apiClient.updateSystemSettings(systemSettings);
-      
-      // Update original settings after successful save
-      setOriginalSystemSettings(JSON.parse(JSON.stringify(systemSettings)));
-      
-      setSuccess('System settings saved successfully!');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save system settings');
-      console.error('Save system settings error:', err);
+      await apiClient.updateUserSettings(userSettings);
+      setOriginalUser(JSON.parse(JSON.stringify(userSettings)));
+      applyPreferences(userSettings.preferences);
+      flash('Appearance saved');
+    } catch (err: unknown) {
+      flash(err instanceof Error ? err.message : 'Failed to save appearance', true);
     }
   };
 
-  const handleChangePassword = () => {
-    setShowPasswordModal(true);
-  };
-
-  const handlePasswordChangeSuccess = () => {
-    setSuccess('Password changed successfully!');
-    setTimeout(() => setSuccess(null), 3000);
+  const handleSaveOrganization = async () => {
+    const { organization } = systemSettings;
+    if (!organization.name?.trim()) {
+      flash('Organization name is required', true);
+      return;
+    }
+    if (!organization.slug?.trim()) {
+      flash('Organization slug is required', true);
+      return;
+    }
+    if (!/^[a-z0-9-]+$/.test(organization.slug)) {
+      flash('Slug must use lowercase letters, numbers, and hyphens only', true);
+      return;
+    }
+    try {
+      await apiClient.updateSystemSettings(systemSettings);
+      setOriginalSystem(JSON.parse(JSON.stringify(systemSettings)));
+      flash('Organization settings saved');
+    } catch (err: unknown) {
+      flash(err instanceof Error ? err.message : 'Failed to save organization', true);
+    }
   };
 
   const handleReset = () => {
-    if (activeTab === 'system' && originalSystemSettings) {
-      setSystemSettings(JSON.parse(JSON.stringify(originalSystemSettings)));
-      setSuccess('System settings reset to original values');
-    } else if (originalUserSettings) {
-      setUserSettings(JSON.parse(JSON.stringify(originalUserSettings)));
-      setSuccess('User settings reset to original values');
+    if (activeTab === 'organization' && originalSystem) {
+      setSystemSettings(JSON.parse(JSON.stringify(originalSystem)));
+    } else if (originalUser) {
+      setUserSettings(JSON.parse(JSON.stringify(originalUser)));
+      applyPreferences(originalUser.preferences);
     }
-    setTimeout(() => setSuccess(null), 3000);
+    flash('Changes reset');
   };
 
-  const handleEnableMFA = async () => {
+  const handleMfaToggle = async () => {
     if (userSettings.security.mfaEnabled) {
-      // Disable MFA
+      const password = window.prompt('Enter your password to disable MFA:');
+      if (!password) return;
       try {
         setIsLoading(true);
-        await apiClient.disableMFA('current-password');
-        
-        // Refresh MFA status from backend
+        await apiClient.disableMFA(password);
         const mfaStatus = await apiClient.getMFAStatus();
-        setUserSettings(prev => ({
+        setUserSettings((prev) => ({
           ...prev,
-          security: { ...prev.security, mfaEnabled: mfaStatus.enabled }
+          security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
         }));
-        setSuccess('MFA disabled successfully');
-      } catch (err: any) {
-        setError(err.message || 'Failed to disable MFA');
+        flash('MFA disabled');
+      } catch (err: unknown) {
+        flash(err instanceof Error ? err.message : 'Failed to disable MFA', true);
       } finally {
         setIsLoading(false);
       }
     } else {
-      // Enable MFA - show setup modal
       setShowMFASetup(true);
     }
   };
 
-  const handleMFASetupSuccess = async () => {
-    // Refresh MFA status from backend
+  const handleMfaSuccess = async () => {
     const mfaStatus = await apiClient.getMFAStatus();
-    setUserSettings(prev => ({
+    setUserSettings((prev) => ({
       ...prev,
-      security: { ...prev.security, mfaEnabled: mfaStatus.enabled }
+      security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
     }));
-    setSuccess('MFA enabled successfully');
     setShowMFASetup(false);
+    flash('MFA enabled');
   };
 
-  const tabs = [
-    { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'notifications', label: 'Notifications', icon: '🔔' },
-    { id: 'privacy', label: 'Privacy', icon: '🔒' },
-    { id: 'security', label: 'Security', icon: '🛡️' },
-    { id: 'preferences', label: 'Preferences', icon: '⚙️' },
-    ...(isAdmin ? [
-      { id: 'plan', label: 'Plan & Billing', icon: '💎' },
-      { id: 'system', label: 'System', icon: '🏢' }
-    ] : [])
+  const handlePinDisable = async () => {
+    if (
+      !window.confirm(
+        'Disable portal lock PIN? You will need to sign in again if the session locks.'
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiClient.disablePIN();
+      setPinStatus({ pinEnabled: false, hasPIN: false });
+      flash('PIN disabled');
+    } catch (err: unknown) {
+      flash(err instanceof Error ? err.message : 'Failed to disable PIN', true);
+    }
+  };
+
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'security', label: 'Security' },
+    { id: 'preferences', label: 'Appearance' },
+    ...(userIsAdmin
+      ? [
+          { id: 'plan' as TabId, label: 'Plan & billing' },
+          { id: 'organization' as TabId, label: 'Organization' },
+        ]
+      : []),
   ];
 
-  const renderProfileSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Profile Information</h3>
-        <p className="text-sm text-gray-600 mb-4">Update your personal information and preferences</p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input
-              type="text"
-              value={userSettings.profile.name}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                profile: { ...userSettings.profile, name: e.target.value }
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your full name"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={userSettings.profile.email}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                profile: { ...userSettings.profile, email: e.target.value }
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="your.email@example.com"
-              required
-            />
-            {userSettings.profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userSettings.profile.email) && (
-              <p className="text-xs text-red-600 mt-1">Please enter a valid email address</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-            <textarea
-              value={userSettings.profile.bio}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                profile: { ...userSettings.profile, bio: e.target.value }
-              })}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Tell us about yourself..."
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-              <select
-                value={userSettings.profile.timezone}
-                onChange={(e) => setUserSettings({
-                  ...userSettings,
-                  profile: { ...userSettings.profile, timezone: e.target.value }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">Eastern Time</option>
-                <option value="America/Chicago">Central Time</option>
-                <option value="America/Denver">Mountain Time</option>
-                <option value="America/Los_Angeles">Pacific Time</option>
-                <option value="Europe/London">London</option>
-                <option value="Europe/Paris">Paris</option>
-                <option value="Asia/Tokyo">Tokyo</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
-              <select
-                value={userSettings.profile.language}
-                onChange={(e) => setUserSettings({
-                  ...userSettings,
-                  profile: { ...userSettings.profile, language: e.target.value }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="ja">Japanese</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const showSave =
+    activeTab === 'profile' ||
+    activeTab === 'preferences' ||
+    activeTab === 'organization';
 
-  const renderNotificationSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Notification Preferences</h3>
-        <p className="text-sm text-gray-600 mb-4">Control how and when you receive notifications</p>
-        <div className="space-y-4">
-          {Object.entries(userSettings.notifications).map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700 capitalize">
-                  {key.replace(/([A-Z])/g, ' $1').trim()}
-                </label>
-                <p className="text-xs text-gray-500">
-                  {key === 'email' && 'Receive notifications via email'}
-                  {key === 'push' && 'Receive push notifications in browser'}
-                  {key === 'sms' && 'Receive notifications via SMS'}
-                  {key === 'security' && 'Security-related notifications'}
-                  {key === 'updates' && 'App updates and announcements'}
-                  {key === 'marketing' && 'Marketing and promotional content'}
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={(e) => setUserSettings({
-                    ...userSettings,
-                    notifications: { ...userSettings.notifications, [key]: e.target.checked }
-                  })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  const onSave = () => {
+    if (activeTab === 'profile') void handleSaveProfile();
+    else if (activeTab === 'preferences') void handleSavePreferences();
+    else if (activeTab === 'organization') void handleSaveOrganization();
+  };
 
-  const renderPrivacySettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Privacy Settings</h3>
-        <p className="text-sm text-gray-600 mb-4">Manage your privacy and visibility settings</p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Profile Visibility</label>
-            <select
-              value={userSettings.privacy.profileVisibility}
-              onChange={(e) => setUserSettings({
-                ...userSettings,
-                privacy: { ...userSettings.privacy, profileVisibility: e.target.value as any }
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="public">Public</option>
-              <option value="organization">Organization Only</option>
-              <option value="private">Private</option>
-            </select>
-          </div>
-          {Object.entries(userSettings.privacy).filter(([key]) => key !== 'profileVisibility').map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700 capitalize">
-                  {key.replace(/([A-Z])/g, ' $1').trim()}
-                </label>
-                <p className="text-xs text-gray-500">
-                  {key === 'showEmail' && 'Show email address in profile'}
-                  {key === 'showLastSeen' && 'Show when you were last active'}
-                  {key === 'allowDirectMessages' && 'Allow others to send you direct messages'}
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={value as boolean}
-                  onChange={(e) => setUserSettings({
-                    ...userSettings,
-                    privacy: { ...userSettings.privacy, [key]: e.target.checked }
-                  })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSecuritySettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Security Settings</h3>
-        <p className="text-sm text-gray-600 mb-4">Manage your account security and authentication</p>
-        <div className="space-y-6">
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h4 className="font-medium text-gray-900">Multi-Factor Authentication</h4>
-                <p className="text-sm text-gray-600">Add an extra layer of security to your account</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  userSettings.security.mfaEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {userSettings.security.mfaEnabled ? 'Enabled' : 'Disabled'}
-                </span>
-                <Button
-                  onClick={handleEnableMFA}
-                  variant="outline"
-                  size="sm"
-                  className={userSettings.security.mfaEnabled ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-green-300 text-green-700 hover:bg-green-50'}
-                >
-                  {userSettings.security.mfaEnabled ? 'Disable' : 'Enable'} MFA
-                </Button>
-              </div>
-            </div>
-            {userSettings.security.mfaEnabled && (
-              <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">MFA Method</label>
-                <select
-                  value={userSettings.security.mfaMethod}
-                  onChange={(e) => setUserSettings({
-                    ...userSettings,
-                    security: { ...userSettings.security, mfaMethod: e.target.value as any }
-                  })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="email">Email</option>
-                  <option value="sms">SMS</option>
-                  <option value="app">Authenticator App</option>
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Session Timeout (minutes)</label>
-              <input
-                type="number"
-                value={userSettings.security.sessionTimeout}
-                onChange={(e) => setUserSettings({
-                  ...userSettings,
-                  security: { ...userSettings.security, sessionTimeout: parseInt(e.target.value) }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Login Notifications</label>
-                <p className="text-xs text-gray-500">Get notified of new login attempts</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={userSettings.security.loginNotifications}
-                  onChange={(e) => setUserSettings({
-                    ...userSettings,
-                    security: { ...userSettings.security, loginNotifications: e.target.checked }
-                  })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t">
-            <Button
-              onClick={handleChangePassword}
-              variant="outline"
-              className="border-blue-300 text-blue-700 hover:bg-blue-50"
-            >
-              Change Password
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPreferenceSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">App Preferences</h3>
-        <p className="text-sm text-gray-600 mb-4">Customize your application experience</p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Theme</label>
-            <select
-              value={userSettings.preferences.theme}
-              onChange={(e) => {
-                const newTheme = e.target.value as any;
-                setUserSettings({
-                  ...userSettings,
-                  preferences: { ...userSettings.preferences, theme: newTheme }
-                });
-                // Apply theme immediately
-                applyPreferences({ ...userSettings.preferences, theme: newTheme });
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="auto">Auto</option>
-            </select>
-          </div>
-          {Object.entries(userSettings.preferences).filter(([key]) => key !== 'theme').map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700 capitalize">
-                  {key.replace(/([A-Z])/g, ' $1').trim()}
-                </label>
-                <p className="text-xs text-gray-500">
-                  {key === 'sidebarCollapsed' && 'Start with sidebar collapsed'}
-                  {key === 'compactMode' && 'Use compact layout for lists'}
-                  {key === 'animations' && 'Enable smooth animations and transitions'}
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={value as boolean}
-                  onChange={(e) => {
-                    const newPreferences = { ...userSettings.preferences, [key]: e.target.checked };
-                    setUserSettings({
-                      ...userSettings,
-                      preferences: newPreferences
-                    });
-                    // Apply preference immediately
-                    applyPreferences(newPreferences);
-                  }}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSystemSettings = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Organization Settings</h3>
-        <p className="text-sm text-gray-600 mb-4">Configure your organization preferences and limits</p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
-            <input
-              type="text"
-              value={systemSettings.organization.name}
-              onChange={(e) => setSystemSettings({
-                ...systemSettings,
-                organization: { ...systemSettings.organization, name: e.target.value }
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
-            <input
-              type="text"
-              value={systemSettings.organization.slug}
-              onChange={(e) => {
-                // Convert to lowercase and replace spaces/special chars with hyphens
-                const slug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-                setSystemSettings({
-                  ...systemSettings,
-                  organization: { ...systemSettings.organization, slug }
-                });
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="organization-slug"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Only lowercase letters, numbers, and hyphens allowed
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-              <select
-                value={systemSettings.organization.timezone}
-                onChange={(e) => setSystemSettings({
-                  ...systemSettings,
-                  organization: { ...systemSettings.organization, timezone: e.target.value }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">Eastern Time</option>
-                <option value="America/Chicago">Central Time</option>
-                <option value="America/Denver">Mountain Time</option>
-                <option value="America/Los_Angeles">Pacific Time</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
-              <select
-                value={systemSettings.organization.language}
-                onChange={(e) => setSystemSettings({
-                  ...systemSettings,
-                  organization: { ...systemSettings.organization, language: e.target.value }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Theme</label>
-              <select
-                value={systemSettings.organization.theme}
-                onChange={(e) => setSystemSettings({
-                  ...systemSettings,
-                  organization: { ...systemSettings.organization, theme: e.target.value }
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="blue">Blue</option>
-                <option value="green">Green</option>
-                <option value="purple">Purple</option>
-                <option value="orange">Orange</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPlanSettings = () => {
-    if (!user?.organizationId) {
-      return (
-        <div className="space-y-6">
-          <Card className="p-6">
-            <div className="text-center py-12 text-gray-500">
-              <span className="text-6xl mb-4 block">💎</span>
-              <h3 className="text-lg font-medium mb-2">No Organization Access</h3>
-              <p className="text-gray-600 mb-4">
-                You need to be associated with an organization to manage plans.
-              </p>
-              <p className="text-sm text-gray-500">
-                Contact your administrator to be added to an organization.
-              </p>
-            </div>
-          </Card>
-        </div>
-      );
-    }
-
+  if (authLoading || (!isAuthenticated && !authLoading)) {
     return (
-      <div className="space-y-6">
-        <PlanManagement organizationId={user.organizationId} />
-      </div>
+      <UnifiedLayout title="Settings" subtitle="Loading…">
+        <div className="flex justify-center py-16">
+          <LoadingSpinner size="lg" />
+        </div>
+      </UnifiedLayout>
     );
-  };
-
-  const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'profile': return renderProfileSettings();
-      case 'notifications': return renderNotificationSettings();
-      case 'privacy': return renderPrivacySettings();
-      case 'security': return renderSecuritySettings();
-      case 'preferences': return renderPreferenceSettings();
-      case 'plan': return renderPlanSettings();
-      case 'system': return renderSystemSettings();
-      default: return renderProfileSettings();
-    }
-  };
+  }
 
   return (
     <UnifiedLayout
       title="Settings"
-      subtitle="Manage your account preferences and system configuration"
+      subtitle="Account, security, and organization preferences"
       actions={
-        <div className="flex flex-wrap gap-3">
-          {activeTab !== 'plan' && (
-            <Button
-              onClick={activeTab === 'system' ? handleSaveSystemSettings : handleSaveUserSettings}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-            >
-              <span className="mr-2">💾</span>
-              Save Changes
+        showSave ? (
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onSave}>Save changes</Button>
+            <Button variant="outline" onClick={handleReset}>
+              Reset
             </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            <span className="mr-2">🔄</span>
-            Reset
-          </Button>
-        </div>
+          </div>
+        ) : undefined
       }
     >
       {error && (
-        <Alert variant="error" className="mb-6">
+        <Alert variant="error" className="mb-4">
           {error}
         </Alert>
       )}
-
       {success && (
-        <Alert variant="success" className="mb-6">
+        <Alert variant="success" className="mb-4">
           {success}
         </Alert>
       )}
 
       <ResponsiveContainer maxWidth="full">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar */}
-          <div className="lg:w-64">
-            <Card className="p-4">
-              <nav className="space-y-2">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`}
-                  >
-                    <span className="text-lg">{tab.icon}</span>
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </nav>
-            </Card>
-          </div>
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <Card className="p-3 lg:w-56 lg:shrink-0">
+            <nav className="flex flex-wrap gap-1 lg:flex-col">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => selectTab(tab.id)}
+                  className={`rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </Card>
 
-          {/* Main Content */}
-          <div className="flex-1">
-            <Card className="p-6">
-              {isLoading ? (
-                <div className="animate-pulse">
-                  <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded w-full"></div>
-                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          <Card className="min-w-0 flex-1 p-6">
+            {isLoading ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner />
+              </div>
+            ) : activeTab === 'profile' ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Profile</h3>
+                  <p className="text-sm text-gray-600">Name and regional preferences</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    type="text"
+                    value={userSettings.profile.name}
+                    onChange={(e) =>
+                      setUserSettings({
+                        ...userSettings,
+                        profile: { ...userSettings.profile, name: e.target.value },
+                      })
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+                  <input
+                    type="email"
+                    value={userSettings.profile.email}
+                    disabled={!userIsAdmin}
+                    onChange={(e) =>
+                      setUserSettings({
+                        ...userSettings,
+                        profile: { ...userSettings.profile, email: e.target.value },
+                      })
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                  {!userIsAdmin && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contact an administrator to change your email.
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Bio</label>
+                  <textarea
+                    value={userSettings.profile.bio || ''}
+                    onChange={(e) =>
+                      setUserSettings({
+                        ...userSettings,
+                        profile: { ...userSettings.profile, bio: e.target.value },
+                      })
+                    }
+                    rows={3}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Timezone
+                    </label>
+                    <select
+                      value={userSettings.profile.timezone}
+                      onChange={(e) =>
+                        setUserSettings({
+                          ...userSettings,
+                          profile: { ...userSettings.profile, timezone: e.target.value },
+                        })
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="UTC">UTC</option>
+                      <option value="America/New_York">Eastern Time</option>
+                      <option value="America/Chicago">Central Time</option>
+                      <option value="America/Denver">Mountain Time</option>
+                      <option value="America/Los_Angeles">Pacific Time</option>
+                      <option value="Europe/London">London</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Language
+                    </label>
+                    <select
+                      value={userSettings.profile.language}
+                      onChange={(e) =>
+                        setUserSettings({
+                          ...userSettings,
+                          profile: { ...userSettings.profile, language: e.target.value },
+                        })
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="en">English</option>
+                    </select>
                   </div>
                 </div>
+                <p className="text-sm text-gray-600">
+                  <Link href="/settings/privacy" className="text-blue-600 hover:underline">
+                    Privacy & data requests (export / deletion)
+                  </Link>
+                </p>
+              </div>
+            ) : activeTab === 'security' ? (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Security</h3>
+                  <p className="text-sm text-gray-600">Password, MFA, and portal lock</p>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-gray-900">Password</p>
+                      <p className="text-sm text-gray-600">Update your sign-in password</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowPasswordModal(true)}>
+                      Change password
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-gray-900">Multi-factor authentication</p>
+                      <p className="text-sm text-gray-600">Authenticator app or email OTP</p>
+                      <span
+                        className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                          userSettings.security.mfaEnabled
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {userSettings.security.mfaEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => void handleMfaToggle()}>
+                      {userSettings.security.mfaEnabled ? 'Disable MFA' : 'Enable MFA'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-gray-900">Portal lock PIN</p>
+                      <p className="text-sm text-gray-600">
+                        Unlock the app after inactivity without signing out
+                      </p>
+                      <span
+                        className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                          pinStatus?.pinEnabled
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {pinStatus?.pinEnabled ? 'Enabled' : 'Not set'}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      {pinStatus?.pinEnabled ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setPinUpdating(true);
+                              setShowPINSetup(true);
+                            }}
+                          >
+                            Update PIN
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-700"
+                            onClick={() => void handlePinDisable()}
+                          >
+                            Disable
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPinUpdating(false);
+                            setShowPINSetup(true);
+                          }}
+                        >
+                          Set up PIN
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <p className="mb-3 font-medium text-gray-900">Passkeys</p>
+                  <PasskeyManager
+                    onMessage={(text, type) => flash(text, type !== 'success')}
+                  />
+                </div>
+
+                {userIsAdmin && (
+                  <Card className="border-amber-200 bg-amber-50/50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-gray-900">Organization security</p>
+                        <p className="text-sm text-gray-600">
+                          Events, sessions, threats, and org-wide password/MFA policy
+                        </p>
+                      </div>
+                      <Link href="/security">
+                        <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700">
+                          Security Center
+                        </Button>
+                      </Link>
+                    </div>
+                    <p className="mt-3 text-xs text-gray-600">
+                      <Link href="/admin/access-policies" className="text-indigo-600 hover:underline">
+                        Access policies
+                      </Link>{' '}
+                      — block or require MFA by country, VPN, and schedule.
+                    </p>
+                  </Card>
+                )}
+              </div>
+            ) : activeTab === 'preferences' ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Appearance</h3>
+                  <p className="text-sm text-gray-600">Theme and display options</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Theme</label>
+                  <select
+                    value={userSettings.preferences.theme}
+                    onChange={(e) => {
+                      const theme = e.target.value as UserSettings['preferences']['theme'];
+                      const next = { ...userSettings.preferences, theme };
+                      setUserSettings({ ...userSettings, preferences: next });
+                      applyPreferences(next);
+                    }}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">System</option>
+                  </select>
+                </div>
+                <label className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                  <span className="text-sm text-gray-700">Compact layout</span>
+                  <input
+                    type="checkbox"
+                    checked={userSettings.preferences.compactMode}
+                    onChange={(e) => {
+                      const next = {
+                        ...userSettings.preferences,
+                        compactMode: e.target.checked,
+                      };
+                      setUserSettings({ ...userSettings, preferences: next });
+                      applyPreferences(next);
+                    }}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                  <span className="text-sm text-gray-700">Animations</span>
+                  <input
+                    type="checkbox"
+                    checked={userSettings.preferences.animations}
+                    onChange={(e) => {
+                      const next = {
+                        ...userSettings.preferences,
+                        animations: e.target.checked,
+                      };
+                      setUserSettings({ ...userSettings, preferences: next });
+                      applyPreferences(next);
+                    }}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </label>
+              </div>
+            ) : activeTab === 'plan' ? (
+              user?.organizationId ? (
+                <PlanManagement organizationId={user.organizationId} />
               ) : (
-                renderActiveTab()
-              )}
-            </Card>
-          </div>
+                <p className="text-sm text-gray-600">
+                  No organization linked to your account. Contact an administrator.
+                </p>
+              )
+            ) : activeTab === 'organization' ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Organization</h3>
+                  <p className="text-sm text-gray-600">Name, slug, and regional defaults</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    type="text"
+                    value={systemSettings.organization.name}
+                    onChange={(e) =>
+                      setSystemSettings({
+                        ...systemSettings,
+                        organization: {
+                          ...systemSettings.organization,
+                          name: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
+                  <input
+                    type="text"
+                    value={systemSettings.organization.slug}
+                    onChange={(e) =>
+                      setSystemSettings({
+                        ...systemSettings,
+                        organization: {
+                          ...systemSettings.organization,
+                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                        },
+                      })
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Timezone
+                    </label>
+                    <select
+                      value={systemSettings.organization.timezone}
+                      onChange={(e) =>
+                        setSystemSettings({
+                          ...systemSettings,
+                          organization: {
+                            ...systemSettings.organization,
+                            timezone: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="UTC">UTC</option>
+                      <option value="America/New_York">Eastern Time</option>
+                      <option value="America/Los_Angeles">Pacific Time</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Brand color
+                    </label>
+                    <select
+                      value={systemSettings.organization.theme}
+                      onChange={(e) =>
+                        setSystemSettings({
+                          ...systemSettings,
+                          organization: {
+                            ...systemSettings.organization,
+                            theme: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="blue">Blue</option>
+                      <option value="green">Green</option>
+                      <option value="purple">Purple</option>
+                      <option value="orange">Orange</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </Card>
         </div>
       </ResponsiveContainer>
 
-      {/* MFA Setup Modal */}
       <MFASetupModal
         isOpen={showMFASetup}
         onClose={() => setShowMFASetup(false)}
-        onSuccess={handleMFASetupSuccess}
+        onSuccess={() => void handleMfaSuccess()}
       />
-
-      {/* Change Password Modal */}
       <ChangePasswordModal
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
-        onSuccess={handlePasswordChangeSuccess}
+        onSuccess={() => flash('Password updated')}
+      />
+      <PINSetupModal
+        isOpen={showPINSetup}
+        onClose={() => setShowPINSetup(false)}
+        isUpdate={pinUpdating}
+        onSuccess={async () => {
+          const pin = await apiClient.getPINStatus();
+          setPinStatus(pin);
+          notifyPinSetupComplete();
+          setShowPINSetup(false);
+          flash(pinUpdating ? 'PIN updated' : 'PIN enabled');
+        }}
       />
     </UnifiedLayout>
   );
@@ -922,7 +793,15 @@ function SettingsPageContent() {
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<LoadingSpinner size="lg" />}>
+    <Suspense
+      fallback={
+        <UnifiedLayout title="Settings" subtitle="Loading…">
+          <div className="flex justify-center py-16">
+            <LoadingSpinner size="lg" />
+          </div>
+        </UnifiedLayout>
+      }
+    >
       <SettingsPageContent />
     </Suspense>
   );

@@ -57,7 +57,7 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                     </a>
                   </>
                 )}
-                <a href="/dashboard/settings" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                <a href="/settings" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                   Settings
                 </a>
                 <a href="/contact" className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
@@ -179,7 +179,7 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
                       <Menu.Item>
                         {({ active }) => (
                           <a
-                            href="/dashboard/settings"
+                            href="/settings"
                             className={`flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors ${
                               active ? "bg-gray-50" : ""
                             }`}

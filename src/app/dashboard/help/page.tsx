@@ -39,7 +39,7 @@ export default function HelpPage() {
     },
     {
       question: "How do I change my password?",
-      answer: "Go to Dashboard > Settings > Security and use the password change form. You'll need to enter your current password first. You can also change your password from the Profile page."
+      answer: "Go to Settings → Security and click Change password. Enter your current password, then your new password twice."
     },
     {
       question: "Can I change my email address?",
@@ -63,11 +63,11 @@ export default function HelpPage() {
     },
     {
       question: "How do I manage my privacy settings?",
-      answer: "Go to Dashboard > Settings > Privacy to control your profile visibility, activity tracking, and data sharing preferences. You can also request a data export or delete your account from this section."
+      answer: "Open Settings and use the Privacy & data requests link on the Profile tab for GDPR export or account deletion requests."
     },
     {
       question: "How do I set up Multi-Factor Authentication (MFA)?",
-      answer: "Go to Dashboard > Settings > Security and click 'Enable MFA'. Follow the setup instructions to configure two-factor authentication for enhanced security."
+      answer: "Go to Settings → Security and click Enable MFA. Follow the setup steps for your authenticator or email OTP."
     },
     {
       question: "What is the difference between ADMIN and SUPER_ADMIN roles?",

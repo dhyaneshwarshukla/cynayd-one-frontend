@@ -13,6 +13,7 @@
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.3.4",
+    "@simplewebauthn/browser": "^13.3.0",
     "@sls-next/lambda-at-edge": "^3.7.0",
     "autoprefixer": "^10.4.17",
     "class-variance-authority": "^0.7.0",
@@ -38,4 +39,3 @@
     "typescript": "^5.3.3"
   }
 }
-

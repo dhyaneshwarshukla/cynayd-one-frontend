@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 
 export interface Toast {
   id: string;
@@ -45,11 +45,10 @@ export function useToast(): [Toast[], ToastActions] {
     setToasts([]);
   }, []);
 
-  const actions: ToastActions = {
-    showToast,
-    hideToast,
-    clearAllToasts,
-  };
+  const actions = useMemo<ToastActions>(
+    () => ({ showToast, hideToast, clearAllToasts }),
+    [showToast, hideToast, clearAllToasts]
+  );
 
   return [toasts, actions];
 }

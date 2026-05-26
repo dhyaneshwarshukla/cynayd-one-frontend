@@ -38,8 +38,9 @@ interface SecurityMetrics {
   last7Days: number;
 }
 
+/** Legacy dashboard — not used by /security; prefer app/security/page.tsx */
 interface SecurityDashboardProps {
-  apiClient: any; // We'll type this properly later
+  apiClient: any;
 }
 
 export const SecurityDashboard: React.FC<SecurityDashboardProps> = ({ apiClient }) => {

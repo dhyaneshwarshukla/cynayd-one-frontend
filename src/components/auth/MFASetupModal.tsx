@@ -11,6 +11,8 @@ interface MFASetupModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** When true, user cannot dismiss until MFA is configured */
+  requiredEnrollment?: boolean;
 }
 
 interface MFASetupData {
@@ -19,7 +21,12 @@ interface MFASetupData {
   backupCodes: string[];
 }
 
-export function MFASetupModal({ isOpen, onClose, onSuccess }: MFASetupModalProps) {
+export function MFASetupModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  requiredEnrollment = false,
+}: MFASetupModalProps) {
   const [step, setStep] = useState<'setup' | 'verify' | 'success'>('setup');
   const [setupData, setSetupData] = useState<MFASetupData | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
@@ -97,24 +104,34 @@ export function MFASetupModal({ isOpen, onClose, onSuccess }: MFASetupModalProps
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900">
-              {step === 'setup' && 'Setup Multi-Factor Authentication'}
+              {step === 'setup' &&
+                (requiredEnrollment ? 'MFA required — set up now' : 'Setup Multi-Factor Authentication')}
               {step === 'verify' && 'Verify Setup'}
               {step === 'success' && 'MFA Enabled Successfully'}
             </h2>
-            <button
-              onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            {!requiredEnrollment && (
+              <button
+                onClick={handleClose}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
 
           {error && (
             <Alert variant="error" className="mb-4">
               {error}
             </Alert>
+          )}
+
+          {requiredEnrollment && step === 'setup' && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+              Your organization requires multi-factor authentication. Complete setup below to use the
+              workspace.
+            </p>
           )}
 
           {step === 'setup' && (

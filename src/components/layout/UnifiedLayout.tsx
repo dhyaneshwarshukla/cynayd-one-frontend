@@ -10,6 +10,8 @@ import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { BrandLink } from '../common/BrandLink';
+import { ConsentBanner } from '../consent/ConsentBanner';
+import { MFASetupModal } from '../auth/MFASetupModal';
 
 interface UnifiedLayoutProps {
   children: React.ReactNode;
@@ -28,7 +30,7 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
   actions,
   breadcrumb,
 }) => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, mustEnrollMfa, clearMustEnrollMfa } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isLanding = variant === 'landing';
@@ -181,6 +183,17 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
           </div>
         </main>
       </div>
+      {!isLanding && user && <ConsentBanner />}
+      {!isLanding && user && mustEnrollMfa && (
+        <MFASetupModal
+          isOpen
+          requiredEnrollment
+          onClose={() => {}}
+          onSuccess={() => {
+            clearMustEnrollMfa();
+          }}
+        />
+      )}
     </div>
   );
 };
