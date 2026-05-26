@@ -291,18 +291,15 @@ export const LoginForm: React.FC = () => {
       const { apiClient } = await import('../../lib/api-client');
       const { authenticateWithPasskey } = await import('../../lib/webauthn');
       const options = await apiClient.webauthnAuthenticateStart(email);
-      const assertion = await authenticateWithPasskey(
-        options as import('@simplewebauthn/browser').PublicKeyCredentialRequestOptionsJSON
-      );
-      const response = await apiClient.webauthnAuthenticateFinish(
-        assertion as unknown as Record<string, unknown>
-      );
-      if (response.accessToken && response.user) {
+      const assertion = await authenticateWithPasskey(options);
+      const response = await apiClient.webauthnAuthenticateFinish(assertion);
+      if (response.accessToken) {
         apiClient.storeAuthToken(response.accessToken);
         if (response.refreshToken) {
           localStorage.setItem('refresh_token', response.refreshToken);
         }
-        setUserDirectly(response.user);
+        const fullUser = await apiClient.getCurrentUser();
+        setUserDirectly(fullUser);
         triggerLoginSuccess();
         router.push('/dashboard');
       }

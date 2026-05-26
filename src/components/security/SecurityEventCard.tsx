@@ -42,7 +42,7 @@ export function SecurityEventCard({
           <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-gray-500">
             {event.user?.name && <span>{event.user.name}</span>}
             {event.ipAddress && <span className="font-mono">{event.ipAddress}</span>}
-            <time dateTime={event.timestamp}>
+            <time dateTime={new Date(event.timestamp).toISOString()}>
               {new Date(event.timestamp).toLocaleString()}
             </time>
           </div>

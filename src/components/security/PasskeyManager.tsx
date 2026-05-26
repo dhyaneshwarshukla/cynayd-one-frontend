@@ -42,13 +42,8 @@ export function PasskeyManager({ onMessage }: PasskeyManagerProps) {
     setBusy(true);
     try {
       const options = await apiClient.webauthnRegisterStart();
-      const response = await registerPasskey(
-        options as import('@simplewebauthn/browser').PublicKeyCredentialCreationOptionsJSON
-      );
-      await apiClient.webauthnRegisterFinish(
-        response as unknown as Record<string, unknown>,
-        deviceName || 'My device'
-      );
+      const response = await registerPasskey(options);
+      await apiClient.webauthnRegisterFinish(response, deviceName || 'My device');
       onMessage?.('Passkey registered successfully.', 'success');
       setDeviceName('');
       await load();

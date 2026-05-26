@@ -1,3 +1,10 @@
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
+
 // App types
 export interface App {
   id: string;
@@ -2116,31 +2123,31 @@ class ApiClient {
     });
   }
 
-  async webauthnAuthenticateStart(email: string): Promise<Record<string, unknown>> {
-    return this.request('/api/auth/webauthn/authenticate/start', {
+  async webauthnAuthenticateStart(email: string): Promise<PublicKeyCredentialRequestOptionsJSON> {
+    return this.request<PublicKeyCredentialRequestOptionsJSON>('/api/auth/webauthn/authenticate/start', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
   }
 
   async webauthnAuthenticateFinish(
-    response: Record<string, unknown>
+    response: AuthenticationResponseJSON
   ): Promise<AuthResponse> {
-    return this.request('/api/auth/webauthn/authenticate/finish', {
+    return this.request<AuthResponse>('/api/auth/webauthn/authenticate/finish', {
       method: 'POST',
       body: JSON.stringify({ response }),
     });
   }
 
-  async webauthnRegisterStart(): Promise<Record<string, unknown>> {
-    return this.request('/api/auth/webauthn/register/start', { method: 'POST' });
+  async webauthnRegisterStart(): Promise<PublicKeyCredentialCreationOptionsJSON> {
+    return this.request<PublicKeyCredentialCreationOptionsJSON>('/api/auth/webauthn/register/start', { method: 'POST' });
   }
 
   async webauthnRegisterFinish(
-    response: Record<string, unknown>,
+    response: RegistrationResponseJSON,
     deviceName?: string
   ): Promise<{ success: boolean }> {
-    return this.request('/api/auth/webauthn/register/finish', {
+    return this.request<{ success: boolean }>('/api/auth/webauthn/register/finish', {
       method: 'POST',
       body: JSON.stringify({ response, deviceName }),
     });
