@@ -10,14 +10,14 @@ import { Input } from '../common/Input';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
 import { useAuth } from '../../contexts/AuthContext';
-import { LoginCredentials } from '../../lib/api-client';
-import { MFAVerificationModal } from './MFAVerificationModal';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield } from 'lucide-react';
 import { LegalFooterLinks } from '../legal/LegalFooterLinks';
+import { MFAVerificationModal } from './MFAVerificationModal';
+import type { AuthResponse } from '../../lib/api-client';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().optional(),
   rememberMe: z.boolean().optional().default(false),
 });
 
@@ -60,15 +60,26 @@ export const LoginForm: React.FC = () => {
   const [isResending, setIsResending] = useState(false);
   const [unlockMessage, setUnlockMessage] = useState<string | null>(null);
   const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
-  const [showMFA, setShowMFA] = useState(false);
-  const [mfaData, setMfaData] = useState<{userId: string, email: string, password: string} | null>(null);
-  const { login, isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
+  const { isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
   const router = useRouter();
   const formLoadedAtRef = useRef(Date.now());
   const [honeypot, setHoneypot] = useState('');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [magicLinkBusy, setMagicLinkBusy] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [loginStep, setLoginStep] = useState<'email' | 'password' | 'email_otp' | 'awaiting_approval'>('email');
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeNonce, setChallengeNonce] = useState<string | null>(null);
+  const [showMfaModal, setShowMfaModal] = useState(false);
+  const [mfaUserId, setMfaUserId] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingPassword, setPendingPassword] = useState('');
+  const [pendingRememberMe, setPendingRememberMe] = useState(false);
+  const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -78,6 +89,95 @@ export const LoginForm: React.FC = () => {
   useEffect(() => {
     errorRef.current = error;
   }, [error]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, []);
+
+  const completeLoginRedirect = async () => {
+    const { apiClient } = await import('../../lib/api-client');
+    const fullUser = await apiClient.getCurrentUser();
+    setUserDirectly(fullUser);
+    triggerLoginSuccess();
+    router.push('/dashboard');
+  };
+
+  const handleLoginPasswordResult = async (
+    result: AuthResponse,
+    password: string,
+    rememberMe: boolean,
+    email: string
+  ) => {
+    if (result.code === 'APPROVAL_REQUIRED' || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
+      setPendingPassword(password);
+      setPendingRememberMe(rememberMe);
+      setPendingEmail(email);
+      setApprovalContext((result as AuthResponse & { requestContext?: Record<string, unknown> }).requestContext ?? null);
+      setApprovalMessage(
+        result.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+          ? 'Check your email for an approval code, or approve from your mobile app.'
+          : 'Approve this sign-in from your CYNAYD mobile app.'
+      );
+      if (result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
+        setLoginStep('email_otp');
+      } else {
+        setLoginStep('awaiting_approval');
+      }
+      return;
+    }
+
+    if (result.user && result.accessToken) {
+      await completeLoginRedirect();
+    }
+  };
+
+  const startApprovalPolling = (id: string, nonce: string, rememberMe: boolean) => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const { apiClient } = await import('../../lib/api-client');
+        const status = await apiClient.getLoginChallengeStatus(id, nonce, rememberMe);
+        if (status.status === 'approved' && status.accessToken) {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          await completeLoginRedirect();
+        } else if (status.status === 'cancelled' || status.status === 'expired') {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          setError(
+            status.status === 'cancelled'
+              ? 'Login approval was rejected.'
+              : 'Login approval expired. Please try again.'
+          );
+          setLoginStep('password');
+        }
+      } catch {
+        // Keep polling during in-progress login
+      }
+    }, 2000);
+  };
+
+  useEffect(() => {
+    if (loginStep === 'awaiting_approval' && challengeId && challengeNonce) {
+      startApprovalPolling(challengeId, challengeNonce, pendingRememberMe);
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [loginStep, challengeId, challengeNonce, pendingRememberMe]);
 
   const onSubmit = async (data: LoginFormData, e?: React.BaseSyntheticEvent) => {
     // Explicitly prevent default form submission
@@ -102,15 +202,59 @@ export const LoginForm: React.FC = () => {
       // Normalize email: trim and convert to lowercase for case-insensitive login
       const normalizedEmail = data.email.trim().toLowerCase();
       
-      const credentials: LoginCredentials = {
-        email: normalizedEmail,
-        password: data.password,
-        rememberMe: data.rememberMe,
-        honeypot,
-        formLoadedAt: formLoadedAtRef.current,
-      };
-      
-      await login(credentials);
+      const { apiClient } = await import('../../lib/api-client');
+      if (loginStep === 'email') {
+        const start = await apiClient.loginStart(normalizedEmail);
+        if (!start.challengeId || !start.nonce) {
+          throw new Error('Password challenge unavailable. Please retry.');
+        }
+        setLoginStep('password');
+        setChallengeId(start.challengeId);
+        setChallengeNonce(start.nonce);
+        setError(null);
+        return;
+      }
+
+      if (loginStep === 'password') {
+        if (!data.password) {
+          setError('Password is required');
+          return;
+        }
+        if (challengeId && challengeNonce) {
+          try {
+            const result = await apiClient.loginPassword({
+              challengeId,
+              nonce: challengeNonce,
+              password: data.password,
+              rememberMe: data.rememberMe,
+            });
+            await handleLoginPasswordResult(
+              result,
+              data.password,
+              Boolean(data.rememberMe),
+              normalizedEmail
+            );
+          } catch (err: unknown) {
+            const apiErr = err as {
+              response?: { data?: { code?: string; message?: string; userId?: string; email?: string } };
+              message?: string;
+            };
+            if (apiErr.response?.data?.code === 'MFA_REQUIRED') {
+              setPendingEmail(normalizedEmail);
+              setPendingPassword(data.password);
+              setPendingRememberMe(Boolean(data.rememberMe));
+              setMfaUserId(apiErr.response.data.userId || null);
+              setShowMfaModal(true);
+              return;
+            }
+            throw err;
+          }
+          return;
+        }
+        setError('Password challenge expired. Start again from email step.');
+        setLoginStep('email');
+        return;
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       
@@ -133,17 +277,6 @@ export const LoginForm: React.FC = () => {
           setError(errorRef.current);
         }
       }, 0);
-      
-      // Check if it's an MFA required error
-      if (err.response?.data?.code === 'MFA_REQUIRED') {
-        setMfaData({
-          userId: err.response.data.userId,
-          email: err.response.data.email,
-          password: data.password,
-        });
-        setShowMFA(true);
-        return;
-      }
       
       // Check if it's an account locked error FIRST (before setting generic error)
       if (err.response?.data?.code === 'ACCOUNT_LOCKED' || errorMessage.toLowerCase().includes('account is locked') || errorMessage.toLowerCase().includes('locked until')) {
@@ -189,6 +322,52 @@ export const LoginForm: React.FC = () => {
     }
   };
 
+  const handleVerifyFallbackOtp = async (rememberMe?: boolean) => {
+    if (!challengeId || !challengeNonce || !otpCode.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      const response = await apiClient.verifyChallengeEmailOtp({
+        challengeId,
+        nonce: challengeNonce,
+        otp: otpCode.trim(),
+        rememberMe,
+      });
+      if (response.accessToken && response.user) {
+        await completeLoginRedirect();
+      } else if (
+        response.code === 'APPROVAL_REQUIRED' ||
+        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      ) {
+        await handleLoginPasswordResult(
+          response as AuthResponse,
+          pendingPassword,
+          Boolean(rememberMe),
+          pendingEmail
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid OTP');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRequestApprovalEmailOtp = async () => {
+    if (!challengeId || !challengeNonce) return;
+    setIsSubmitting(true);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      await apiClient.requestChallengeEmailOtp(challengeId, challengeNonce);
+      setApprovalMessage('Approval code sent to your email.');
+      setLoginStep('email_otp');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send approval code');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleResendVerification = async () => {
     try {
       setIsResending(true);
@@ -215,45 +394,6 @@ export const LoginForm: React.FC = () => {
     } finally {
       setIsRequestingUnlock(false);
     }
-  };
-
-  const handleMFASuccess = async (accessToken: string, refreshToken: string, user: any) => {
-    console.log('=== MFA SUCCESS HANDLER CALLED ===');
-    console.log('MFA Success - Starting...', { accessToken: !!accessToken, refreshToken: !!refreshToken, user });
-    
-    try {
-      // Store tokens
-      localStorage.setItem('auth_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
-      console.log('MFA Success - Tokens stored');
-      
-      // Update AuthContext with user data
-      setUserDirectly(user);
-      console.log('MFA Success - User set in AuthContext');
-      
-      // Close MFA modal
-      setShowMFA(false);
-      setMfaData(null);
-      console.log('MFA Success - Modal closed');
-      
-      // Trigger login success callback to handle navigation
-      triggerLoginSuccess();
-      console.log('MFA Success - Login success callback triggered');
-      
-      // Navigate to dashboard
-      router.push('/dashboard');
-      console.log('MFA Success - Redirected to dashboard');
-      
-    } catch (error) {
-      console.error('Error completing MFA login:', error);
-      // Show error instead of reloading
-      setError('Failed to complete MFA login. Please try again.');
-    }
-  };
-
-  const handleMFAClose = () => {
-    setShowMFA(false);
-    setMfaData(null);
   };
 
   const handleMagicLink = async () => {
@@ -503,6 +643,7 @@ export const LoginForm: React.FC = () => {
           </div>
 
           {/* Password Field */}
+          {loginStep === 'password' && (
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-gray-700">
               Password
@@ -543,6 +684,7 @@ export const LoginForm: React.FC = () => {
               </p>
             )}
           </div>
+          )}
 
           {/* Remember Me & Forgot Password */}
           <div className="flex items-center justify-between">
@@ -563,7 +705,49 @@ export const LoginForm: React.FC = () => {
             </a>
           </div>
 
+          {loginStep === 'email_otp' && (
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700">Email OTP</label>
+              <Input
+                value={otpCode}
+                onChange={(e) => setOtpCode((e.target as HTMLInputElement).value)}
+                placeholder="Enter OTP"
+              />
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => handleVerifyFallbackOtp(Boolean((document.querySelector('input[type="checkbox"]') as HTMLInputElement)?.checked))}
+                disabled={isFormLoading}
+              >
+                Verify OTP
+              </Button>
+            </div>
+          )}
+
+          {loginStep === 'awaiting_approval' && (
+            <div className="space-y-3 rounded-lg border border-violet-200 bg-violet-50 p-4">
+              <p className="text-sm font-medium text-violet-900">
+                {approvalMessage || 'Waiting for mobile approval…'}
+              </p>
+              {approvalContext?.ipAddress ? (
+                <p className="text-xs text-violet-800">
+                  Sign-in attempt from {String(approvalContext.ipAddress)}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleRequestApprovalEmailOtp}
+                disabled={isFormLoading}
+              >
+                Send email code instead
+              </Button>
+            </div>
+          )}
+
           {/* Submit Button */}
+          {(loginStep === 'email' || loginStep === 'password') && (
           <Button
             type="submit"
             className="w-full py-3 text-base font-semibold bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 disabled:transform-none disabled:shadow-lg enterprise-button"
@@ -582,6 +766,7 @@ export const LoginForm: React.FC = () => {
               </div>
             )}
           </Button>
+          )}
         </form>
 
         <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4">
@@ -622,17 +807,35 @@ export const LoginForm: React.FC = () => {
         <LegalFooterLinks className="mt-6 pt-6 border-t border-gray-100" />
       </Card>
 
-      {/* MFA Verification Modal */}
-      {showMFA && mfaData && (
-        <MFAVerificationModal
-          isOpen={showMFA}
-          onClose={handleMFAClose}
-          onSuccess={handleMFASuccess}
-          userId={mfaData.userId}
-          email={mfaData.email}
-          password={mfaData.password}
-        />
-      )}
+      <MFAVerificationModal
+        isOpen={showMfaModal}
+        onClose={() => setShowMfaModal(false)}
+        userId={mfaUserId || ''}
+        email={pendingEmail}
+        mode="challenge"
+        onChallengeVerify={async (mfaToken) => {
+          if (!challengeId || !challengeNonce) {
+            throw new Error('Login session expired. Please start again.');
+          }
+          const { apiClient } = await import('../../lib/api-client');
+          return apiClient.loginPassword({
+            challengeId,
+            nonce: challengeNonce,
+            password: pendingPassword,
+            rememberMe: pendingRememberMe,
+            mfaToken,
+          });
+        }}
+        onSuccess={async (result) => {
+          setShowMfaModal(false);
+          await handleLoginPasswordResult(
+            result,
+            pendingPassword,
+            pendingRememberMe,
+            pendingEmail
+          );
+        }}
+      />
     </div>
   );
 }; 

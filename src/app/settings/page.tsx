@@ -22,6 +22,12 @@ import { isAdminUser, isOrgAdmin } from '@/utils/tenant';
 const VALID_TABS = ['profile', 'security', 'preferences', 'plan', 'organization'] as const;
 type TabId = (typeof VALID_TABS)[number];
 
+type MfaStatus = {
+  enabled: boolean;
+  hasSecret?: boolean;
+  methods?: string[];
+};
+
 const DEFAULT_USER_SETTINGS: UserSettings = {
   profile: { name: '', email: '', bio: '', timezone: 'UTC', language: 'en' },
   notifications: {
@@ -112,6 +118,7 @@ function SettingsPageContent() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPINSetup, setShowPINSetup] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState<MfaStatus>({ enabled: false, methods: [] });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -165,6 +172,7 @@ function SettingsPageContent() {
       setUserSettings(merged);
       setOriginalUser(JSON.parse(JSON.stringify(merged)));
       setPinStatus(pin);
+      setMfaStatus(mfaStatus);
       applyPreferences(merged.preferences);
 
       if (userIsAdmin) {
@@ -258,6 +266,7 @@ function SettingsPageContent() {
           ...prev,
           security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
         }));
+        setMfaStatus(mfaStatus);
         flash('MFA disabled');
       } catch (err: unknown) {
         flash(err instanceof Error ? err.message : 'Failed to disable MFA', true);
@@ -275,6 +284,7 @@ function SettingsPageContent() {
       ...prev,
       security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
     }));
+    setMfaStatus(mfaStatus);
     setShowMFASetup(false);
     flash('MFA enabled');
   };
@@ -515,6 +525,11 @@ function SettingsPageContent() {
                       >
                         {userSettings.security.mfaEnabled ? 'Enabled' : 'Disabled'}
                       </span>
+                      {mfaStatus.methods?.length ? (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Active methods: {mfaStatus.methods.join(', ')}
+                        </p>
+                      ) : null}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => void handleMfaToggle()}>
                       {userSettings.security.mfaEnabled ? 'Disable MFA' : 'Enable MFA'}

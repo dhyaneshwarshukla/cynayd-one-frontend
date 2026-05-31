@@ -133,9 +133,33 @@ function actionBadgeClass(action: string): string {
       return 'bg-orange-100 text-orange-900 ring-orange-200';
     case 'require_step_up':
       return 'bg-blue-100 text-blue-800 ring-blue-200';
+    case 'require_approval':
+      return 'bg-violet-100 text-violet-800 ring-violet-200';
     default:
       return 'bg-gray-100 text-gray-700 ring-gray-200';
   }
+}
+
+function hasAction(policy: Policy, action: string): boolean {
+  return getActions(policy).includes(action);
+}
+
+function hasConditionFlag(policy: Policy, key: string): boolean {
+  const conditions = getConditions(policy);
+  return Boolean(conditions[key]);
+}
+
+function hasMinTrust(policy: Policy, min: number): boolean {
+  const conditions = getConditions(policy);
+  const value = conditions.minTrustScore;
+  return typeof value === 'number' && value >= min;
+}
+
+function hasAdminRoles(policy: Policy): boolean {
+  const conditions = getConditions(policy);
+  const roles = conditions.userRoles;
+  if (!Array.isArray(roles)) return false;
+  return roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
 }
 
 export default function AccessPoliciesPage() {
@@ -207,6 +231,32 @@ export default function AccessPoliciesPage() {
       );
     });
   }, [policies, search]);
+
+  const usedTemplateIds = useMemo(() => {
+    const used = new Set<string>();
+    for (const policy of policies) {
+      if (hasConditionFlag(policy, 'blockIfVpn') && hasAction(policy, 'block')) {
+        used.add('block-vpn');
+      }
+      if (hasAction(policy, 'require_mfa')) {
+        const conditions = getConditions(policy);
+        const schedule = conditions.schedule as Record<string, unknown> | undefined;
+        if (schedule && hasMinTrust(policy, 50)) {
+          used.add('business-hours-mfa');
+        }
+      }
+      if (hasAction(policy, 'require_approval') && hasMinTrust(policy, 70)) {
+        used.add('mobile-approval-low-trust');
+      }
+      if (hasConditionFlag(policy, 'blockIfVpn') && hasConditionFlag(policy, 'blockIfProxy') && hasAction(policy, 'block')) {
+        used.add('block-risky-network');
+      }
+      if (hasAction(policy, 'require_step_up') && hasConditionFlag(policy, 'requireTrustedDevice') && hasAdminRoles(policy)) {
+        used.add('admin-trusted-device-step-up');
+      }
+    }
+    return used;
+  }, [policies]);
 
   const notifySuccess = (title: string, message?: string) => {
     showToast({ type: 'success', title, message });
@@ -411,42 +461,87 @@ export default function AccessPoliciesPage() {
               <h2 className="text-lg font-semibold text-gray-900">Add policy</h2>
 
               <div className="space-y-3">
-                <TemplateCard
-                  icon={<GlobeAltIcon className="h-5 w-5" />}
-                  title="Block VPN sign-ins"
-                  description="Deny login when a VPN connection is detected."
-                  disabled={saving}
-                  onUse={() =>
-                    void createPolicy({
-                      name: name.trim() || 'Block VPN sign-ins',
-                      priority: 10,
-                      conditions: { blockIfVpn: true },
-                      actions: ['block'],
-                    })
-                  }
-                />
-                <TemplateCard
-                  icon={<ClockIcon className="h-5 w-5" />}
-                  title="Business hours + MFA"
-                  description={`Weekdays ${scheduleStart}:00–${scheduleEnd}:00 UTC with device trust check.`}
-                  disabled={saving}
-                  onUse={() =>
-                    void createPolicy({
-                      name: name.trim() || 'Business hours MFA',
-                      priority: 20,
-                      conditions: {
-                        schedule: {
-                          daysOfWeek: [1, 2, 3, 4, 5],
-                          startHour: scheduleStart,
-                          endHour: scheduleEnd,
-                          timezone: 'UTC',
+                {!usedTemplateIds.has('block-vpn') && (
+                  <TemplateCard
+                    icon={<GlobeAltIcon className="h-5 w-5" />}
+                    title="Block VPN sign-ins"
+                    description="Deny login when a VPN connection is detected."
+                    disabled={saving}
+                    onUse={() =>
+                      void createPolicy({
+                        name: name.trim() || 'Block VPN sign-ins',
+                        priority: 10,
+                        conditions: { blockIfVpn: true },
+                        actions: ['block'],
+                      })
+                    }
+                  />
+                )}
+                {!usedTemplateIds.has('business-hours-mfa') && (
+                  <TemplateCard
+                    icon={<ClockIcon className="h-5 w-5" />}
+                    title="Business hours + MFA"
+                    description={`Weekdays ${scheduleStart}:00–${scheduleEnd}:00 UTC with device trust check.`}
+                    disabled={saving}
+                    onUse={() =>
+                      void createPolicy({
+                        name: name.trim() || 'Business hours MFA',
+                        priority: 20,
+                        conditions: {
+                          schedule: {
+                            daysOfWeek: [1, 2, 3, 4, 5],
+                            startHour: scheduleStart,
+                            endHour: scheduleEnd,
+                            timezone: 'UTC',
+                          },
+                          minTrustScore: 50,
                         },
-                        minTrustScore: 50,
-                      },
-                      actions: ['require_mfa'],
-                    })
-                  }
-                />
+                        actions: ['require_mfa'],
+                      })
+                    }
+                  />
+                )}
+                {!usedTemplateIds.has('block-risky-network') && (
+                  <TemplateCard
+                    icon={<GlobeAltIcon className="h-5 w-5" />}
+                    title="High-risk network block"
+                    description="Block sign-ins detected via VPN/proxy from non-approved networks."
+                    disabled={saving}
+                    onUse={() =>
+                      void createPolicy({
+                        name: name.trim() || 'Block risky VPN/proxy sign-ins',
+                        priority: 40,
+                        conditions: { blockIfVpn: true, blockIfProxy: true },
+                        actions: ['block'],
+                      })
+                    }
+                  />
+                )}
+                {!usedTemplateIds.has('admin-trusted-device-step-up') && (
+                  <TemplateCard
+                    icon={<InformationCircleIcon className="h-5 w-5" />}
+                    title="Trusted device only (admin)"
+                    description="Require trusted device and step-up authentication for admin users."
+                    disabled={saving}
+                    onUse={() =>
+                      void createPolicy({
+                        name: name.trim() || 'Admin trusted-device step-up',
+                        priority: 35,
+                        conditions: {
+                          userRoles: ['ADMIN', 'SUPER_ADMIN'],
+                          requireTrustedDevice: true,
+                          minTrustScore: 75,
+                        },
+                        actions: ['require_step_up'],
+                      })
+                    }
+                  />
+                )}
+                {usedTemplateIds.size >= 5 && (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    All standard templates are already in use for this organization.
+                  </p>
+                )}
               </div>
 
               <Card>
@@ -739,6 +834,10 @@ function InstructionsPanel({
                   <tr>
                     <td className="px-3 py-2 font-medium">require_step_up</td>
                     <td className="px-3 py-2">Require additional verification at sign-in.</td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">require_approval</td>
+                    <td className="px-3 py-2">Require mobile push approval before session issuance.</td>
                   </tr>
                 </tbody>
               </table>

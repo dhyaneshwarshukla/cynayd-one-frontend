@@ -5,29 +5,47 @@ import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
 import { LoadingSpinner } from '../common/LoadingSpinner';
-import { apiClient } from '../../lib/api-client';
+import { apiClient, type AuthResponse } from '../../lib/api-client';
 
 interface MFAVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (accessToken: string, refreshToken: string, user: any) => void;
+  onSuccess: (response: AuthResponse) => void;
   userId: string;
   email: string;
-  password: string;
+  password?: string;
+  mode?: 'legacy' | 'challenge';
+  onChallengeVerify?: (mfaToken: string) => Promise<AuthResponse>;
 }
 
-export function MFAVerificationModal({ 
-  isOpen, 
-  onClose, 
-  onSuccess, 
-  userId, 
-  email, 
-  password 
+export function MFAVerificationModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  userId,
+  email,
+  password,
+  mode = 'legacy',
+  onChallengeVerify,
 }: MFAVerificationModalProps) {
   const [mfaCode, setMfaCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
+
+  const completeLogin = async (mfaToken: string) => {
+    if (mode === 'challenge' && onChallengeVerify) {
+      return onChallengeVerify(mfaToken);
+    }
+    if (!password) {
+      throw new Error('Password is required for login');
+    }
+    return apiClient.login({
+      email,
+      password,
+      mfaToken,
+    });
+  };
 
   const handleSendEmailCode = async () => {
     try {
@@ -48,57 +66,28 @@ export function MFAVerificationModal({
       return;
     }
 
-    console.log('=== MFA VERIFICATION START ===');
-    console.log('MFA Code entered:', mfaCode);
-    console.log('Email:', email);
-    console.log('User ID:', userId);
-
     try {
       setIsLoading(true);
       setError(null);
 
-      // Complete the login with MFA token
-      console.log('MFA Verification - Making login request with MFA token');
-      const response = await apiClient.login({
-        email,
-        password,
-        mfaToken: mfaCode,
-      });
+      const response = await completeLogin(mfaCode);
 
-      console.log('MFA Verification - Response received:', { 
-        hasAccessToken: !!response.accessToken, 
-        hasRefreshToken: !!response.refreshToken, 
-        hasUser: !!response.user,
-        response: response
-      });
-
-      if (response.accessToken && response.refreshToken) {
-        console.log('MFA Verification - Calling onSuccess with user:', response.user);
-        console.log('MFA Verification - onSuccess callback exists:', !!onSuccess);
-        
-        // Call onSuccess callback
-        try {
-          onSuccess(response.accessToken!, response.refreshToken!, response.user);
-          console.log('MFA Verification - onSuccess callback completed');
-        } catch (callbackError) {
-          console.error('MFA Verification - Error in onSuccess callback:', callbackError);
-          setError('Error completing login. Please try again.');
-        }
+      if (response.accessToken && response.refreshToken && response.user) {
+        onSuccess(response);
+      } else if (
+        response.code === 'APPROVAL_REQUIRED' ||
+        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      ) {
+        onSuccess(response);
       } else {
-        console.log('MFA Verification - Invalid response from server:', response);
         setError('Invalid response from server');
       }
-    } catch (err: any) {
-      console.log('=== MFA VERIFICATION ERROR ===');
-      console.log('MFA Verification - Error occurred:', err);
-      console.log('MFA Verification - Error response:', err.response?.data);
-      console.log('MFA Verification - Error message:', err.message);
-      console.log('MFA Verification - Full error:', err);
-      
-      if (err.response?.data?.code === 'INVALID_MFA_CODE') {
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { code?: string; message?: string } }; message?: string };
+      if (apiErr.response?.data?.code === 'INVALID_MFA_CODE') {
         setError('Invalid MFA code. Please try again.');
       } else {
-        setError(err.message || 'Failed to verify MFA code');
+        setError(apiErr.response?.data?.message || apiErr.message || 'Failed to verify MFA code');
       }
     } finally {
       setIsLoading(false);
@@ -115,30 +104,24 @@ export function MFAVerificationModal({
       setIsLoading(true);
       setError(null);
 
-      // Complete the login with backup code
-      const response = await apiClient.login({
-        email,
-        password,
-        mfaToken: mfaCode,
-      });
+      const response = await completeLogin(mfaCode);
 
-      if (response.accessToken && response.refreshToken) {
-        console.log('MFA Verification (Backup) - Calling onSuccess with user:', response.user);
-        try {
-          onSuccess(response.accessToken!, response.refreshToken!, response.user);
-          console.log('MFA Verification (Backup) - onSuccess callback completed');
-        } catch (callbackError) {
-          console.error('MFA Verification (Backup) - Error in onSuccess callback:', callbackError);
-          setError('Error completing login. Please try again.');
-        }
+      if (response.accessToken && response.refreshToken && response.user) {
+        onSuccess(response);
+      } else if (
+        response.code === 'APPROVAL_REQUIRED' ||
+        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      ) {
+        onSuccess(response);
       } else {
         setError('Invalid response from server');
       }
-    } catch (err: any) {
-      if (err.response?.data?.code === 'INVALID_MFA_CODE') {
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { code?: string; message?: string } }; message?: string };
+      if (apiErr.response?.data?.code === 'INVALID_MFA_CODE') {
         setError('Invalid backup code. Please try again.');
       } else {
-        setError(err.message || 'Failed to verify backup code');
+        setError(apiErr.response?.data?.message || apiErr.message || 'Failed to verify backup code');
       }
     } finally {
       setIsLoading(false);
@@ -204,14 +187,14 @@ export function MFAVerificationModal({
             </div>
 
             <div className="space-y-2">
-              <Button 
+              <Button
                 onClick={handleVerify}
                 disabled={isLoading || mfaCode.length !== 6}
                 className="w-full"
               >
                 {isLoading ? <LoadingSpinner size="sm" /> : 'Verify Code'}
               </Button>
-              
+
               <Button
                 onClick={handleSendEmailCode}
                 disabled={isLoading}
@@ -224,8 +207,8 @@ export function MFAVerificationModal({
               <div className="text-center">
                 <span className="text-sm text-gray-500">or</span>
               </div>
-              
-              <Button 
+
+              <Button
                 onClick={handleBackupCode}
                 disabled={isLoading || mfaCode.length !== 8}
                 variant="outline"
@@ -233,7 +216,6 @@ export function MFAVerificationModal({
               >
                 {isLoading ? <LoadingSpinner size="sm" /> : 'Use Backup Code'}
               </Button>
-
             </div>
 
             <div className="text-center">

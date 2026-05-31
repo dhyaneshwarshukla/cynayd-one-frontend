@@ -48,7 +48,23 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     touchUserInteraction();
     try {
       await apiClient.updateActivity();
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as {
+        response?: { status?: number; data?: { code?: string; message?: string } };
+      };
+      if (
+        err.response?.status === 403 &&
+        err.response?.data?.code === 'PIN_REQUIRED'
+      ) {
+        setIsLocked(true);
+        try {
+          const status = await apiClient.getPINStatus();
+          setPinStatus(status);
+        } catch {
+          // ignore
+        }
+        return;
+      }
       console.error('Failed to update activity:', error);
     }
     setPinAttemptsRemaining(undefined);
@@ -180,11 +196,28 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
 
   useEffect(() => {
     if (!isAuthenticated || isLocked || checkingPinStatus) return;
+    if (pinStatus?.requiresPin && !pinStatus.unlocked) return;
 
     const syncServerActivity = async () => {
       try {
         await apiClient.updateActivity();
-      } catch (error) {
+      } catch (error: unknown) {
+        const err = error as {
+          response?: { status?: number; data?: { code?: string } };
+        };
+        if (
+          err.response?.status === 403 &&
+          err.response?.data?.code === 'PIN_REQUIRED'
+        ) {
+          setIsLocked(true);
+          try {
+            const status = await apiClient.getPINStatus();
+            setPinStatus(status);
+          } catch {
+            // ignore
+          }
+          return;
+        }
         console.error('Failed to update activity:', error);
       }
     };
@@ -192,7 +225,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     syncServerActivity();
     const activityInterval = setInterval(syncServerActivity, 60000);
     return () => clearInterval(activityInterval);
-  }, [isAuthenticated, isLocked, checkingPinStatus]);
+  }, [isAuthenticated, isLocked, checkingPinStatus, pinStatus?.requiresPin, pinStatus?.unlocked]);
 
   const handleLogout = async () => {
     clearAllSessionLockData();

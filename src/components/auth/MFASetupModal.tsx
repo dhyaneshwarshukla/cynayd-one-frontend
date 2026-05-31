@@ -15,6 +15,8 @@ interface MFASetupModalProps {
   requiredEnrollment?: boolean;
 }
 
+type MFAMethod = 'totp' | 'email' | 'both';
+
 interface MFASetupData {
   secret: string;
   qrCodeUrl: string;
@@ -33,12 +35,13 @@ export function MFASetupModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [selectedMethod, setSelectedMethod] = useState<MFAMethod>('totp');
 
   useEffect(() => {
-    if (isOpen && step === 'setup') {
+    if (isOpen && step === 'setup' && selectedMethod !== 'email') {
       generateMFASetup();
     }
-  }, [isOpen, step]);
+  }, [isOpen, step, selectedMethod]);
 
   const generateMFASetup = async () => {
     try {
@@ -69,6 +72,9 @@ export function MFASetupModal({
       if (response.verified) {
         // Enable MFA
         await apiClient.enableMFA(verificationCode, setupData?.backupCodes);
+        if (selectedMethod === 'both') {
+          await apiClient.enableEmailMFA();
+        }
 
         setBackupCodes(setupData?.backupCodes || []);
         setStep('success');
@@ -82,12 +88,27 @@ export function MFASetupModal({
     }
   };
 
+  const enableEmailOnly = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      await apiClient.enableEmailMFA();
+      setBackupCodes([]);
+      setStep('success');
+    } catch (err: any) {
+      setError(err.message || 'Failed to enable email MFA');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleClose = () => {
     setStep('setup');
     setVerificationCode('');
     setError(null);
     setSetupData(null);
     setBackupCodes([]);
+    setSelectedMethod('totp');
     onClose();
   };
 
@@ -136,9 +157,51 @@ export function MFASetupModal({
 
           {step === 'setup' && (
             <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 p-3">
+                <p className="text-sm font-medium text-gray-900 mb-2">Choose MFA method</p>
+                <div className="grid grid-cols-1 gap-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="mfa-method"
+                      checked={selectedMethod === 'totp'}
+                      onChange={() => setSelectedMethod('totp')}
+                    />
+                    Authenticator app
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="mfa-method"
+                      checked={selectedMethod === 'email'}
+                      onChange={() => setSelectedMethod('email')}
+                    />
+                    Email OTP
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="mfa-method"
+                      checked={selectedMethod === 'both'}
+                      onChange={() => setSelectedMethod('both')}
+                    />
+                    Both (Authenticator + Email OTP)
+                  </label>
+                </div>
+              </div>
+
               {isLoading ? (
                 <div className="flex justify-center py-8">
                   <LoadingSpinner size="lg" />
+                </div>
+              ) : selectedMethod === 'email' ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Email OTP will be enabled as your MFA method. You can add authenticator later.
+                  </p>
+                  <Button onClick={enableEmailOnly} className="w-full">
+                    Enable Email MFA
+                  </Button>
                 </div>
               ) : setupData ? (
                 <>

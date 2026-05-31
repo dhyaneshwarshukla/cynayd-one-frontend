@@ -9,7 +9,24 @@ interface SessionRow {
   id: string;
   ipAddress?: string;
   lastActivity?: string;
+  createdAt?: string;
+  userAgent?: string;
+  location?: string;
+  deviceLabel?: string;
+  deviceType?: string;
+  browser?: string;
+  os?: string;
+  isTrusted?: boolean;
+  mfaUsed?: boolean;
+  riskLevel?: string;
   user?: { email?: string; name?: string };
+}
+
+function formatRelativeTime(value?: string): string {
+  if (!value) return 'Unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleString();
 }
 
 export function LiveSessionMonitor() {
@@ -91,7 +108,7 @@ export function LiveSessionMonitor() {
         title="Revoke session?"
         message={
           revokeTarget
-            ? `End the active session for ${revokeTarget.user?.email ?? 'this user'}? They will need to sign in again.`
+            ? `End the ${revokeTarget.deviceLabel || 'active'} session for ${revokeTarget.user?.email ?? 'this user'}? They will need to sign in again on that device.`
             : ''
         }
         confirmText="Revoke session"
@@ -103,29 +120,57 @@ export function LiveSessionMonitor() {
           <h3 className="font-semibold text-gray-900">Live sessions</h3>
           <span className="text-xs text-gray-500">{mode === 'sse' ? 'Live' : 'Polling'}</span>
         </div>
-        <ul className="max-h-80 divide-y overflow-auto text-sm">
+        <ul className="max-h-[32rem] divide-y overflow-auto text-sm">
           {sessions.length === 0 && (
             <li className="py-4 text-center text-gray-500">No active sessions</li>
           )}
           {sessions.map((s) => (
-            <li key={s.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-gray-900">
-                  {s.user?.name || s.user?.email || 'Unknown'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {s.user?.email && s.user?.name ? s.user.email : null}
-                  {s.ipAddress && (
-                    <span className={s.user?.email ? ' · ' : ''}>{s.ipAddress}</span>
-                  )}
-                  {s.lastActivity && (
-                    <span>
-                      {' '}
-                      · Last active{' '}
-                      {new Date(s.lastActivity).toLocaleString()}
+            <li key={s.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-medium text-gray-900">
+                    {s.user?.name || s.user?.email || 'Unknown user'}
+                  </p>
+                  {s.deviceType && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {s.deviceType}
                     </span>
                   )}
+                  {s.isTrusted && (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                      Trusted
+                    </span>
+                  )}
+                  {s.mfaUsed && (
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      MFA
+                    </span>
+                  )}
+                </div>
+                {s.user?.email && s.user?.name && (
+                  <p className="truncate text-xs text-gray-500">{s.user.email}</p>
+                )}
+                <p className="mt-1 font-medium text-gray-800">
+                  {s.deviceLabel || 'Unknown device'}
                 </p>
+                <div className="mt-1 grid gap-1 text-xs text-gray-500 sm:grid-cols-2">
+                  {s.browser && (
+                    <span>Browser: {s.browser}{s.os ? '' : ''}</span>
+                  )}
+                  {s.os && <span>OS: {s.os}</span>}
+                  {s.ipAddress && <span>IP: {s.ipAddress}</span>}
+                  {s.location && <span>Location: {s.location}</span>}
+                  {s.createdAt && <span>Signed in: {formatRelativeTime(s.createdAt)}</span>}
+                  {s.lastActivity && (
+                    <span>Last active: {formatRelativeTime(s.lastActivity)}</span>
+                  )}
+                  {s.riskLevel && <span>Risk: {s.riskLevel}</span>}
+                </div>
+                {s.userAgent && (
+                  <p className="mt-2 truncate text-[11px] text-gray-400" title={s.userAgent}>
+                    {s.userAgent}
+                  </p>
+                )}
               </div>
               <Button
                 type="button"

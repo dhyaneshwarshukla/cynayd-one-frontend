@@ -53,6 +53,17 @@ export interface LoginCredentials {
   formLoadedAt?: number;
 }
 
+export interface LoginStartResponse {
+  mode: 'password';
+  code?: string;
+  email?: string;
+  challengeId?: string;
+  nonce?: string;
+  expiresAt?: string;
+  pollAfterMs?: number;
+  requireMobileApproval?: boolean;
+}
+
 export interface RegisterData {
   paymentOrderId?: string;
   paymentId?: string;
@@ -74,6 +85,7 @@ export interface RegisterData {
 export interface AuthResponse {
   accessToken?: string;
   refreshToken?: string;
+  device_session_id?: string;
   user: {
     id: string;
     email: string;
@@ -90,6 +102,7 @@ export interface AuthResponse {
   email?: string;
   mustEnrollMfa?: boolean;
   enrollmentReason?: 'policy' | 'risk' | 'org_setting';
+  requestContext?: Record<string, unknown>;
 }
 
 export interface PinLock {
@@ -335,6 +348,8 @@ export interface SystemSettings {
 class ApiClient {
   private baseURL: string;
   private authToken: string | null;
+  private sessionInvalidatedHandler: (() => void) | null = null;
+  private static readonly SESSION_ID_KEY = 'login_session_id';
 
   constructor() {
     this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -363,6 +378,49 @@ class ApiClient {
   /** Store JWT after magic link or passkey login */
   storeAuthToken(token: string): void {
     this.setStoredToken(token);
+  }
+
+  onSessionInvalidated(handler: (() => void) | null): void {
+    this.sessionInvalidatedHandler = handler;
+  }
+
+  private getStoredSessionId(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(ApiClient.SESSION_ID_KEY);
+    }
+    return null;
+  }
+
+  private setStoredSessionId(sessionId: string): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(ApiClient.SESSION_ID_KEY, sessionId);
+    }
+  }
+
+  private clearStoredSessionId(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(ApiClient.SESSION_ID_KEY);
+    }
+  }
+
+  private persistAuthResponse(response: Partial<AuthResponse>): void {
+    if (response.accessToken) {
+      this.setStoredToken(response.accessToken);
+    }
+    if (response.device_session_id) {
+      this.setStoredSessionId(response.device_session_id);
+    }
+  }
+
+  private handleSessionRevoked(): void {
+    void fetch(`${this.baseURL}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
+    this.removeStoredToken();
+    this.clearMustEnrollMfa();
+    this.clearStoredSessionId();
+    this.sessionInvalidatedHandler?.();
   }
 
   private removeStoredToken(): void {
@@ -397,6 +455,11 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.authToken}`;
     }
 
+    const sessionId = this.getStoredSessionId();
+    if (sessionId) {
+      headers['X-Current-Session-Id'] = sessionId;
+    }
+
     const response = await fetch(url, {
       ...options,
       headers,
@@ -426,6 +489,20 @@ class ApiClient {
 
       if (!errorMessage) {
         errorMessage = `HTTP error! status: ${response.status}`;
+      }
+
+      if (
+        !endpoint.endsWith('/api/auth/activity') &&
+        !endpoint.endsWith('/api/auth/pin/verify') &&
+        !endpoint.includes('/api/auth/login/challenge/') &&
+        !endpoint.endsWith('/api/auth/login/password') &&
+        response.status === 401 &&
+        (errorMessage.toLowerCase().includes('session revoked') ||
+          errorMessage.toLowerCase().includes('session expired') ||
+          errorData.error === 'Session revoked' ||
+          errorData.error === 'Session expired')
+      ) {
+        this.handleSessionRevoked();
       }
       
       const error = new Error(errorMessage) as any;
@@ -485,7 +562,7 @@ class ApiClient {
     }
     
     if (response.accessToken) {
-      this.setStoredToken(response.accessToken);
+      this.persistAuthResponse(response);
     }
     if (typeof window !== 'undefined') {
       if (response.mustEnrollMfa) {
@@ -493,6 +570,121 @@ class ApiClient {
       } else {
         sessionStorage.removeItem('must_enroll_mfa');
       }
+    }
+    return response;
+  }
+
+  async loginStart(email: string): Promise<LoginStartResponse> {
+    return this.request<LoginStartResponse>('/api/auth/login/start', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async loginPassword(input: {
+    challengeId: string;
+    nonce: string;
+    password: string;
+    rememberMe?: boolean;
+    mfaToken?: string;
+  }): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>('/api/auth/login/password', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+
+    if (response.code === 'MFA_REQUIRED') {
+      const mfaError = new Error('MFA required') as any;
+      mfaError.response = {
+        data: {
+          message: response.message,
+          code: response.code,
+          userId: response.userId,
+          email: response.email,
+        },
+      };
+      throw mfaError;
+    }
+
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
+    if (typeof window !== 'undefined') {
+      if (response.mustEnrollMfa) {
+        sessionStorage.setItem('must_enroll_mfa', 'true');
+      } else if (response.code !== 'APPROVAL_REQUIRED' && response.code !== 'APPROVAL_EMAIL_OTP_REQUIRED') {
+        sessionStorage.removeItem('must_enroll_mfa');
+      }
+    }
+    return response;
+  }
+
+  async approveLoginChallenge(
+    challengeId: string,
+    nonce: string,
+    deviceId?: string
+  ): Promise<{ status: string; approvedAt?: string }> {
+    return this.request(`/api/auth/login/challenge/${challengeId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ nonce, deviceId }),
+    });
+  }
+
+  async rejectLoginChallenge(
+    challengeId: string,
+    nonce: string,
+    deviceId?: string
+  ): Promise<{ status: string }> {
+    return this.request(`/api/auth/login/challenge/${challengeId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ nonce, deviceId }),
+    });
+  }
+
+  async getLoginChallengeStatus(
+    challengeId: string,
+    nonce: string,
+    rememberMe?: boolean
+  ): Promise<{ status: string; code?: string; expiresAt?: string; pollAfterMs?: number } & Partial<AuthResponse>> {
+    const params = new URLSearchParams({ nonce });
+    if (rememberMe !== undefined) {
+      params.set('rememberMe', String(rememberMe));
+    }
+    const response = await this.request<{ status: string; code?: string; expiresAt?: string; pollAfterMs?: number } & Partial<AuthResponse>>(
+      `/api/auth/login/challenge/${challengeId}?${params.toString()}`
+    );
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
+    return response;
+  }
+
+  async requestChallengeEmailOtp(challengeId: string, nonce: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/auth/login/challenge/${challengeId}/fallback-email-otp`, {
+      method: 'POST',
+      body: JSON.stringify({ nonce }),
+    });
+  }
+
+  async verifyChallengeEmailOtp(input: {
+    challengeId: string;
+    nonce: string;
+    otp: string;
+    rememberMe?: boolean;
+  }): Promise<{ status: string } & Partial<AuthResponse>> {
+    const response = await this.request<{ status: string } & Partial<AuthResponse>>(
+      `/api/auth/login/challenge/${input.challengeId}/verify-email-otp`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          nonce: input.nonce,
+          otp: input.otp,
+          rememberMe: input.rememberMe,
+        }),
+      }
+    );
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
     }
     return response;
   }
@@ -534,7 +726,7 @@ class ApiClient {
       body: JSON.stringify({ token }),
     });
     
-    this.setStoredToken(response.accessToken!);
+    this.persistAuthResponse(response);
     return response;
   }
 
@@ -558,6 +750,21 @@ class ApiClient {
     } finally {
       this.removeStoredToken();
       this.clearMustEnrollMfa();
+      this.clearStoredSessionId();
+    }
+  }
+
+  async logoutAll(): Promise<void> {
+    try {
+      await this.request('/api/auth/logoutAll', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.warn('LogoutAll request failed, but clearing local state');
+    } finally {
+      this.removeStoredToken();
+      this.clearMustEnrollMfa();
+      this.clearStoredSessionId();
     }
   }
 
@@ -1883,8 +2090,15 @@ class ApiClient {
   async getMFAStatus(): Promise<{
     enabled: boolean;
     hasSecret: boolean;
+    methods?: string[];
   }> {
     return this.request('/api/mfa/status');
+  }
+
+  async enableEmailMFA(): Promise<{ mfaMethods: string[] }> {
+    return this.request('/api/mfa/email/enable', {
+      method: 'POST',
+    });
   }
 
   // PIN methods
@@ -2083,7 +2297,7 @@ class ApiClient {
 
   async sendMfaEmailCode(userId?: string): Promise<{ message: string }> {
     if (userId) {
-      return this.request('/api/mfa/email/send-login', {
+      return this.request('/api/auth/mfa/email/send-login', {
         method: 'POST',
         body: JSON.stringify({ userId }),
       });

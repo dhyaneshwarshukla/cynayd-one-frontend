@@ -15,6 +15,8 @@ interface AuthContextType {
   resendVerification: (email: string) => Promise<{ message: string }>;
   updateProfile: (data: any) => Promise<void>;
   logout: () => Promise<void>;
+  logoutCurrentDevice: () => Promise<void>;
+  logoutEverywhere: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setUserDirectly: (user: User) => void;
   triggerLoginSuccess: () => void;
@@ -97,13 +99,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     initializeAuth();
 
+    apiClient.onSessionInvalidated(() => {
+      setUser(null);
+      clearMustEnrollMfa();
+      onLogoutSuccess?.();
+    });
+
     return () => {
       isMounted = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+      apiClient.onSessionInvalidated(null);
     };
-  }, []);
+  }, [onLogoutSuccess]);
+
+  // Detect remote session revocation while the tab stays open
+  useEffect(() => {
+    if (!user) return;
+
+    const intervalId = setInterval(() => {
+      void apiClient.getCurrentUser().catch(() => {
+        // Session invalidation is handled globally in api-client
+      });
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [user?.id]);
 
   // Refresh user data
   const refreshUser = async () => {
@@ -231,25 +253,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }
   };
 
-  // Logout function
-  const logout = async () => {
+  const performLogout = async (logoutFn: () => Promise<void>) => {
     try {
       setIsLoading(true);
-      await apiClient.logout();
+      await logoutFn();
       setUser(null);
       clearMustEnrollMfa();
-      
-      // Call success callback if provided
       onLogoutSuccess?.();
     } catch (error) {
       console.error('Logout failed:', error);
-      // Even if logout request fails, clear local state
       setUser(null);
       onLogoutSuccess?.();
     } finally {
       setIsLoading(false);
     }
   };
+
+  const logoutCurrentDevice = async () => {
+    await performLogout(() => apiClient.logout());
+  };
+
+  const logoutEverywhere = async () => {
+    await performLogout(() => apiClient.logoutAll());
+  };
+
+  const logout = logoutCurrentDevice;
 
   const value: AuthContextType = {
     user,
@@ -262,6 +290,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     resendVerification,
     updateProfile,
     logout,
+    logoutCurrentDevice,
+    logoutEverywhere,
     refreshUser,
     setUserDirectly,
     triggerLoginSuccess,
