@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
-import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { AuditLogCard } from '@/components/audit/AuditLogCard';
 import { AuditLogDetailModal } from '@/components/audit/AuditLogDetailModal';
 import { detailsToSearchText, formatActionLabel } from '@/components/audit/audit-log-utils';
@@ -122,8 +121,12 @@ export default function AuditPage() {
   });
   const [activeTab, setActiveTab] = useState<'logs' | 'devices' | 'live'>('logs');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const liveUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pageSize = 50;
 
   const role = user?.role?.toUpperCase();
   const canAccessAudit = role === 'ADMIN' || role === 'SUPER_ADMIN';
@@ -154,8 +157,34 @@ export default function AuditPage() {
     };
   }, []);
 
-  const fetchAuditLogs = useCallback(async (showRefreshIndicator = false) => {
+  const buildDateRange = useCallback((): { startDate?: Date; endDate?: Date } => {
+    const now = new Date();
+    if (dateFilter === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return { startDate: start };
+    }
+    if (dateFilter === 'yesterday') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return { startDate: start, endDate: end };
+    }
+    if (dateFilter === 'week') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7);
+      return { startDate: start };
+    }
+    return {};
+  }, [dateFilter]);
+
+  const fetchAuditLogs = useCallback(async (options?: {
+    showRefreshIndicator?: boolean;
+    append?: boolean;
+    targetOffset?: number;
+  }) => {
     try {
+      const showRefreshIndicator = options?.showRefreshIndicator ?? false;
+      const append = options?.append ?? false;
+      const targetOffset = options?.targetOffset ?? 0;
       if (showRefreshIndicator) {
         setIsRefreshing(true);
       } else {
@@ -163,16 +192,21 @@ export default function AuditPage() {
       }
       setError(null);
       
-      // Fetch audit logs from API
+      const dateRange = buildDateRange();
+      const nextOffset = append ? targetOffset : 0;
       const apiLogs = await apiClient.getAuditLogs({
-        limit: 50,
-        offset: 0
+        ...dateRange,
+        action: actionFilter !== 'all' ? actionFilter : undefined,
+        userId: userFilter !== 'all' ? userFilter : undefined,
+        q: searchTerm.trim() || undefined,
+        limit: pageSize,
+        offset: nextOffset,
       });
-      
-      // Use real API data - no dummy data, API always provides user info
-      const extendedLogs: ExtendedAuditLog[] = apiLogs;
 
-      setAuditLogs(extendedLogs);
+      const extendedLogs: ExtendedAuditLog[] = apiLogs;
+      setAuditLogs((prev) => (append ? [...prev, ...extendedLogs] : extendedLogs));
+      setOffset(nextOffset + extendedLogs.length);
+      setHasMore(extendedLogs.length === pageSize);
       setLiveMonitoring(prev => ({ ...prev, lastUpdate: new Date() }));
     } catch (err) {
       setError('Failed to load audit logs');
@@ -181,7 +215,7 @@ export default function AuditPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [actionFilter, buildDateRange, pageSize, searchTerm, userFilter]);
 
   const fetchAuditStats = useCallback(async () => {
     try {
@@ -203,11 +237,21 @@ export default function AuditPage() {
 
   useEffect(() => {
     if (isAuthenticated && canAccessAudit) {
-      void fetchAuditLogs();
+      void fetchAuditLogs({ targetOffset: 0 });
       void fetchAuditStats();
       void fetchDevices();
     }
   }, [isAuthenticated, canAccessAudit, fetchAuditLogs, fetchAuditStats, fetchDevices]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !canAccessAudit) return;
+    const id = setTimeout(() => {
+      setOffset(0);
+      setHasMore(true);
+      void fetchAuditLogs({ targetOffset: 0 });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [searchTerm, actionFilter, userFilter, dateFilter, isAuthenticated, canAccessAudit, fetchAuditLogs]);
 
   const fetchLiveLogs = useCallback(async () => {
     try {
@@ -232,11 +276,12 @@ export default function AuditPage() {
 
   const handleExportLogs = async () => {
     try {
-      const blob = await apiClient.exportAuditLogs();
+      const dateRange = buildDateRange();
+      const blob = await apiClient.exportAuditLogs({ ...dateRange, format: exportFormat });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${exportFormat}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -271,9 +316,11 @@ export default function AuditPage() {
   };
 
   const handleManualRefresh = () => {
-    fetchAuditLogs(true);
-    fetchAuditStats();
-    fetchDevices();
+    setOffset(0);
+    setHasMore(true);
+    void fetchAuditLogs({ showRefreshIndicator: true, targetOffset: 0 });
+    void fetchAuditStats();
+    void fetchDevices();
   };
 
   const getDeviceIcon = (userAgent: string) => {
@@ -292,7 +339,7 @@ export default function AuditPage() {
     return 'Desktop Browser';
   };
 
-  const filteredLogs = auditLogs.filter(log => {
+  const filteredLogs = useMemo(() => auditLogs.filter(log => {
     const q = searchTerm.toLowerCase();
     const matchesSearch =
       !q ||
@@ -302,7 +349,7 @@ export default function AuditPage() {
       (log as ExtendedAuditLog).user?.name?.toLowerCase().includes(q) ||
       (log as ExtendedAuditLog).user?.email?.toLowerCase().includes(q);
     
-    const matchesAction = actionFilter === 'all' || log.action.includes(actionFilter);
+    const matchesAction = actionFilter === 'all' || log.action.toLowerCase().includes(actionFilter.toLowerCase());
     const matchesUser = userFilter === 'all' || (log as ExtendedAuditLog).user?.email === userFilter;
     
     let matchesDate = true;
@@ -316,7 +363,8 @@ export default function AuditPage() {
       
       switch (dateFilter) {
         case 'today':
-          matchesDate = logDate >= today;
+          const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          matchesDate = logDate >= start;
           break;
         case 'yesterday':
           matchesDate = logDate >= yesterday && logDate < today;
@@ -326,9 +374,16 @@ export default function AuditPage() {
           break;
       }
     }
-    
     return matchesSearch && matchesAction && matchesUser && matchesDate;
-  });
+  }), [actionFilter, auditLogs, dateFilter, searchTerm, userFilter]);
+
+  const userOptions = useMemo(() => {
+    const options = new Set<string>();
+    for (const log of auditLogs) {
+      if (log.user?.email) options.add(log.user.email);
+    }
+    return Array.from(options).sort();
+  }, [auditLogs]);
 
   const getActionIcon = (action: string) => {
     if (action.includes('login')) return '🔐';
@@ -372,13 +427,18 @@ export default function AuditPage() {
   return (
     <UnifiedLayout
       title="Audit & Security Monitoring"
-      subtitle="Track and monitor all system activities, user actions, and device registrations"
+      subtitle="Track system activities, user actions, and device registrations"
       actions={
         <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={handleExportLogs}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+          <select
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+          <Button onClick={handleExportLogs} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
             <DocumentArrowDownIcon className="w-4 h-4 mr-2" />
             Export Logs
           </Button>
@@ -546,7 +606,7 @@ export default function AuditPage() {
               <div>
                 <p className="text-sm font-medium text-orange-600">Registered Devices</p>
                 <p className="text-2xl font-bold text-orange-900">{stats.deviceCount}</p>
-                <p className="text-xs text-orange-700 mt-1">Unique devices</p>
+                <p className="text-xs text-orange-700 mt-1">Active session devices</p>
               </div>
               <DevicePhoneMobileIcon className="w-8 h-8 text-orange-600" />
             </div>
@@ -580,7 +640,7 @@ export default function AuditPage() {
                       placeholder="Search audit logs..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -598,6 +658,18 @@ export default function AuditPage() {
                     <option value="invite">Invite</option>
                     <option value="export">Export</option>
                     <option value="security">Security</option>
+                  </select>
+                  <select
+                    value={userFilter}
+                    onChange={(e) => setUserFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All Users</option>
+                    {userOptions.map((email) => (
+                      <option key={email} value={email}>
+                        {email}
+                      </option>
+                    ))}
                   </select>
                   <select
                     value={dateFilter}
@@ -641,6 +713,22 @@ export default function AuditPage() {
                 onViewDetails={handleViewDetails}
               />
             ))}
+            {hasMore && (
+              <div className="pt-2 text-center">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    void fetchAuditLogs({
+                      showRefreshIndicator: true,
+                      append: true,
+                      targetOffset: offset,
+                    })
+                  }
+                >
+                  Load More
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <Card className="p-12 text-center bg-gradient-to-br from-gray-50 to-gray-100">
@@ -839,7 +927,7 @@ export default function AuditPage() {
                             </div>
                           </div>
                           <span className="shrink-0 text-xs text-gray-500">
-                            {new Date(log.timestamp).toLocaleTimeString()}
+                                {new Date(log.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
                       ))}

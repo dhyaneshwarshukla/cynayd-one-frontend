@@ -267,6 +267,44 @@ export interface SecurityEvent {
   };
 }
 
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface RiskInsightsSummaryV2 {
+  contractVersion: 'v2';
+  generatedAt: string;
+  trackedProfiles: number;
+  highRiskUsers: number;
+  criticalUsers: number;
+  openAnomalies: number;
+  activeSessions: number;
+  riskDistribution: Record<RiskLevel, number>;
+}
+
+export interface RiskInsightsTrendPointV2 {
+  date: string;
+  anomalies: number;
+  highOrCriticalProfiles: number;
+}
+
+export interface RiskInsightsTrendsV2 {
+  contractVersion: 'v2';
+  generatedAt: string;
+  windowDays: number;
+  points: RiskInsightsTrendPointV2[];
+}
+
+export interface RiskInsightsUsersV2 {
+  contractVersion: 'v2';
+  generatedAt: string;
+  items: Array<Record<string, unknown>>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -1168,6 +1206,8 @@ class ApiClient {
     endDate?: Date;
     action?: string;
     resource?: string;
+    userId?: string;
+    q?: string;
     limit?: number;
     offset?: number;
   }): Promise<AuditLog[]> {
@@ -1176,6 +1216,8 @@ class ApiClient {
     if (options?.endDate) params.append('endDate', options.endDate.toISOString());
     if (options?.action) params.append('action', options.action);
     if (options?.resource) params.append('resource', options.resource);
+    if (options?.userId) params.append('userId', options.userId);
+    if (options?.q) params.append('q', options.q);
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.offset) params.append('offset', options.offset.toString());
 
@@ -1217,16 +1259,19 @@ class ApiClient {
   async exportAuditLogs(options?: {
     startDate?: Date;
     endDate?: Date;
+    format?: 'csv' | 'json';
   }): Promise<Blob> {
     const params = new URLSearchParams();
     if (options?.startDate) params.append('startDate', options.startDate.toISOString());
     if (options?.endDate) params.append('endDate', options.endDate.toISOString());
+    params.append('format', options?.format ?? 'csv');
 
     const response = await fetch(`${this.baseURL}/api/audit-logs/export?${params.toString()}`, {
       headers: {
         'Authorization': `Bearer ${this.getAuthToken()}`,
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -2351,6 +2396,37 @@ class ApiClient {
 
   async getRiskInsightsDashboard(): Promise<Record<string, unknown>> {
     return this.request('/api/risk-insights/dashboard');
+  }
+
+  async getRiskInsightsSummary(windowDays?: number): Promise<RiskInsightsSummaryV2> {
+    const params = new URLSearchParams();
+    if (windowDays) params.set('windowDays', String(windowDays));
+    const query = params.toString();
+    return this.request(`/api/risk-insights/summary${query ? `?${query}` : ''}`);
+  }
+
+  async getRiskInsightsTrends(windowDays: number = 30): Promise<RiskInsightsTrendsV2> {
+    const params = new URLSearchParams({ windowDays: String(windowDays) });
+    return this.request(`/api/risk-insights/trends?${params.toString()}`);
+  }
+
+  async getRiskInsightsUsers(params?: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    riskLevel?: 'all' | RiskLevel;
+    sortBy?: 'riskScore' | 'lastCalculated';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<RiskInsightsUsersV2> {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.q) query.set('q', params.q);
+    if (params?.riskLevel) query.set('riskLevel', params.riskLevel);
+    if (params?.sortBy) query.set('sortBy', params.sortBy);
+    if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
+    const qs = query.toString();
+    return this.request(`/api/risk-insights/users${qs ? `?${qs}` : ''}`);
   }
 
   async getAdminSessions(): Promise<{ count: number; sessions: unknown[] }> {
