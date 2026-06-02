@@ -435,9 +435,6 @@ export const LoginForm: React.FC = () => {
       const response = await apiClient.webauthnAuthenticateFinish(assertion);
       if (response.accessToken) {
         apiClient.storeAuthToken(response.accessToken);
-        if (response.refreshToken) {
-          localStorage.setItem('refresh_token', response.refreshToken);
-        }
         const fullUser = await apiClient.getCurrentUser();
         setUserDirectly(fullUser);
         triggerLoginSuccess();

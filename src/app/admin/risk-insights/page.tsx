@@ -344,7 +344,7 @@ export default function RiskInsightsPage() {
                       <span className="text-gray-400">→</span>
                     </Link>
                     <Link
-                      href="/admin/access-policies"
+                      href="/admin/security-policies"
                       className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-900 hover:bg-gray-50"
                     >
                       Access policies

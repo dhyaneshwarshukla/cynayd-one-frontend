@@ -213,6 +213,14 @@ export const RegisterForm: React.FC = () => {
         return;
       }
 
+      if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
+        showError(
+          'Paid plans are not available because payment is not configured on this environment. Choose the free plan or contact support.',
+          'Payment unavailable'
+        );
+        return;
+      }
+
       // For paid plans, process payment first
       if (!razorpayLoaded) {
         showError('Payment gateway is still loading. Please wait a moment and try again.');

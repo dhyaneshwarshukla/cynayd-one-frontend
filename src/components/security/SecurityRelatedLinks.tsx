@@ -14,8 +14,8 @@ export function SecurityRelatedLinks({ current }: { current: 'security' | 'polic
       <Link href="/security" className={linkClass('security')}>
         Security Center
       </Link>
-      <Link href="/admin/access-policies" className={linkClass('policies')}>
-        Access policies
+      <Link href="/admin/security-policies" className={linkClass('policies')}>
+        Security policies
       </Link>
       <Link href="/audit" className={linkClass('audit')}>
         Audit logs

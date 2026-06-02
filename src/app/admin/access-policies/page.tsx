@@ -34,6 +34,27 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { isAdminUser } from '@/utils/tenant';
 import { SecurityRelatedLinks } from '@/components/security/SecurityRelatedLinks';
+import {
+  SecuritySettingsPanel,
+  mapApiToSecuritySettings,
+  type SecuritySettingsFormState,
+} from '@/components/security/SecuritySettingsPanel';
+
+const DEFAULT_BASELINE: SecuritySettingsFormState = {
+  mfaRequired: false,
+  passwordMinLength: 8,
+  passwordRequireUppercase: true,
+  passwordRequireLowercase: true,
+  passwordRequireNumbers: true,
+  passwordRequireSymbols: false,
+  sessionTimeout: 30,
+  failedLoginLimit: 5,
+  accountLockoutDuration: 15,
+  maxConcurrentSessions: 10,
+  botDetectionEnabled: true,
+  credentialStuffingEnabled: true,
+  impossibleTravelMaxKmh: 900,
+};
 
 interface Policy {
   id: string;
@@ -55,6 +76,11 @@ const ACTION_OPTIONS = [
     description: 'Hard block until MFA is configured',
   },
   { id: 'require_step_up', label: 'Step-up auth', description: 'Require additional verification' },
+  {
+    id: 'require_approval',
+    label: 'Require mobile approval',
+    description: 'Approve sign-in from the CYNAYD One Auth app',
+  },
 ] as const;
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -183,6 +209,9 @@ export default function AccessPoliciesPage() {
   const [blockAction, setBlockAction] = useState(false);
   const [minTrustScore, setMinTrustScore] = useState(50);
   const [selectedActions, setSelectedActions] = useState<string[]>(['require_mfa']);
+  const [baseline, setBaseline] = useState<SecuritySettingsFormState>(DEFAULT_BASELINE);
+  const [baselineSaving, setBaselineSaving] = useState(false);
+  const [appliedTemplateIds, setAppliedTemplateIds] = useState<string[]>([]);
 
   const canManage = isAdminUser(user?.role);
 
@@ -192,8 +221,10 @@ export default function AccessPoliciesPage() {
       setLoading(true);
     }
     try {
-      const data = await apiClient.getAccessPolicies();
-      setPolicies(normalizePolicies(data));
+      const snap = await apiClient.getOrgSecurity();
+      setPolicies(normalizePolicies(snap.rules as Array<Record<string, unknown>>));
+      setBaseline(mapApiToSecuritySettings(snap.baseline as Record<string, unknown>));
+      setAppliedTemplateIds(snap.appliedTemplateIds ?? []);
     } catch {
       if (!hasLoadedOnce.current) {
         setPolicies([]);
@@ -233,7 +264,11 @@ export default function AccessPoliciesPage() {
   }, [policies, search]);
 
   const usedTemplateIds = useMemo(() => {
-    const used = new Set<string>();
+    const used = new Set<string>(appliedTemplateIds);
+    for (const id of appliedTemplateIds) {
+      if (id.startsWith('strict-enterprise:')) used.add('strict-enterprise');
+      if (id.startsWith('migrated:')) used.add(id);
+    }
     for (const policy of policies) {
       if (hasConditionFlag(policy, 'blockIfVpn') && hasAction(policy, 'block')) {
         used.add('block-vpn');
@@ -245,18 +280,15 @@ export default function AccessPoliciesPage() {
           used.add('business-hours-mfa');
         }
       }
-      if (hasAction(policy, 'require_approval') && hasMinTrust(policy, 70)) {
-        used.add('mobile-approval-low-trust');
-      }
       if (hasConditionFlag(policy, 'blockIfVpn') && hasConditionFlag(policy, 'blockIfProxy') && hasAction(policy, 'block')) {
         used.add('block-risky-network');
       }
       if (hasAction(policy, 'require_step_up') && hasConditionFlag(policy, 'requireTrustedDevice') && hasAdminRoles(policy)) {
-        used.add('admin-trusted-device-step-up');
+        used.add('strict-enterprise');
       }
     }
     return used;
-  }, [policies]);
+  }, [policies, appliedTemplateIds]);
 
   const notifySuccess = (title: string, message?: string) => {
     showToast({ type: 'success', title, message });
@@ -264,6 +296,34 @@ export default function AccessPoliciesPage() {
 
   const notifyError = (title: string, message?: string) => {
     showToast({ type: 'error', title, message });
+  };
+
+  const applyTemplate = async (templateId: string, params?: { countries?: string[] }) => {
+    if (!canManage) return;
+    setSaving(true);
+    try {
+      await apiClient.applySecurityTemplate(templateId, params);
+      notifySuccess('Template applied', templateId);
+      await load({ background: true });
+    } catch {
+      notifyError('Could not apply template');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveBaseline = async () => {
+    if (!canManage) return;
+    setBaselineSaving(true);
+    try {
+      await apiClient.updateOrgSecurityBaseline(baseline);
+      notifySuccess('Organization baseline saved');
+      await load({ background: true });
+    } catch {
+      notifyError('Could not save baseline');
+    } finally {
+      setBaselineSaving(false);
+    }
   };
 
   const createPolicy = async (body: Record<string, unknown>) => {
@@ -331,7 +391,7 @@ export default function AccessPoliciesPage() {
   };
 
   return (
-    <UnifiedLayout title="Access policies">
+    <UnifiedLayout title="Security policies">
       <ToastContainer toasts={toasts} onClose={hideToast} />
       <ConfirmDialog
         isOpen={!!deleteTarget}
@@ -357,7 +417,7 @@ export default function AccessPoliciesPage() {
                 <ShieldCheckIcon className="h-6 w-6" aria-hidden />
               </div>
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900">Access policies</h1>
+                <h1 className="text-2xl font-semibold text-gray-900">Security policies</h1>
                 <p className="text-sm text-gray-600">
                   Rules evaluated at sign-in (block, allow, MFA). Higher priority runs first.
                 </p>
@@ -458,83 +518,73 @@ export default function AccessPoliciesPage() {
 
           {canManage && (
             <aside className="lg:col-span-2 space-y-4">
-              <h2 className="text-lg font-semibold text-gray-900">Add policy</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Organization baseline</h2>
+              <p className="text-sm text-gray-600">
+                Password rules, lockout, MFA requirement, and platform threat controls apply to all
+                users in your organization.
+              </p>
+              <SecuritySettingsPanel
+                settings={baseline}
+                onChange={setBaseline}
+                onSave={() => void saveBaseline()}
+                saving={baselineSaving}
+              />
+
+              <h2 className="text-lg font-semibold text-gray-900 pt-2">Quick setup templates</h2>
 
               <div className="space-y-3">
+                {!usedTemplateIds.has('recommended') && (
+                  <TemplateCard
+                    icon={<ShieldCheckIcon className="h-5 w-5" />}
+                    title="Recommended baseline"
+                    description="Bot detection, credential stuffing protection, and session defaults."
+                    disabled={saving}
+                    onUse={() => void applyTemplate('recommended')}
+                  />
+                )}
+                {!usedTemplateIds.has('mfa-everyone') && (
+                  <TemplateCard
+                    icon={<ShieldCheckIcon className="h-5 w-5" />}
+                    title="MFA for everyone"
+                    description="Require MFA enrollment for all users."
+                    disabled={saving}
+                    onUse={() => void applyTemplate('mfa-everyone')}
+                  />
+                )}
                 {!usedTemplateIds.has('block-vpn') && (
                   <TemplateCard
                     icon={<GlobeAltIcon className="h-5 w-5" />}
                     title="Block VPN sign-ins"
                     description="Deny login when a VPN connection is detected."
                     disabled={saving}
-                    onUse={() =>
-                      void createPolicy({
-                        name: name.trim() || 'Block VPN sign-ins',
-                        priority: 10,
-                        conditions: { blockIfVpn: true },
-                        actions: ['block'],
-                      })
-                    }
+                    onUse={() => void applyTemplate('block-vpn')}
                   />
                 )}
                 {!usedTemplateIds.has('business-hours-mfa') && (
                   <TemplateCard
                     icon={<ClockIcon className="h-5 w-5" />}
                     title="Business hours + MFA"
-                    description={`Weekdays ${scheduleStart}:00–${scheduleEnd}:00 UTC with device trust check.`}
+                    description="Weekdays 9:00–18:00 UTC with device trust check."
                     disabled={saving}
-                    onUse={() =>
-                      void createPolicy({
-                        name: name.trim() || 'Business hours MFA',
-                        priority: 20,
-                        conditions: {
-                          schedule: {
-                            daysOfWeek: [1, 2, 3, 4, 5],
-                            startHour: scheduleStart,
-                            endHour: scheduleEnd,
-                            timezone: 'UTC',
-                          },
-                          minTrustScore: 50,
-                        },
-                        actions: ['require_mfa'],
-                      })
-                    }
+                    onUse={() => void applyTemplate('business-hours-mfa')}
                   />
                 )}
                 {!usedTemplateIds.has('block-risky-network') && (
                   <TemplateCard
                     icon={<GlobeAltIcon className="h-5 w-5" />}
                     title="High-risk network block"
-                    description="Block sign-ins detected via VPN/proxy from non-approved networks."
+                    description="Block sign-ins detected via VPN/proxy."
                     disabled={saving}
-                    onUse={() =>
-                      void createPolicy({
-                        name: name.trim() || 'Block risky VPN/proxy sign-ins',
-                        priority: 40,
-                        conditions: { blockIfVpn: true, blockIfProxy: true },
-                        actions: ['block'],
-                      })
-                    }
+                    onUse={() => void applyTemplate('block-risky-network')}
                   />
                 )}
-                {!usedTemplateIds.has('admin-trusted-device-step-up') && (
+                {!usedTemplateIds.has('strict-enterprise') && (
                   <TemplateCard
                     icon={<InformationCircleIcon className="h-5 w-5" />}
-                    title="Trusted device only (admin)"
-                    description="Require trusted device and step-up authentication for admin users."
+                    title="Strict enterprise"
+                    description="MFA required, tighter lockout, VPN block, and admin step-up."
                     disabled={saving}
-                    onUse={() =>
-                      void createPolicy({
-                        name: name.trim() || 'Admin trusted-device step-up',
-                        priority: 35,
-                        conditions: {
-                          userRoles: ['ADMIN', 'SUPER_ADMIN'],
-                          requireTrustedDevice: true,
-                          minTrustScore: 75,
-                        },
-                        actions: ['require_step_up'],
-                      })
-                    }
+                    onUse={() => void applyTemplate('strict-enterprise')}
                   />
                 )}
                 {usedTemplateIds.size >= 5 && (

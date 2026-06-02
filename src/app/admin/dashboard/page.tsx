@@ -105,15 +105,18 @@ export default function AdminDashboardPage() {
       // Ensure activity is an array
       const activityArray = Array.isArray(activity) ? activity : [];
       
-      setRecentActivity(activityArray.map(log => ({
-        id: log.id,
-        action: log.action,
-        timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
-        user: undefined, // TODO: Get user info from log
-        type: log.action.toLowerCase().includes('security') ? 'security' : 
-              log.action.toLowerCase().includes('system') ? 'system' : 'user',
-        details: log.details ? JSON.stringify(log.details) : undefined
-      })));
+      setRecentActivity(activityArray.map(log => {
+        const logUser = (log as { user?: { name?: string; email?: string } }).user;
+        return {
+          id: log.id,
+          action: log.action,
+          timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
+          user: logUser?.name || logUser?.email,
+          type: log.action.toLowerCase().includes('security') ? 'security' as const :
+                log.action.toLowerCase().includes('system') ? 'system' as const : 'user' as const,
+          details: log.details ? JSON.stringify(log.details) : undefined,
+        };
+      }));
 
       // Calculate notifications based on recent activity and security events
       const notificationCount = Math.min(

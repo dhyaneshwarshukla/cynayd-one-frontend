@@ -66,17 +66,29 @@ export default function OrganizationUserManagement({
     }
   };
 
+  const generateTemporaryPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+
   const handleInviteUser = async () => {
     try {
-      await apiClient.inviteUser({
-        email: inviteData.email,
-        name: inviteData.name,
-        role: inviteData.role
+      setError(null);
+      await apiClient.createUser({
+        email: inviteData.email.trim(),
+        name: inviteData.name.trim(),
+        role: inviteData.role.toUpperCase() as User['role'],
+        organizationId,
+        password: generateTemporaryPassword(),
       });
-      
+
       setShowInviteModal(false);
       setInviteData({ email: '', name: '', role: 'USER' });
-      fetchUsers(); // Refresh the list
+      fetchUsers();
     } catch (err) {
       console.error('Error inviting user:', err);
       setError(err instanceof Error ? err.message : 'Failed to invite user');

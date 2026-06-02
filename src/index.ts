@@ -58,7 +58,6 @@ export * from './hooks/useAuth';
 export * from './hooks/useApiState';
 export * from './hooks/useDataCache';
 export * from './hooks/useRealtimeData';
-export * from './hooks/useSecurityDashboard';
 export * from './hooks/useToast';
 export * from './hooks/useWebSocket';
 

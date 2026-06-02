@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
@@ -12,6 +13,7 @@ interface OrganizationManagementProps {
 }
 
 export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({ apiClient }) => {
+  const router = useRouter();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -190,7 +192,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({ 
                     Edit
                   </Button>
                   <Button
-                    onClick={() => {/* TODO: Implement view details */}}
+                    onClick={() => router.push(`/organizations?org=${org.id}`)}
                     variant="outline"
                     size="sm"
                   >

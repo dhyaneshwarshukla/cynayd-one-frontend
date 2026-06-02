@@ -53,18 +53,11 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      // Get authentication token
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
-
-      // Generate SSO token for the app
-      const response = await fetch(`/api/apps/${appSlug}/sso-token`, {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiBase}/api/apps/${appSlug}/sso-token`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         credentials: 'include',
       });

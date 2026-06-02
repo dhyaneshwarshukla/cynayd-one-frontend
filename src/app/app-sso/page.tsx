@@ -111,8 +111,12 @@ function AppSSOContent() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
+  const handleLogout = async () => {
+    try {
+      await apiClient.logout();
+    } catch {
+      // continue to login
+    }
     window.location.href = '/auth/login';
   };
 

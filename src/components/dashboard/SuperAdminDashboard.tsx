@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -40,6 +41,8 @@ interface SuperAdminDashboardProps {
 }
 
 export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) {
+  const router = useRouter();
+  const [exportError, setExportError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats>({ 
     totalUsers: 0, 
     totalOrganizations: 0, 
@@ -67,51 +70,49 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
 
       // Fetch organizations first to get real counts
       const orgsData = await apiClient.getOrganizations();
-      console.log('Fetched organizations:', orgsData); // Debug log
-      setOrganizations(Array.isArray(orgsData) ? orgsData : []);
+      const orgsList = Array.isArray(orgsData) ? orgsData : [];
+      setOrganizations(orgsList);
+      const orgNameById = new Map(orgsList.map((org) => [org.id, org.name]));
       
       // Calculate totals from organizations data
-      const totalUsersFromOrgs = orgsData.reduce((sum, org) => sum + (org.userCount || 0), 0);
-      const totalAppsFromOrgs = orgsData.reduce((sum, org) => sum + (org.appCount || 0), 0);
+      const totalUsersFromOrgs = orgsList.reduce((sum, org) => sum + (org.userCount || 0), 0);
+      const totalAppsFromOrgs = orgsList.reduce((sum, org) => sum + (org.appCount || 0), 0);
       
-      console.log('Dashboard stats calculated:', {
-        totalUsers: totalUsersFromOrgs,
-        totalOrganizations: orgsData.length,
-        totalApps: totalAppsFromOrgs
-      }); // Debug log
-
       // Fetch dashboard statistics
       const statsData = await apiClient.getDashboardStats();
       setStats(prevStats => ({
         ...prevStats,
         totalUsers: totalUsersFromOrgs,
-        totalOrganizations: orgsData.length,
+        totalOrganizations: orgsList.length,
         totalApps: totalAppsFromOrgs,
         securityEvents: statsData.securityEvents || 0,
-        recentLogins: 0,
-        pendingInvitations: 0,
-        systemHealth: 100
+        recentLogins: statsData.recentLogins ?? 0,
+        pendingInvitations: statsData.pendingInvitations ?? 0,
+        systemHealth: statsData.systemHealth ?? 100,
       }));
 
       // Fetch recent activity
       const activityData = await apiClient.getAuditLogs({ limit: 10 });
       // Ensure activityData is an array
       const activityArray = Array.isArray(activityData) ? activityData : [];
-      setRecentActivity(activityArray.map(log => ({
-        id: log.id,
-        action: log.action,
-        timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
-        user: undefined,
-        organization: undefined,
-        type: log.action.toLowerCase().includes('security') ? 'security' : 
-              log.action.toLowerCase().includes('system') ? 'system' : 
-              'user',
-        details: log.details ? JSON.stringify(log.details) : undefined
-      })));
+      setRecentActivity(activityArray.map(log => {
+        const logUser = (log as { user?: { name?: string; email?: string } }).user;
+        return {
+          id: log.id,
+          action: log.action,
+          timestamp: log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp),
+          user: logUser?.name || logUser?.email,
+          organization: undefined,
+          type: log.action.toLowerCase().includes('security') ? 'security' as const :
+                log.action.toLowerCase().includes('system') ? 'system' as const :
+                'user' as const,
+          details: log.details ? JSON.stringify(log.details) : undefined,
+        };
+      }));
 
       // Fetch users
       try {
-        const usersData = await fetchUsers();
+        const usersData = await fetchUsers(orgNameById);
         setUsers(usersData);
       } catch (userErr) {
         console.warn('Failed to fetch users:', userErr);
@@ -133,11 +134,26 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
     }
   };
 
-  const fetchUsers = async (): Promise<DashboardUser[]> => {
+  const handleExportAuditLogs = async () => {
     try {
-      // Fetch real users from API
+      setExportError(null);
+      const blob = await apiClient.exportAuditLogs({
+        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export audit logs');
+    }
+  };
+
+  const fetchUsers = async (orgNameById: Map<string, string>): Promise<DashboardUser[]> => {
+    try {
       const usersData = await apiClient.getUsers();
-      // Handle paginated response for usersData
       const usersArray = Array.isArray(usersData) 
         ? usersData 
         : (usersData && typeof usersData === 'object' && 'data' in usersData) 
@@ -147,7 +163,9 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
         id: user.id,
         name: user.name || 'Unknown User',
         email: user.email,
-        organization: 'Unknown Organization', // TODO: Get organization name
+        organization: user.organizationId
+          ? orgNameById.get(user.organizationId) ?? '—'
+          : '—',
         role: user.role
       }));
     } catch (error) {
@@ -166,6 +184,11 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
 
   return (
     <div className="space-y-8">
+      {exportError && (
+        <Alert variant="error" className="mb-4">
+          {exportError}
+        </Alert>
+      )}
       {error && (
         <Alert variant="error" className="mb-6">
           {error}
@@ -499,7 +522,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
           </div>
           <div className="flex space-x-3">
             <Button
-              onClick={() => alert('Create organization feature coming soon!')}
+              onClick={() => router.push('/organizations')}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <span className="mr-2">➕</span>
@@ -507,7 +530,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             </Button>
             <Button
               variant="outline"
-              onClick={() => alert('Export data coming soon!')}
+              onClick={() => void handleExportAuditLogs()}
               className="border-gray-300 text-gray-700 hover:bg-gray-50"
             >
               <span className="mr-2">📊</span>
@@ -544,7 +567,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
               <Button
                 variant="outline"
                 className="w-full"
-                  onClick={() => alert(`Manage ${org.name} feature coming soon!`)}
+                  onClick={() => router.push(`/organizations?org=${org.id}`)}
               >
                 Manage Organization
               </Button>
@@ -561,7 +584,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
               No organizations are currently registered in the system.
             </p>
             <Button
-              onClick={() => alert('Create organization feature coming soon!')}
+              onClick={() => router.push('/organizations')}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <span className="mr-2">➕</span>
@@ -641,23 +664,10 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
-              onClick={() => alert('System backup initiated!')}
-              className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
-            >
-              <span className="mr-2">💾</span>
-              Backup Now
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => alert('Cache cleared successfully!')}
-              className="w-full border-green-300 text-green-700 hover:bg-green-50"
-            >
-              <span className="mr-2">🗑️</span>
-              Clear Cache
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => alert('System health check completed!')}
+              onClick={() => {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                window.open(`${apiUrl}/health`, '_blank');
+              }}
               className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
             >
               <span className="mr-2">🔍</span>
@@ -665,11 +675,11 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             </Button>
             <Button
               variant="outline"
-              onClick={() => alert('Logs exported successfully!')}
+              onClick={() => void handleExportAuditLogs()}
               className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
             >
               <span className="mr-2">📋</span>
-              Export Logs
+              Export Audit Logs
             </Button>
           </div>
         </Card>

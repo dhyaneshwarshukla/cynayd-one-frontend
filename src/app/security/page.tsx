@@ -469,8 +469,8 @@ function SecurityPageContent() {
                 )}
                 <p className="mt-4 text-sm text-gray-600">
                   To <strong>block</strong> sign-ins (VPN, country, schedule), use{' '}
-                  <Link href="/admin/access-policies" className="text-indigo-600 hover:underline">
-                    access policies
+                  <Link href="/admin/security-policies" className="text-indigo-600 hover:underline">
+                    security policies
                   </Link>
                   .
                 </p>
@@ -540,12 +540,19 @@ function SecurityPageContent() {
           )}
 
           {activeTab === 'settings' && (
-            <SecuritySettingsPanel
-              settings={settings}
-              onChange={setSettings}
-              onSave={() => void handleSaveSettings()}
-              saving={settingsSaving}
-            />
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900">Organization security</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                Password policy, lockout, MFA requirements, and conditional access rules are managed
+                in one place.
+              </p>
+              <Link
+                href="/admin/security-policies"
+                className="mt-4 inline-flex text-sm font-medium text-indigo-600 hover:underline"
+              >
+                Open Security policies →
+              </Link>
+            </Card>
           )}
         </>
       )}

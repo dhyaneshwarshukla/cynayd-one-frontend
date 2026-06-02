@@ -39,6 +39,8 @@ interface ApiCategory {
   color: string;
   icon: string;
   heroIcon: any;
+  /** When `stub`, endpoints return mock data — not for production use */
+  implementationStatus?: 'live' | 'stub';
 }
 
 export default function ApiDocumentationPage() {
@@ -155,10 +157,11 @@ export default function ApiDocumentationPage() {
       },
       {
         name: 'HR Module',
-        description: 'Human Resources management with SSO integration and organizational structure',
+        description: 'Human Resources management with SSO integration and organizational structure (NOT IMPLEMENTED — mock responses only)',
         color: '#10b981',
         icon: '👥',
         heroIcon: UserGroupIcon,
+        implementationStatus: 'stub',
         endpoints: [
           {
             method: 'POST',
@@ -213,10 +216,11 @@ export default function ApiDocumentationPage() {
       },
       {
         name: 'Drive',
-        description: 'File storage and management system with user access control',
+        description: 'File storage and management system with user access control (NOT IMPLEMENTED — mock responses only)',
         color: '#f59e0b',
         icon: '💾',
         heroIcon: CloudIcon,
+        implementationStatus: 'stub',
         endpoints: [
           {
             method: 'POST',
@@ -257,10 +261,11 @@ export default function ApiDocumentationPage() {
       },
       {
         name: 'Mail',
-        description: 'Email system with mailbox management and messaging',
+        description: 'Email system with mailbox management and messaging (NOT IMPLEMENTED — mock responses only)',
         color: '#8b5cf6',
         icon: '📧',
         heroIcon: EnvelopeIcon,
+        implementationStatus: 'stub',
         endpoints: [
           {
             method: 'POST',
@@ -301,10 +306,11 @@ export default function ApiDocumentationPage() {
       },
       {
         name: 'Connect',
-        description: 'Communication platform with chat, video calls, and collaboration features',
+        description: 'Communication platform with chat, video calls, and collaboration features (NOT IMPLEMENTED — mock responses only)',
         color: '#ef4444',
         icon: '💬',
         heroIcon: ChatBubbleLeftRightIcon,
+        implementationStatus: 'stub',
         endpoints: [
           {
             method: 'POST',
@@ -549,7 +555,11 @@ export default function ApiDocumentationPage() {
                   <span className="api-docs-category-badge">
                     {category.endpoints.length} endpoints
                   </span>
-                  <span className="api-docs-category-status"></span>
+                  {category.implementationStatus === 'stub' && (
+                    <span className="api-docs-category-badge" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>
+                      Stub / not implemented
+                    </span>
+                  )}
                 </div>
                 <p className="api-docs-category-description">
                   {category.description}

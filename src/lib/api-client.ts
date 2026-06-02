@@ -353,31 +353,34 @@ class ApiClient {
 
   constructor() {
     this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    this.authToken = this.getStoredToken();
+    this.authToken = null;
+    this.clearLegacyStoredTokens();
   }
 
-  // Token management
-  private getStoredToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('auth_token');
-    }
-    return null;
-  }
-
+  /** In-memory token for immediate post-login requests; session auth uses httpOnly cookies. */
   private getToken(): string | null {
     return this.authToken;
   }
 
-  private setStoredToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_token', token);
-    }
+  private setInMemoryToken(token: string): void {
     this.authToken = token;
   }
 
-  /** Store JWT after magic link or passkey login */
+  private clearLegacyStoredTokens(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+  }
+
+  private getCsrfTokenFromCookie(): string | null {
+    if (typeof document === 'undefined') return null;
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  /** Optional in-memory token (e.g. magic link); cookies remain the source of truth. */
   storeAuthToken(token: string): void {
-    this.setStoredToken(token);
+    this.setInMemoryToken(token);
   }
 
   onSessionInvalidated(handler: (() => void) | null): void {
@@ -405,7 +408,7 @@ class ApiClient {
 
   private persistAuthResponse(response: Partial<AuthResponse>): void {
     if (response.accessToken) {
-      this.setStoredToken(response.accessToken);
+      this.setInMemoryToken(response.accessToken);
     }
     if (response.device_session_id) {
       this.setStoredSessionId(response.device_session_id);
@@ -424,10 +427,8 @@ class ApiClient {
   }
 
   private removeStoredToken(): void {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth_token');
-    }
     this.authToken = null;
+    this.clearLegacyStoredTokens();
   }
 
   // HTTP request helper
@@ -458,6 +459,16 @@ class ApiClient {
     const sessionId = this.getStoredSessionId();
     if (sessionId) {
       headers['X-Current-Session-Id'] = sessionId;
+    }
+
+    const mutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+      (options.method ?? 'GET').toUpperCase()
+    );
+    if (mutating) {
+      const csrf = this.getCsrfTokenFromCookie();
+      if (csrf) {
+        headers['X-XSRF-TOKEN'] = csrf;
+      }
     }
 
     const response = await fetch(url, {
@@ -708,7 +719,7 @@ class ApiClient {
     
     // Only set token if registration includes tokens (not for email verification flow)
     if (response.accessToken) {
-      this.setStoredToken(response.accessToken);
+      this.setInMemoryToken(response.accessToken);
     }
     return response;
   }
@@ -736,7 +747,7 @@ class ApiClient {
       body: JSON.stringify({ refreshToken }),
     });
     
-    this.setStoredToken(response.accessToken);
+    this.setInMemoryToken(response.accessToken);
     return response;
   }
 
@@ -1091,10 +1102,20 @@ class ApiClient {
     });
   }
 
-  async inviteUser(data: { email: string; name: string; role?: string }): Promise<any> {
-    return this.request('/api/users/invite', {
-      method: 'POST',
-      body: JSON.stringify(data),
+  /** @deprecated Use createUser — creates account and sends invitation email */
+  async inviteUser(data: {
+    email: string;
+    name: string;
+    role?: string;
+    organizationId?: string;
+    password?: string;
+  }): Promise<User> {
+    return this.createUser({
+      email: data.email,
+      name: data.name,
+      role: (data.role?.toUpperCase() || 'USER') as User['role'],
+      organizationId: data.organizationId,
+      password: data.password,
     });
   }
 
@@ -1245,13 +1266,6 @@ class ApiClient {
     return this.request('/api/security-events/stats');
   }
 
-  async createSampleSecurityEvents(): Promise<{ message: string; count: number }> {
-    return this.request('/api/security-events/seed', {
-      method: 'POST'
-    });
-  }
-
-
   // IP Whitelist Management
   async getIpWhitelist(): Promise<string[]> {
     return this.request('/api/security/ip-whitelist');
@@ -1297,16 +1311,46 @@ class ApiClient {
     return response.blob();
   }
 
-  // Security Settings
-  async getSecuritySettings(): Promise<any> {
-    return this.request('/api/security-settings');
+  // Org security (unified baseline + policies)
+  async getOrgSecurity(): Promise<{
+    baseline: Record<string, unknown>;
+    rules: Array<Record<string, unknown>>;
+    appliedTemplateIds: string[];
+  }> {
+    return this.request('/api/org-security');
   }
 
-  async updateSecuritySettings(settings: any): Promise<any> {
-    return this.request('/api/security-settings', {
+  async getSecurityTemplates(): Promise<Array<{ id: string; title: string; description: string }>> {
+    return this.request('/api/org-security/templates');
+  }
+
+  async updateOrgSecurityBaseline(baseline: Record<string, unknown>): Promise<{ baseline: Record<string, unknown> }> {
+    return this.request('/api/org-security/baseline', {
       method: 'PUT',
-      body: JSON.stringify(settings)
+      body: JSON.stringify(baseline),
     });
+  }
+
+  async applySecurityTemplate(
+    templateId: string,
+    params?: { countries?: string[] }
+  ): Promise<{ baselineUpdated: boolean; rulesCreated: string[]; rulesUpdated: string[] }> {
+    return this.request('/api/org-security/apply-template', {
+      method: 'POST',
+      body: JSON.stringify({ templateId, params }),
+    });
+  }
+
+  /** @deprecated Use getOrgSecurity / updateOrgSecurityBaseline */
+  async getSecuritySettings(): Promise<any> {
+    const snapshot = await this.getOrgSecurity();
+    return { organizationId: undefined, ...snapshot.baseline };
+  }
+
+  /** @deprecated Use updateOrgSecurityBaseline */
+  async updateSecuritySettings(settings: any): Promise<any> {
+    const result = await this.updateOrgSecurityBaseline(settings);
+    return { settings: result.baseline, message: 'Security settings updated successfully' };
   }
 
   // Role endpoints
@@ -2062,7 +2106,7 @@ class ApiClient {
       body: JSON.stringify({ token, backupCodes }),
     });
     if (response.accessToken) {
-      this.setStoredToken(response.accessToken);
+      this.setInMemoryToken(response.accessToken);
     }
     if (response.mustEnrollMfa === false) {
       this.clearMustEnrollMfa();
@@ -2133,7 +2177,7 @@ class ApiClient {
         body: JSON.stringify({ pin }),
       });
       if (response.accessToken) {
-        this.setStoredToken(response.accessToken);
+        this.setInMemoryToken(response.accessToken);
       }
       return response;
     } catch (error: any) {
@@ -2166,7 +2210,7 @@ class ApiClient {
       method: 'POST',
     });
     if (response?.accessToken) {
-      this.setStoredToken(response.accessToken);
+      this.setInMemoryToken(response.accessToken);
     }
     return response;
   }

@@ -88,7 +88,7 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
     { name: "Plans & Pricing", href: "/admin/plans", icon: BanknotesIcon, permission: 'organizations' },
     { name: "Roles & Permissions", href: "/roles", icon: KeyIcon, permission: 'roles' },
     { name: "Security", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
-    { name: "Access Policies", href: "/admin/access-policies", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "Security Policies", href: "/admin/security-policies", icon: ShieldCheckIcon, permission: 'security' },
     { name: "Risk Insights", href: "/admin/risk-insights", icon: ChartBarIcon, permission: 'security' },
     { name: "SAML Integration", href: "/admin/saml-integration", icon: LinkIcon, permission: 'security' },
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
