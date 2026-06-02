@@ -125,10 +125,7 @@ export function useRiskInsightsUsers(filters: {
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
       });
-      setData({
-        ...users,
-        items: users.items as RiskProfileRow[],
-      });
+      setData(users);
     } catch {
       try {
         const legacy = await apiClient.getRiskInsightsDashboard();

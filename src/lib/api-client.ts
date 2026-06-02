@@ -4,6 +4,7 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
+import type { SecuritySettingsFormState } from '@/components/security/SecuritySettingsPanel';
 
 // App types
 export interface App {
@@ -127,6 +128,9 @@ export interface User {
   updatedAt: Date;
   pinLock?: PinLock;
 }
+
+/** POST /api/users body (password only on create, not on User entity) */
+export type CreateUserInput = Partial<User> & { password?: string };
 
 export interface Organization {
   id: string;
@@ -293,10 +297,20 @@ export interface RiskInsightsTrendsV2 {
   points: RiskInsightsTrendPointV2[];
 }
 
+export interface RiskInsightsProfileRow {
+  id?: string;
+  userId?: string;
+  riskScore: number;
+  riskLevel: string;
+  lastCalculated?: string;
+  lastLoginLocation?: string | null;
+  user?: { email: string; name: string | null };
+}
+
 export interface RiskInsightsUsersV2 {
   contractVersion: 'v2';
   generatedAt: string;
-  items: Array<Record<string, unknown>>;
+  items: RiskInsightsProfileRow[];
   pagination: {
     page: number;
     limit: number;
@@ -879,7 +893,7 @@ class ApiClient {
     });
   }
 
-  async createUser(data: Partial<User>): Promise<User> {
+  async createUser(data: CreateUserInput): Promise<User> {
     return this.request<User>('/api/users', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -1175,6 +1189,9 @@ class ApiClient {
     activeUsers: number;
     totalTeams: number;
     securityEvents: number;
+    recentLogins?: number;
+    pendingInvitations?: number;
+    systemHealth?: number;
   }> {
     return this.request('/api/dashboard/stats');
   }
@@ -1369,7 +1386,9 @@ class ApiClient {
     return this.request('/api/org-security/templates');
   }
 
-  async updateOrgSecurityBaseline(baseline: Record<string, unknown>): Promise<{ baseline: Record<string, unknown> }> {
+  async updateOrgSecurityBaseline(
+    baseline: SecuritySettingsFormState
+  ): Promise<{ baseline: Record<string, unknown> }> {
     return this.request('/api/org-security/baseline', {
       method: 'PUT',
       body: JSON.stringify(baseline),
