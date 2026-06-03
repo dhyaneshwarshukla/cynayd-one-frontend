@@ -5,6 +5,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import type { SecuritySettingsFormState } from '@/components/security/SecuritySettingsPanel';
+import { getPublicApiUrl } from '@/lib/env';
 
 // App types
 export interface App {
@@ -404,7 +405,7 @@ class ApiClient {
   private static readonly SESSION_ID_KEY = 'login_session_id';
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    this.baseURL = getPublicApiUrl();
     this.authToken = null;
     this.clearLegacyStoredTokens();
   }

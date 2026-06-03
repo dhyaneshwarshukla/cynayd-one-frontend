@@ -2,15 +2,16 @@ import { Providers } from "./providers";
 import { GoogleAnalytics } from "../components/analytics/GoogleAnalytics";
 import "./globals.css";
 import type { Metadata } from "next";
+import { getPublicSiteUrl } from "@/lib/env";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const siteUrl = getPublicSiteUrl();
 const siteName = "CYNAYD One";
 const defaultTitle = "CYNAYD One — AI Workspace & Business Productivity Platform";
 const defaultDescription =
   "CYNAYD One combines mail, drive, calendar, meetings, tasks and collaboration tools into one secure AI-powered workspace. Built for modern collaborative workflows with integrated AI.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
   title: {
     default: defaultTitle,
     template: `%s | ${siteName}`,

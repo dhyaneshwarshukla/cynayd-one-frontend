@@ -23,6 +23,7 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline';
 import './api-docs.css';
+import { getPublicApiUrl } from '@/lib/env';
 
 interface ApiEndpoint {
   method: string;
@@ -51,6 +52,7 @@ export default function ApiDocumentationPage() {
   const [selectedCategory, setSelectedCategory] = useState<ApiCategory | null>(null);
   const [showAllEndpoints, setShowAllEndpoints] = useState(false);
   const [endpointSearch, setEndpointSearch] = useState('');
+  const apiBaseUrl = getPublicApiUrl();
 
   useEffect(() => {
     loadApiDocumentation();
@@ -395,8 +397,8 @@ export default function ApiDocumentationPage() {
   };
 
   const handleSwaggerRedirect = () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    window.open(`${apiUrl}/api-docs`, '_blank');
+    if (!apiBaseUrl) return;
+    window.open(`${apiBaseUrl}/api-docs`, '_blank');
   };
 
   const copyToClipboard = (text: string) => {
@@ -646,7 +648,7 @@ export default function ApiDocumentationPage() {
               <div className="api-docs-code-header">
                 <span className="api-docs-code-title">POST /api/sso/auth/register</span>
                 <button 
-                  onClick={() => copyToClipboard(`curl -X POST http://localhost:4000/api/sso/auth/register \\
+                  onClick={() => copyToClipboard(`curl -X POST ${apiBaseUrl}/api/sso/auth/register \\
   -H "Content-Type: application/json" \\
   -d '{"name": "John Doe", "email": "john@corp.com", "organizationName": "Tech Corp", "organizationSlug": "tech-corp", "password": "Secret@123"}'`)}
                   className="api-docs-code-copy"
@@ -683,7 +685,7 @@ export default function ApiDocumentationPage() {
               <div className="api-docs-code-header">
                 <span className="api-docs-code-title">POST /api/sso/permissions/assign</span>
                 <button 
-                  onClick={() => copyToClipboard(`curl -X POST http://localhost:4000/api/sso/permissions/assign \\
+                  onClick={() => copyToClipboard(`curl -X POST ${apiBaseUrl}/api/sso/permissions/assign \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \\
   -d '{"userId": "uuid-123", "appId": "drive", "permissions": ["read", "write"]}'`)}
@@ -709,7 +711,7 @@ export default function ApiDocumentationPage() {
               <div className="api-docs-code-header">
                 <span className="api-docs-code-title">POST /api/drive/users/sync</span>
                 <button 
-                  onClick={() => copyToClipboard(`curl -X POST http://localhost:4000/api/drive/users/sync \\
+                  onClick={() => copyToClipboard(`curl -X POST ${apiBaseUrl}/api/drive/users/sync \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \\
   -d '{"ssoUserId": "uuid-123", "organizationId": "org-001", "quota": 10737418240}'`)}
@@ -728,7 +730,7 @@ export default function ApiDocumentationPage() {
               <div className="api-docs-code-header">
                 <span className="api-docs-code-title">POST /api/hr/users/&#123;ssoUserId&#125;/profile</span>
                 <button 
-                  onClick={() => copyToClipboard(`curl -X POST http://localhost:4000/api/hr/users/uuid-123/profile \\
+                  onClick={() => copyToClipboard(`curl -X POST ${apiBaseUrl}/api/hr/users/uuid-123/profile \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \\
   -d '{"department": "Finance", "designation": "Sr. Analyst", "status": "active"}'`)}
@@ -925,7 +927,7 @@ export default function ApiDocumentationPage() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-gray-400">{selectedEndpoint.method} {selectedEndpoint.path}</span>
                       <button 
-                        onClick={() => copyToClipboard(`curl -X ${selectedEndpoint.method} http://localhost:4000${selectedEndpoint.path} \\
+                        onClick={() => copyToClipboard(`curl -X ${selectedEndpoint.method} ${apiBaseUrl}${selectedEndpoint.path} \\
   -H "Content-Type: application/json" \\
   ${selectedEndpoint.requiresAuth ? '-H "Authorization: Bearer YOUR_JWT_TOKEN" \\' : ''}
   -d '{"example": "data"}'`)}
@@ -956,7 +958,7 @@ ${selectedEndpoint.requiresAuth ? 'Authorization: Bearer <jwt-token>' : ''}
                     <Button
                       variant="default"
                       onClick={() => {
-                        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                        const apiUrl = apiBaseUrl;
                         window.open(`${apiUrl}/api-docs`, '_blank');
                       }}
                       className="flex items-center gap-2"
@@ -994,7 +996,7 @@ ${selectedEndpoint.requiresAuth ? 'Authorization: Bearer <jwt-token>' : ''}
                 <Button
                   variant="default"
                   onClick={() => {
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                    const apiUrl = apiBaseUrl;
                     window.open(`${apiUrl}/api-docs`, '_blank');
                   }}
                   className="flex items-center gap-2"
@@ -1112,7 +1114,7 @@ ${selectedEndpoint.requiresAuth ? 'Authorization: Bearer <jwt-token>' : ''}
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                            const apiUrl = apiBaseUrl;
                             window.open(`${apiUrl}/api-docs`, '_blank');
                           }}
                           className="flex items-center gap-1 text-xs"
@@ -1139,7 +1141,7 @@ ${selectedEndpoint.requiresAuth ? 'Authorization: Bearer <jwt-token>' : ''}
                 <Button
                   variant="default"
                   onClick={() => {
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                    const apiUrl = apiBaseUrl;
                     window.open(`${apiUrl}/api-docs`, '_blank');
                   }}
                   className="flex items-center gap-2"

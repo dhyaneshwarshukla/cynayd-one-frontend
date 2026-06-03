@@ -52,7 +52,7 @@ function ConnectPageContent() {
       });
 
       // Build the API URL with proper parameters - call the backend API
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
       const apiUrl = new URL('/api/sso/connect', apiBaseUrl);
       apiUrl.searchParams.set('sso_token', ssoToken!);
       

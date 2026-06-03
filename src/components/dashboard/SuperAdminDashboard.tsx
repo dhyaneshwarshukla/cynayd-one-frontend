@@ -665,7 +665,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             <Button
               variant="outline"
               onClick={() => {
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
                 window.open(`${apiUrl}/health`, '_blank');
               }}
               className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"

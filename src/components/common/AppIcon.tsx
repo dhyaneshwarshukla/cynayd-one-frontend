@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { getPublicApiUrl } from "@/lib/env";
 
 const ABSOLUTE_IMAGE_URL_PATTERN = /^(https?:\/\/|\/\/|data:image\/)/i;
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|ico)(\?.*)?$/i;
@@ -21,7 +22,7 @@ export function toAbsoluteAppIconUrl(url: string): string {
   }
   if (trimmed.startsWith("/")) {
     const base =
-      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
+      getPublicApiUrl() ||
       (typeof window !== "undefined" ? window.location.origin : "");
     return `${String(base).replace(/\/$/, "")}${trimmed}`;
   }

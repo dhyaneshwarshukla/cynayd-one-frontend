@@ -53,7 +53,7 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
       const response = await fetch(`${apiBase}/api/apps/${appSlug}/sso-token`, {
         method: 'POST',
         headers: {

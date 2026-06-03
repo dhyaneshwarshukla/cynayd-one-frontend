@@ -188,7 +188,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
       setError(null);
       
       console.log('Fetching data - API calls starting...');
-      console.log('API Client base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000');
+      console.log('API Client base URL:', process.env.NEXT_PUBLIC_API_URL ?? '(not set)');
       console.log('API Client authenticated:', apiClient.isAuthenticated());
       
       const [appsData, usersData, accessData] = await Promise.all([
@@ -988,7 +988,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   <p>Debug info:</p>
                   <p>• User authenticated: {user ? 'Yes' : 'No'}</p>
                   <p>• User role: {user?.role || 'None'}</p>
-                  <p>• API URL: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}</p>
+                  <p>• API URL: {process.env.NEXT_PUBLIC_API_URL ?? '(not set)'}</p>
                   <p className="mt-2">
                     <a href="/auth/login" className="text-blue-600 hover:text-blue-500 underline">
                       Try logging in again

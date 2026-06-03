@@ -18,7 +18,7 @@ export default function MagicLinkPage() {
       setStatus('error');
       return;
     }
-    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const base = process.env.NEXT_PUBLIC_API_URL ?? '';
     fetch(
       `${base}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`
     )

@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
+import { getPublicApiUrl } from "@/lib/env";
 
 // Simple user interface that matches our backend
 interface User {
@@ -50,7 +51,7 @@ export const authConfig: NextAuthOptions = {
 
         try {
           // Call our backend API for authentication
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/login`, {
+          const response = await fetch(`${getPublicApiUrl()}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),

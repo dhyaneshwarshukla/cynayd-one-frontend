@@ -16,16 +16,12 @@ import {
   ClipboardDocumentIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
+import { getPublicApiUrl } from '@/lib/env';
 
 const AWS_SP_PRESET = {
   entityId: 'urn:amazon:webservices',
   acsUrl: 'https://signin.aws.amazon.com/saml',
 };
-
-function getApiBaseUrl(): string {
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-  return base.replace(/\/$/, '');
-}
 
 function parseAppMetadata(app: App | null) {
   if (!app?.metadata) return { samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' };
@@ -76,7 +72,7 @@ function CopyField({ label, value, hint }: { label: string; value: string; hint?
 
 export default function SAMLIntegrationPage() {
   const { user } = useAuth();
-  const baseUrl = getApiBaseUrl();
+  const baseUrl = getPublicApiUrl();
   const canManageSaml =
     user?.role?.toUpperCase() === 'SUPER_ADMIN' || user?.role?.toUpperCase() === 'ADMIN';
   const orgId = user?.organizationId || '';

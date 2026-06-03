@@ -39,7 +39,7 @@ export function useRealtimeData<T = any>(
 
   // Helper function to get the full API URL
   const getFullApiUrl = (endpoint: string) => {
-    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const baseURL = process.env.NEXT_PUBLIC_API_URL ?? '';
     return endpoint.startsWith('http') ? endpoint : `${baseURL}${endpoint}`;
   };
 
