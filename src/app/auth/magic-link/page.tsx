@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/contexts/AuthContext';
-import { toBffUrl } from '@/lib/bff';
 
 export default function MagicLinkPage() {
   const searchParams = useSearchParams();
@@ -19,8 +18,9 @@ export default function MagicLinkPage() {
       setStatus('error');
       return;
     }
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
     fetch(
-      `${toBffUrl('/api/auth/magic-link/verify')}?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`
+      `${base}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`
     )
       .then((r) => r.json())
       .then((data) => {

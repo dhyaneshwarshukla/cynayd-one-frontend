@@ -12,7 +12,6 @@ import {
   WORKSPACE_APPS,
 } from "@/lib/landing-content";
 import { useEffect } from "react";
-import { getPublicSiteUrl } from "@/lib/env";
 
 function CheckIcon({ className = "w-4 h-4 text-blue-600 mr-2" }: { className?: string }) {
   return (
@@ -35,7 +34,7 @@ const benefitIconColors: Record<string, string> = {
 
 export default function HomePage() {
   useEffect(() => {
-    const siteUrl = getPublicSiteUrl();
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const structuredData = {
       "@context": "https://schema.org",

@@ -4,7 +4,6 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useWebSocket, WebSocketMessage } from './useWebSocket';
 import { useApiState, ApiActions } from './useApiState';
 import { useToast } from './useToast';
-import { toBffUrl } from '@/lib/bff';
 
 export interface RealtimeDataOptions<T> {
   apiEndpoint: string;
@@ -40,8 +39,8 @@ export function useRealtimeData<T = any>(
 
   // Helper function to get the full API URL
   const getFullApiUrl = (endpoint: string) => {
-    if (endpoint.startsWith('http')) return endpoint;
-    return toBffUrl(endpoint.startsWith('/') ? endpoint : `/${endpoint}`);
+    const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    return endpoint.startsWith('http') ? endpoint : `${baseURL}${endpoint}`;
   };
 
   // Throttled and debounced fetch function to prevent multiple simultaneous requests

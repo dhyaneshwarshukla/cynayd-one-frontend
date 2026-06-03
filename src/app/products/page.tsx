@@ -6,7 +6,6 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
-import { toBffUrl } from '@/lib/bff';
 import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 
@@ -54,7 +53,8 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      const response = await fetch(toBffUrl(`/api/apps/${appSlug}/sso-token`), {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiBase}/api/apps/${appSlug}/sso-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

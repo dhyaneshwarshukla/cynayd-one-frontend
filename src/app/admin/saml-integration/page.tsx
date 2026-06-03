@@ -22,6 +22,19 @@ const AWS_SP_PRESET = {
   acsUrl: 'https://signin.aws.amazon.com/saml',
 };
 
+function getApiBaseUrl(): string {
+  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    if (origin.includes('localhost')) return origin.replace(':3000', ':4000');
+    if (origin.includes('one.cynayd.com')) return 'https://auth.one.cynayd.com';
+    return origin;
+  }
+  return 'https://auth.one.cynayd.com';
+}
+
 function parseAppMetadata(app: App | null) {
   if (!app?.metadata) return { samlEnabled: false, entityId: '', acsUrl: '', sloUrl: '' };
   try {
@@ -71,7 +84,7 @@ function CopyField({ label, value, hint }: { label: string; value: string; hint?
 
 export default function SAMLIntegrationPage() {
   const { user } = useAuth();
-  const [samlOrigin, setSamlOrigin] = useState('');
+  const baseUrl = getApiBaseUrl();
   const canManageSaml =
     user?.role?.toUpperCase() === 'SUPER_ADMIN' || user?.role?.toUpperCase() === 'ADMIN';
   const orgId = user?.organizationId || '';
@@ -83,9 +96,9 @@ export default function SAMLIntegrationPage() {
   const [isLoadingOrgConfig, setIsLoadingOrgConfig] = useState(true);
   const [showOrgConfigForm, setShowOrgConfigForm] = useState(false);
   const [orgConfigForm, setOrgConfigForm] = useState({
-    entityId: '',
-    ssoUrl: '',
-    sloUrl: '',
+    entityId: `${baseUrl}/saml`,
+    ssoUrl: `${baseUrl}/api/saml/sso`,
+    sloUrl: `${baseUrl}/api/saml/slo`,
     certificate: '',
     privateKey: '',
     nameIdFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
@@ -105,8 +118,8 @@ export default function SAMLIntegrationPage() {
   const [showAttributes, setShowAttributes] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const orgMetadataUrl = orgId && samlOrigin
-    ? `${samlOrigin}/api/saml/metadata?organizationId=${orgId}`
+  const orgMetadataUrl = orgId
+    ? `${baseUrl}/api/saml/metadata?organizationId=${orgId}`
     : '';
 
   const orgReady = Boolean(orgSamlConfig?.enabled);
@@ -131,9 +144,9 @@ export default function SAMLIntegrationPage() {
       setOrgSamlConfig(config);
       if (config) {
         setOrgConfigForm({
-          entityId: config.entityId || `${samlOrigin}/saml`,
-          ssoUrl: config.ssoUrl || `${samlOrigin}/api/saml/sso`,
-          sloUrl: config.sloUrl || `${samlOrigin}/api/saml/slo`,
+          entityId: config.entityId || `${baseUrl}/saml`,
+          ssoUrl: config.ssoUrl || `${baseUrl}/api/saml/sso`,
+          sloUrl: config.sloUrl || `${baseUrl}/api/saml/slo`,
           certificate: config.certificate || '',
           privateKey: config.privateKey || '',
           nameIdFormat: config.nameIdFormat || 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
@@ -149,16 +162,7 @@ export default function SAMLIntegrationPage() {
     } finally {
       setIsLoadingOrgConfig(false);
     }
-  }, [samlOrigin]);
-
-  useEffect(() => {
-    fetch('/api/config/saml-origin')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { origin?: string } | null) => {
-        if (data?.origin) setSamlOrigin(data.origin.replace(/\/$/, ''));
-      })
-      .catch(() => {});
-  }, []);
+  }, [baseUrl]);
 
   useEffect(() => {
     fetchApps();
@@ -271,9 +275,9 @@ export default function SAMLIntegrationPage() {
     reader.readAsText(file);
   };
 
-  const idpEntityId = orgSamlConfig?.entityId || `${samlOrigin}/saml`;
-  const idpSsoUrl = orgSamlConfig?.ssoUrl || `${samlOrigin}/api/saml/sso`;
-  const idpSloUrl = orgSamlConfig?.sloUrl || `${samlOrigin}/api/saml/slo`;
+  const idpEntityId = orgSamlConfig?.entityId || `${baseUrl}/saml`;
+  const idpSsoUrl = orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`;
+  const idpSloUrl = orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`;
 
   return (
     <UnifiedLayout
@@ -426,7 +430,7 @@ export default function SAMLIntegrationPage() {
                     value={orgConfigForm.sloUrl}
                     onChange={(e) => setOrgConfigForm({ ...orgConfigForm, sloUrl: e.target.value })}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder={samlOrigin ? `${samlOrigin}/api/saml/slo` : '/api/saml/slo'}
+                    placeholder={`${baseUrl}/api/saml/slo`}
                   />
                   <p className="mt-1 text-xs text-gray-500">Use your production auth host, not localhost.</p>
                 </div>

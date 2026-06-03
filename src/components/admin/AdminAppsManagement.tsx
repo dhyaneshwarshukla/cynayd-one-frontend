@@ -12,7 +12,6 @@ import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/Respons
 import { apiClient, App } from '@/lib/api-client';
 import { filterOrgScopedApps } from '@/lib/app-scope';
 import { launchAppWithFallback } from '@/lib/launch-app';
-import { BFF_PREFIX } from '@/lib/bff';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
 import { AppFederationPanel } from '@/components/admin/AppFederationPanel';
 
@@ -189,7 +188,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
       setError(null);
       
       console.log('Fetching data - API calls starting...');
-      console.log('API Client base URL:', BFF_PREFIX);
+      console.log('API Client base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000');
       console.log('API Client authenticated:', apiClient.isAuthenticated());
       
       const [appsData, usersData, accessData] = await Promise.all([
@@ -989,7 +988,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   <p>Debug info:</p>
                   <p>• User authenticated: {user ? 'Yes' : 'No'}</p>
                   <p>• User role: {user?.role || 'None'}</p>
-                  <p>• API proxy: {BFF_PREFIX} → API_URL (server)</p>
+                  <p>• API URL: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}</p>
                   <p className="mt-2">
                     <a href="/auth/login" className="text-blue-600 hover:text-blue-500 underline">
                       Try logging in again

@@ -5,7 +5,6 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import type { SecuritySettingsFormState } from '@/components/security/SecuritySettingsPanel';
-import { toBffUrl } from '@/lib/bff';
 
 // App types
 export interface App {
@@ -399,27 +398,15 @@ export interface SystemSettings {
 }
 
 class ApiClient {
+  private baseURL: string;
   private authToken: string | null;
   private sessionInvalidatedHandler: (() => void) | null = null;
   private static readonly SESSION_ID_KEY = 'login_session_id';
 
   constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
     this.authToken = null;
     this.clearLegacyStoredTokens();
-  }
-
-  private buildApiUrl(path: string): string {
-    if (typeof window !== 'undefined') {
-      return toBffUrl(path);
-    }
-    const base = process.env.API_URL?.trim().replace(/\/$/, '') ?? '';
-    if (!base) {
-      throw new Error(
-        'API_URL is not configured. Set API_URL on the frontend Cloud Run service.'
-      );
-    }
-    const normalized = path.startsWith('/') ? path : `/${path}`;
-    return `${base}${normalized}`;
   }
 
   /** In-memory token for immediate post-login requests; session auth uses httpOnly cookies. */
@@ -481,7 +468,7 @@ class ApiClient {
   }
 
   private handleSessionRevoked(): void {
-    void fetch(this.buildApiUrl('/api/auth/logout'), {
+    void fetch(`${this.baseURL}/api/auth/logout`, {
       method: 'POST',
       credentials: 'include',
     }).catch(() => {});
@@ -501,7 +488,7 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = this.buildApiUrl(endpoint);
+    const url = `${this.baseURL}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -954,7 +941,7 @@ class ApiClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      const url = this.buildApiUrl('/api/users/upload-csv');
+      const url = `${this.baseURL}/api/users/upload-csv`;
       xhr = new XMLHttpRequest();
 
       let buffer = '';
@@ -1296,7 +1283,7 @@ class ApiClient {
     if (options?.endDate) params.append('endDate', options.endDate.toISOString());
     params.append('format', options?.format ?? 'csv');
 
-    const response = await fetch(this.buildApiUrl(`/api/audit-logs/export?${params.toString()}`), {
+    const response = await fetch(`${this.baseURL}/api/audit-logs/export?${params.toString()}`, {
       headers: {
         'Authorization': `Bearer ${this.getAuthToken()}`,
         'Content-Type': 'application/json',
@@ -1372,7 +1359,7 @@ class ApiClient {
 
   // Security Reports
   async exportSecurityReport(format: 'csv' | 'json'): Promise<Blob> {
-    const response = await fetch(this.buildApiUrl(`/api/security/report?format=${format}`), {
+    const response = await fetch(`${this.baseURL}/api/security/report?format=${format}`, {
       headers: {
         Authorization: `Bearer ${this.getAuthToken()}`,
       },
@@ -1964,7 +1951,7 @@ class ApiClient {
 
   // Initiate SAML SSO for an app (returns HTML that auto-submits SAML form)
   async initiateSamlSSO(appSlug: string): Promise<Response> {
-    const url = this.buildApiUrl(`/api/apps/${appSlug}/saml/sso`);
+    const url = `${this.baseURL}/api/apps/${appSlug}/saml/sso`;
     const token = this.getToken();
     
     const response = await fetch(url, {

@@ -2,17 +2,15 @@ import { Providers } from "./providers";
 import { GoogleAnalytics } from "../components/analytics/GoogleAnalytics";
 import "./globals.css";
 import type { Metadata } from "next";
-import { getPublicSiteUrl } from "@/lib/env";
-import { getRuntimePublicConfig } from "@/lib/runtime-config";
 
-const siteUrl = getPublicSiteUrl();
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const siteName = "CYNAYD One";
 const defaultTitle = "CYNAYD One — AI Workspace & Business Productivity Platform";
 const defaultDescription =
   "CYNAYD One combines mail, drive, calendar, meetings, tasks and collaboration tools into one secure AI-powered workspace. Built for modern collaborative workflows with integrated AI.";
 
 export const metadata: Metadata = {
-  ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
+  metadataBase: new URL(siteUrl),
   title: {
     default: defaultTitle,
     template: `%s | ${siteName}`,
@@ -103,16 +101,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const runtimeConfig = getRuntimePublicConfig();
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.__CYNAYD_CONFIG__=${JSON.stringify(runtimeConfig)};`,
-          }}
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `

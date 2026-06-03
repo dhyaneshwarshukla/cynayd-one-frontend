@@ -112,7 +112,7 @@ export default function AppManagement() {
       setError(null);
       
       console.log('Starting to fetch data...');
-      console.log('API traffic proxied via /api/bff (API_URL server env)');
+      console.log('Environment API URL:', process.env.NEXT_PUBLIC_API_URL || 'Not set');
       
       // Add timeout to prevent infinite loading
       const timeoutPromise = new Promise((_, reject) => {
