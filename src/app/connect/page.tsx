@@ -13,6 +13,7 @@ import {
   CheckCircleIcon,
   GlobeAltIcon
 } from '@heroicons/react/24/outline';
+import { getPublicApiUrl } from '@/lib/env';
 
 interface SSOConnectState {
   status: 'loading' | 'success' | 'error' | 'redirecting';
@@ -52,7 +53,7 @@ function ConnectPageContent() {
       });
 
       // Build the API URL with proper parameters - call the backend API
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+      const apiBaseUrl = getPublicApiUrl();
       const apiUrl = new URL('/api/sso/connect', apiBaseUrl);
       apiUrl.searchParams.set('sso_token', ssoToken!);
       

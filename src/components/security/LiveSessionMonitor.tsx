@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { getPublicApiUrl } from '@/lib/env';
 import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
@@ -47,7 +48,7 @@ export function LiveSessionMonitor() {
 
   useEffect(() => {
     void load();
-    const base = process.env.NEXT_PUBLIC_API_URL || '';
+    const base = getPublicApiUrl();
     const token = apiClient.getAuthToken();
     let es: EventSource | null = null;
 

@@ -3,6 +3,7 @@ import { GoogleAnalytics } from "../components/analytics/GoogleAnalytics";
 import "./globals.css";
 import type { Metadata } from "next";
 import { getPublicSiteUrl } from "@/lib/env";
+import { getRuntimePublicConfig } from "@/lib/runtime-config";
 
 const siteUrl = getPublicSiteUrl();
 const siteName = "CYNAYD One";
@@ -102,9 +103,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const runtimeConfig = getRuntimePublicConfig();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__CYNAYD_CONFIG__=${JSON.stringify(runtimeConfig)};`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `

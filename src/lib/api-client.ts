@@ -399,15 +399,27 @@ export interface SystemSettings {
 }
 
 class ApiClient {
-  private baseURL: string;
   private authToken: string | null;
   private sessionInvalidatedHandler: (() => void) | null = null;
   private static readonly SESSION_ID_KEY = 'login_session_id';
 
   constructor() {
-    this.baseURL = getPublicApiUrl();
     this.authToken = null;
     this.clearLegacyStoredTokens();
+  }
+
+  private resolveBaseUrl(): string {
+    return getPublicApiUrl();
+  }
+
+  private buildApiUrl(path: string): string {
+    const base = this.resolveBaseUrl();
+    if (!base) {
+      throw new Error(
+        'API base URL is not configured. Set NEXT_PUBLIC_API_URL (or API_URL) on Cloud Run / your deployment environment.'
+      );
+    }
+    return `${base}${path}`;
   }
 
   /** In-memory token for immediate post-login requests; session auth uses httpOnly cookies. */
@@ -469,7 +481,7 @@ class ApiClient {
   }
 
   private handleSessionRevoked(): void {
-    void fetch(`${this.baseURL}/api/auth/logout`, {
+    void fetch(this.buildApiUrl('/api/auth/logout'), {
       method: 'POST',
       credentials: 'include',
     }).catch(() => {});
@@ -489,7 +501,7 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`;
+    const url = this.buildApiUrl(endpoint);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -942,7 +954,7 @@ class ApiClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      const url = `${this.baseURL}/api/users/upload-csv`;
+      const url = this.buildApiUrl('/api/users/upload-csv');
       xhr = new XMLHttpRequest();
 
       let buffer = '';
@@ -1284,7 +1296,7 @@ class ApiClient {
     if (options?.endDate) params.append('endDate', options.endDate.toISOString());
     params.append('format', options?.format ?? 'csv');
 
-    const response = await fetch(`${this.baseURL}/api/audit-logs/export?${params.toString()}`, {
+    const response = await fetch(this.buildApiUrl(`/api/audit-logs/export?${params.toString()}`), {
       headers: {
         'Authorization': `Bearer ${this.getAuthToken()}`,
         'Content-Type': 'application/json',
@@ -1360,7 +1372,7 @@ class ApiClient {
 
   // Security Reports
   async exportSecurityReport(format: 'csv' | 'json'): Promise<Blob> {
-    const response = await fetch(`${this.baseURL}/api/security/report?format=${format}`, {
+    const response = await fetch(this.buildApiUrl(`/api/security/report?format=${format}`), {
       headers: {
         Authorization: `Bearer ${this.getAuthToken()}`,
       },
@@ -1952,7 +1964,7 @@ class ApiClient {
 
   // Initiate SAML SSO for an app (returns HTML that auto-submits SAML form)
   async initiateSamlSSO(appSlug: string): Promise<Response> {
-    const url = `${this.baseURL}/api/apps/${appSlug}/saml/sso`;
+    const url = this.buildApiUrl(`/api/apps/${appSlug}/saml/sso`);
     const token = this.getToken();
     
     const response = await fetch(url, {

@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useWebSocket, WebSocketMessage } from './useWebSocket';
 import { useApiState, ApiActions } from './useApiState';
 import { useToast } from './useToast';
+import { getPublicApiUrl } from '@/lib/env';
 
 export interface RealtimeDataOptions<T> {
   apiEndpoint: string;
@@ -39,7 +40,7 @@ export function useRealtimeData<T = any>(
 
   // Helper function to get the full API URL
   const getFullApiUrl = (endpoint: string) => {
-    const baseURL = process.env.NEXT_PUBLIC_API_URL ?? '';
+    const baseURL = getPublicApiUrl();
     return endpoint.startsWith('http') ? endpoint : `${baseURL}${endpoint}`;
   };
 
