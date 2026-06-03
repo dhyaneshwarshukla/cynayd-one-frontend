@@ -23,16 +23,8 @@ const AWS_SP_PRESET = {
 };
 
 function getApiBaseUrl(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    if (origin.includes('localhost')) return origin.replace(':3000', ':4000');
-    if (origin.includes('one.cynayd.com')) return 'https://auth.one.cynayd.com';
-    return origin;
-  }
-  return 'https://auth.one.cynayd.com';
+  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  return base.replace(/\/$/, '');
 }
 
 function parseAppMetadata(app: App | null) {
