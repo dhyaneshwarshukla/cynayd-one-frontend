@@ -5,7 +5,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import type { SecuritySettingsFormState } from '@/components/security/SecuritySettingsPanel';
-import { getPublicApiUrl } from '@/lib/env';
+import { toBffUrl } from '@/lib/bff';
 
 // App types
 export interface App {
@@ -408,18 +408,18 @@ class ApiClient {
     this.clearLegacyStoredTokens();
   }
 
-  private resolveBaseUrl(): string {
-    return getPublicApiUrl();
-  }
-
   private buildApiUrl(path: string): string {
-    const base = this.resolveBaseUrl();
+    if (typeof window !== 'undefined') {
+      return toBffUrl(path);
+    }
+    const base = process.env.API_URL?.trim().replace(/\/$/, '') ?? '';
     if (!base) {
       throw new Error(
-        'API base URL is not configured. Set NEXT_PUBLIC_API_URL (or API_URL) on Cloud Run / your deployment environment.'
+        'API_URL is not configured. Set API_URL on the frontend Cloud Run service.'
       );
     }
-    return `${base}${path}`;
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    return `${base}${normalized}`;
   }
 
   /** In-memory token for immediate post-login requests; session auth uses httpOnly cookies. */

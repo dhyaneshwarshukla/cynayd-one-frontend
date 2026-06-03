@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { getPublicApiUrl } from "@/lib/env";
+import { toBffUrl } from "@/lib/bff";
 
 const ABSOLUTE_IMAGE_URL_PATTERN = /^(https?:\/\/|\/\/|data:image\/)/i;
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg|ico)(\?.*)?$/i;
@@ -21,10 +21,7 @@ export function toAbsoluteAppIconUrl(url: string): string {
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
-    const base =
-      getPublicApiUrl() ||
-      (typeof window !== "undefined" ? window.location.origin : "");
-    return `${String(base).replace(/\/$/, "")}${trimmed}`;
+    return toBffUrl(trimmed);
   }
   return trimmed;
 }

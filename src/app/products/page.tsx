@@ -6,7 +6,7 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
-import { getPublicApiUrl } from '@/lib/env';
+import { toBffUrl } from '@/lib/bff';
 import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 
@@ -54,8 +54,7 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      const apiBase = getPublicApiUrl();
-      const response = await fetch(`${apiBase}/api/apps/${appSlug}/sso-token`, {
+      const response = await fetch(toBffUrl(`/api/apps/${appSlug}/sso-token`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

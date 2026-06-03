@@ -1,5 +1,4 @@
 export type RuntimePublicConfig = {
-  apiUrl: string;
   siteUrl: string;
 };
 
@@ -19,26 +18,8 @@ function fromInjectedConfig(): RuntimePublicConfig | null {
 }
 
 /**
- * Backend API origin (no trailing slash).
- * Client: prefers window.__CYNAYD_CONFIG__ injected by root layout (Cloud Run runtime env).
- * Server / build: uses NEXT_PUBLIC_API_URL or API_URL.
- */
-export function getPublicApiUrl(): string {
-  const injected = fromInjectedConfig();
-  if (injected?.apiUrl) {
-    return trimTrailingSlash(injected.apiUrl);
-  }
-
-  const url =
-    process.env.NEXT_PUBLIC_API_URL?.trim() ||
-    process.env.API_URL?.trim() ||
-    '';
-  return url ? trimTrailingSlash(url) : '';
-}
-
-/**
- * Frontend site origin (no trailing slash).
- * Client: prefers window.__CYNAYD_CONFIG__ from root layout.
+ * Frontend site origin for SEO/metadata (no trailing slash).
+ * Prefer SITE_URL at runtime; NEXT_PUBLIC_SITE_URL only if already set at build.
  */
 export function getPublicSiteUrl(): string {
   const injected = fromInjectedConfig();
@@ -47,8 +28,8 @@ export function getPublicSiteUrl(): string {
   }
 
   const url =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     process.env.SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     '';
   return url ? trimTrailingSlash(url) : '';
 }

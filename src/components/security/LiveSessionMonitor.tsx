@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api-client';
-import { getPublicApiUrl } from '@/lib/env';
+import { toBffUrl } from '@/lib/bff';
 import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
@@ -48,14 +48,13 @@ export function LiveSessionMonitor() {
 
   useEffect(() => {
     void load();
-    const base = getPublicApiUrl();
     const token = apiClient.getAuthToken();
     let es: EventSource | null = null;
 
     if (token) {
       try {
         es = new EventSource(
-          `${base}/api/admin/sessions/live?token=${encodeURIComponent(token)}`
+          `${toBffUrl('/api/admin/sessions/live')}?token=${encodeURIComponent(token)}`
         );
         setMode('sse');
         modeRef.current = 'sse';

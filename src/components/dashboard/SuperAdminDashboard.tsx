@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import { getPublicApiUrl } from '@/lib/env';
+import { toBffUrl } from '@/lib/bff';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -666,8 +666,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
             <Button
               variant="outline"
               onClick={() => {
-                const apiUrl = getPublicApiUrl();
-                window.open(`${apiUrl}/health`, '_blank');
+                window.open(toBffUrl('/health'), '_blank');
               }}
               className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
             >
