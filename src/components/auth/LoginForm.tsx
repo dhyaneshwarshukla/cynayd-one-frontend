@@ -10,10 +10,17 @@ import { Input } from '../common/Input';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
 import { useAuth } from '../../contexts/AuthContext';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield, X } from 'lucide-react';
 import { LegalFooterLinks } from '../legal/LegalFooterLinks';
 import { MFAVerificationModal } from './MFAVerificationModal';
 import type { AuthResponse } from '../../lib/api-client';
+import {
+  addRecentAccount,
+  getAccountInitials,
+  getRecentAccounts,
+  removeRecentAccount,
+  type RecentAccount,
+} from '../../lib/recent-accounts';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -80,8 +87,11 @@ export const LoginForm: React.FC = () => {
   const [otpCode, setOtpCode] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
+  const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [selectedAccountEmail, setSelectedAccountEmail] = useState('');
+
+  const { register, handleSubmit, setValue, getValues, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
 
@@ -98,9 +108,59 @@ export const LoginForm: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const accounts = getRecentAccounts();
+    setRecentAccounts(accounts);
+    if (accounts.length > 0) {
+      setShowAccountPicker(true);
+    }
+  }, []);
+
+  const refreshRecentAccounts = () => {
+    const accounts = getRecentAccounts();
+    setRecentAccounts(accounts);
+    return accounts;
+  };
+
+  const resetToEmailStep = (options?: { useAnotherAccount?: boolean }) => {
+    setChallengeId(null);
+    setChallengeNonce(null);
+    setSelectedAccountEmail('');
+    const accounts = refreshRecentAccounts();
+    if (options?.useAnotherAccount) {
+      setShowAccountPicker(false);
+    } else {
+      setShowAccountPicker(accounts.length > 0);
+    }
+    setLoginStep('email');
+  };
+
+  const getActiveLoginEmail = (): string => {
+    const fromState = selectedAccountEmail || getValues('email')?.trim();
+    if (fromState) return fromState.toLowerCase();
+    const input = document.querySelector('input[name="email"]') as HTMLInputElement | null;
+    return input?.value?.trim().toLowerCase() || '';
+  };
+
+  const beginLoginStart = async (normalizedEmail: string) => {
+    const { apiClient } = await import('../../lib/api-client');
+    const start = await apiClient.loginStart(normalizedEmail);
+    if (!start.challengeId || !start.nonce) {
+      throw new Error('Password challenge unavailable. Please retry.');
+    }
+    setLoginStep('password');
+    setChallengeId(start.challengeId);
+    setChallengeNonce(start.nonce);
+    setSelectedAccountEmail(normalizedEmail);
+    setShowAccountPicker(false);
+    setError(null);
+  };
+
   const completeLoginRedirect = async () => {
     const { apiClient } = await import('../../lib/api-client');
     const fullUser = await apiClient.getCurrentUser();
+    addRecentAccount({ email: fullUser.email, name: fullUser.name });
+    refreshRecentAccounts();
     setUserDirectly(fullUser);
     triggerLoginSuccess();
     router.push('/dashboard');
@@ -179,6 +239,93 @@ export const LoginForm: React.FC = () => {
     };
   }, [loginStep, challengeId, challengeNonce, pendingRememberMe]);
 
+  const applyLoginStartError = (err: unknown, email: string) => {
+    const apiErr = err as {
+      response?: {
+        data?: {
+          code?: string;
+          message?: string;
+          lockedUntil?: string;
+          userEmail?: string;
+          attemptsRemaining?: number;
+        };
+      };
+      message?: string;
+    };
+    const errorMessage =
+      apiErr.response?.data?.message || (err instanceof Error ? err.message : '') || 'Failed to login';
+    errorRef.current = errorMessage;
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('login_error', errorMessage);
+    }
+    setError(errorMessage);
+
+    if (
+      apiErr.response?.data?.code === 'ACCOUNT_LOCKED' ||
+      errorMessage.toLowerCase().includes('account is locked') ||
+      errorMessage.toLowerCase().includes('locked until')
+    ) {
+      const lockedUntil = apiErr.response?.data?.lockedUntil;
+      const lockMessage = lockedUntil
+        ? `Account is locked until ${new Date(lockedUntil).toLocaleString()}.`
+        : errorMessage.includes('locked')
+          ? errorMessage
+          : 'Account is locked.';
+      setError(lockMessage);
+      setShowUnlockOption(true);
+      setUserEmail(apiErr.response?.data?.userEmail || email);
+      return;
+    }
+
+    if (
+      errorMessage.includes('verify your email') ||
+      errorMessage.includes('EMAIL_NOT_VERIFIED') ||
+      errorMessage.toLowerCase().includes('email verification')
+    ) {
+      setShowResendOption(true);
+      setUserEmail(email);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('show_resend_option', 'true');
+        sessionStorage.setItem('resend_user_email', email);
+      }
+    }
+  };
+
+  const selectAccount = async (account: RecentAccount) => {
+    try {
+      errorRef.current = null;
+      setError(null);
+      setIsSubmitting(true);
+      setValue('email', account.email);
+      await beginLoginStart(account.email);
+    } catch (err) {
+      console.error('Login start error:', err);
+      applyLoginStartError(err, account.email);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUseAnotherAccount = () => {
+    resetToEmailStep({ useAnotherAccount: true });
+    setValue('email', '');
+    setError(null);
+  };
+
+  const handleChangeAccount = () => {
+    resetToEmailStep();
+    setError(null);
+  };
+
+  const handleRemoveRecentAccount = (email: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeRecentAccount(email);
+    const accounts = refreshRecentAccounts();
+    if (accounts.length === 0) {
+      setShowAccountPicker(false);
+    }
+  };
+
   const onSubmit = async (data: LoginFormData, e?: React.BaseSyntheticEvent) => {
     // Explicitly prevent default form submission
     if (e) {
@@ -202,18 +349,12 @@ export const LoginForm: React.FC = () => {
       // Normalize email: trim and convert to lowercase for case-insensitive login
       const normalizedEmail = data.email.trim().toLowerCase();
       
-      const { apiClient } = await import('../../lib/api-client');
       if (loginStep === 'email') {
-        const start = await apiClient.loginStart(normalizedEmail);
-        if (!start.challengeId || !start.nonce) {
-          throw new Error('Password challenge unavailable. Please retry.');
-        }
-        setLoginStep('password');
-        setChallengeId(start.challengeId);
-        setChallengeNonce(start.nonce);
-        setError(null);
+        await beginLoginStart(normalizedEmail);
         return;
       }
+
+      const { apiClient } = await import('../../lib/api-client');
 
       if (loginStep === 'password') {
         if (!data.password) {
@@ -252,7 +393,7 @@ export const LoginForm: React.FC = () => {
           return;
         }
         setError('Password challenge expired. Start again from email step.');
-        setLoginStep('email');
+        resetToEmailStep();
         return;
       }
     } catch (err: any) {
@@ -397,7 +538,7 @@ export const LoginForm: React.FC = () => {
   };
 
   const handleMagicLink = async () => {
-    const email = (document.querySelector('input[type="email"]') as HTMLInputElement)?.value?.trim();
+    const email = getActiveLoginEmail();
     if (!email) {
       setError('Enter your email to receive a magic link.');
       return;
@@ -406,7 +547,7 @@ export const LoginForm: React.FC = () => {
     setMagicLinkSent(false);
     try {
       const { apiClient } = await import('../../lib/api-client');
-      await apiClient.requestMagicLink(email.toLowerCase());
+      await apiClient.requestMagicLink(email);
       setMagicLinkSent(true);
       setError(null);
     } catch (err) {
@@ -417,7 +558,7 @@ export const LoginForm: React.FC = () => {
   };
 
   const handlePasskeyLogin = async () => {
-    const email = (document.querySelector('input[type="email"]') as HTMLInputElement)?.value?.trim().toLowerCase();
+    const email = getActiveLoginEmail();
     if (!email) {
       setError('Enter your email before using a passkey.');
       return;
@@ -436,6 +577,8 @@ export const LoginForm: React.FC = () => {
       if (response.accessToken) {
         apiClient.storeAuthToken(response.accessToken);
         const fullUser = await apiClient.getCurrentUser();
+        addRecentAccount({ email: fullUser.email, name: fullUser.name });
+        refreshRecentAccounts();
         setUserDirectly(fullUser);
         triggerLoginSuccess();
         router.push('/dashboard');
@@ -609,35 +752,111 @@ export const LoginForm: React.FC = () => {
             className="absolute opacity-0 h-0 w-0 pointer-events-none"
             aria-hidden
           />
-          {/* Email Field */}
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-gray-700">
-              Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type="email"
-                {...register('email')}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent enterprise-input placeholder:text-gray-500 text-gray-900 ${
-                  errors.email 
-                    ? 'border-red-300 bg-red-50' 
-                    : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
-                } ${isFormLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                style={{ color: '#111827 !important' }}
-                placeholder="Enter your email address"
+          {/* Recent accounts picker */}
+          {loginStep === 'email' && showAccountPicker && recentAccounts.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-gray-700">Choose an account</p>
+              <ul className="space-y-2" role="list">
+                {recentAccounts.map((account) => (
+                  <li
+                    key={account.email}
+                    className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectAccount(account)}
+                      disabled={isFormLoading}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+                        {getAccountInitials(account)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        {account.name ? (
+                          <span className="block truncate text-sm font-medium text-gray-900">
+                            {account.name}
+                          </span>
+                        ) : null}
+                        <span className="block truncate text-sm text-gray-600">{account.email}</span>
+                      </span>
+                      <ArrowRight className="h-5 w-5 shrink-0 text-gray-400" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemoveRecentAccount(account.email, e)}
+                      disabled={isFormLoading}
+                      className="mr-2 shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+                      aria-label={`Remove ${account.email}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={handleUseAnotherAccount}
                 disabled={isFormLoading}
-              />
+                className="text-sm font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50"
+              >
+                Use another account
+              </button>
             </div>
-            {errors.email && (
-              <p className="text-sm text-red-600 flex items-center">
-                <span className="w-1 h-1 bg-red-500 rounded-full mr-2"></span>
-                {errors.email.message}
-              </p>
-            )}
-          </div>
+          )}
+
+          {/* Email field (manual entry or hidden value on password step) */}
+          {loginStep === 'password' ? (
+            <>
+              <input type="hidden" {...register('email')} />
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">Signing in as</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {selectedAccountEmail || getValues('email')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleChangeAccount}
+                  disabled={isFormLoading}
+                  className="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50"
+                >
+                  Change
+                </button>
+              </div>
+            </>
+          ) : (
+            !(showAccountPicker && recentAccounts.length > 0) && (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="email"
+                    {...register('email')}
+                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent enterprise-input placeholder:text-gray-500 text-gray-900 ${
+                      errors.email
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300 hover:border-gray-400 focus:border-blue-500'
+                    } ${isFormLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    style={{ color: '#111827 !important' }}
+                    placeholder="Enter your email address"
+                    disabled={isFormLoading}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-sm text-red-600 flex items-center">
+                    <span className="w-1 h-1 bg-red-500 rounded-full mr-2"></span>
+                    {errors.email.message}
+                  </p>
+                )}
+              </div>
+            )
+          )}
 
           {/* Password Field */}
           {loginStep === 'password' && (
@@ -744,7 +963,8 @@ export const LoginForm: React.FC = () => {
           )}
 
           {/* Submit Button */}
-          {(loginStep === 'email' || loginStep === 'password') && (
+          {(loginStep === 'password' ||
+            (loginStep === 'email' && !(showAccountPicker && recentAccounts.length > 0))) && (
           <Button
             type="submit"
             className="w-full py-3 text-base font-semibold bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 disabled:transform-none disabled:shadow-lg enterprise-button"
@@ -758,7 +978,7 @@ export const LoginForm: React.FC = () => {
               </div>
             ) : (
               <div className="flex items-center justify-center">
-                Sign in to your account
+                {loginStep === 'email' ? 'Continue' : 'Sign in to your account'}
                 <ArrowRight className="w-5 h-5 ml-2" />
               </div>
             )}
@@ -766,6 +986,7 @@ export const LoginForm: React.FC = () => {
           )}
         </form>
 
+        {(loginStep === 'email' || loginStep === 'password') && (
         <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4">
           <button
             type="button"
@@ -787,6 +1008,7 @@ export const LoginForm: React.FC = () => {
             {passkeyBusy ? 'Waiting for passkey…' : 'Sign in with passkey'}
           </button>
         </div>
+        )}
 
         {/* Sign Up Link */}
         <div className="mt-8 text-center">
