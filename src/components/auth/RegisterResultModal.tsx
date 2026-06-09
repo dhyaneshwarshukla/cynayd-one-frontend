@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment } from 'react';
+import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   CheckCircleIcon,
@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { Button } from '../common/Button';
 import Link from 'next/link';
+import { useAuth } from '../../contexts/AuthContext';
 
 export type RegisterResultModalVariant = 'success' | 'error';
 
@@ -34,6 +35,25 @@ export const RegisterResultModal: React.FC<RegisterResultModalProps> = ({
   onRegisterAnother,
 }) => {
   const isSuccess = variant === 'success';
+  const { resendVerification } = useAuth();
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    setIsResending(true);
+    setResendMessage(null);
+    try {
+      await resendVerification(email);
+      setResendMessage('Verification email sent. Please check your inbox.');
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to resend verification email';
+      setResendMessage(message);
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -100,6 +120,22 @@ export const RegisterResultModal: React.FC<RegisterResultModalProps> = ({
                           <li>Click the verification link in the email</li>
                           <li>Sign in to access your workspace</li>
                         </ol>
+                        {email && (
+                          <div className="mt-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleResendVerification}
+                              disabled={isResending}
+                              className="w-full sm:w-auto text-sm"
+                            >
+                              {isResending ? 'Sending...' : 'Resend verification email'}
+                            </Button>
+                            {resendMessage && (
+                              <p className="mt-2 text-sm text-gray-600">{resendMessage}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

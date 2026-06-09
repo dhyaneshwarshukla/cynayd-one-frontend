@@ -30,6 +30,17 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+function isEmailNotVerifiedError(err: unknown, errorMessage: string): boolean {
+  const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
+  const msg = errorMessage.toLowerCase();
+  return (
+    code === 'EMAIL_NOT_VERIFIED' ||
+    msg.includes('email not verified') ||
+    msg.includes('verify your email') ||
+    msg.includes('email verification')
+  );
+}
+
 export const LoginForm: React.FC = () => {
   const [error, setError] = useState<string | null>(() => {
     // Initialize from sessionStorage if available
@@ -277,11 +288,7 @@ export const LoginForm: React.FC = () => {
       return;
     }
 
-    if (
-      errorMessage.includes('verify your email') ||
-      errorMessage.includes('EMAIL_NOT_VERIFIED') ||
-      errorMessage.toLowerCase().includes('email verification')
-    ) {
+    if (isEmailNotVerifiedError(apiErr, errorMessage)) {
       setShowResendOption(true);
       setUserEmail(email);
       if (typeof window !== 'undefined') {
@@ -448,10 +455,9 @@ export const LoginForm: React.FC = () => {
       }
 
       // Check if it's an email verification error
-      if (errorMessage.includes('verify your email') || errorMessage.includes('EMAIL_NOT_VERIFIED') || errorMessage.toLowerCase().includes('email verification')) {
+      if (isEmailNotVerifiedError(err, errorMessage)) {
         setShowResendOption(true);
         setUserEmail(data.email);
-        // Store in sessionStorage to persist across remounts
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('show_resend_option', 'true');
           sessionStorage.setItem('resend_user_email', data.email);
@@ -618,7 +624,7 @@ export const LoginForm: React.FC = () => {
                 setError(storedError);
               }
               // Check if this is an email verification error and restore resend option
-              if ((storedError.includes('verify your email') || storedError.includes('EMAIL_NOT_VERIFIED') || storedError.toLowerCase().includes('email verification')) && !showResendOption) {
+              if (isEmailNotVerifiedError(null, storedError) && !showResendOption) {
                 setShowResendOption(true);
                 const storedEmail = sessionStorage.getItem('resend_user_email');
                 if (storedEmail) {

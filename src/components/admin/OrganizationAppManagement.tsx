@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { filterOrgScopedApps } from '@/lib/app-scope';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -43,7 +44,7 @@ interface OrganizationAppManagementProps {
 
 export default function OrganizationAppManagement({ 
   organizationId, 
-  currentUserRole 
+  currentUserRole: _currentUserRole,
 }: OrganizationAppManagementProps) {
   const [apps, setApps] = useState<OrganizationApp[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,13 +70,25 @@ export default function OrganizationAppManagement({
       setIsLoading(true);
       setError(null);
       
-      const appsData = await apiClient.getAppsForOrganization(
-        organizationId, 
-        currentUserRole, 
-        organizationId
+      const allApps = await apiClient.getApps();
+      const appsData = filterOrgScopedApps(allApps, organizationId);
+
+      setApps(
+        appsData.map((app) => ({
+          id: app.id,
+          name: app.name,
+          slug: app.slug,
+          description: app.description,
+          icon: app.icon,
+          color: app.color,
+          url: app.url,
+          domain: app.domain,
+          isActive: app.isActive ?? true,
+          systemApp: app.systemApp ?? false,
+          createdAt: app.createdAt,
+          updatedAt: app.updatedAt,
+        }))
       );
-      
-      setApps(appsData);
     } catch (err) {
       console.error('Error fetching apps:', err);
       setError(err instanceof Error ? err.message : 'Failed to load apps');
