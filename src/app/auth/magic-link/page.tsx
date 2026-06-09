@@ -21,9 +21,10 @@ export default function MagicLinkPage() {
   const [approvalMessage, setApprovalMessage] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const completeLogin = (accessToken: string, user: { id: string; email: string; name: string; role: string }) => {
+  const completeLogin = async (accessToken: string) => {
     apiClient.storeAuthToken(accessToken);
-    setUserDirectly(user);
+    const fullUser = await apiClient.getCurrentUser();
+    setUserDirectly(fullUser);
     triggerLoginSuccess();
     setStatus('ok');
     router.push('/dashboard');
@@ -53,7 +54,7 @@ export default function MagicLinkPage() {
     }
 
     if (data.accessToken && data.user) {
-      completeLogin(data.accessToken as string, data.user as { id: string; email: string; name: string; role: string });
+      void completeLogin(data.accessToken as string);
     } else {
       setStatus('error');
     }
@@ -84,7 +85,7 @@ export default function MagicLinkPage() {
         const challenge = await apiClient.getLoginChallengeStatus(attemptId, attemptNonce, false);
         if (challenge.status === 'approved' && challenge.accessToken) {
           if (pollRef.current) clearInterval(pollRef.current);
-          await completeLogin(challenge.accessToken, challenge.user!);
+          await completeLogin(challenge.accessToken);
         } else if (challenge.status === 'cancelled' || challenge.status === 'expired') {
           if (pollRef.current) clearInterval(pollRef.current);
           setStatus('error');
@@ -123,7 +124,7 @@ export default function MagicLinkPage() {
           mode="magic_link"
           onSuccess={(response) => {
             if (response.accessToken && response.user) {
-              completeLogin(response.accessToken, response.user);
+              void completeLogin(response.accessToken);
             }
           }}
         />

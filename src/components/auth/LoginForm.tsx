@@ -623,7 +623,8 @@ export const LoginForm: React.FC = () => {
         apiClient.storeAuthToken(response.accessToken);
         addRecentAccount({ email: response.user.email, name: response.user.name });
         refreshRecentAccounts();
-        setUserDirectly(response.user);
+        const fullUser = await apiClient.getCurrentUser();
+        setUserDirectly(fullUser);
         triggerLoginSuccess();
         router.push('/dashboard');
       }
@@ -1099,7 +1100,8 @@ export const LoginForm: React.FC = () => {
           if (result.accessToken && result.user) {
             const { apiClient } = await import('../../lib/api-client');
             apiClient.storeAuthToken(result.accessToken);
-            setUserDirectly(result.user);
+            const fullUser = await apiClient.getCurrentUser();
+            setUserDirectly(fullUser);
             triggerLoginSuccess();
             router.push('/dashboard');
             return;
