@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export interface SecuritySettingsFormState {
   mfaRequired: boolean;
+  passkeySatisfiesMfa: boolean;
   passwordMinLength: number;
   passwordRequireUppercase: boolean;
   passwordRequireLowercase: boolean;
@@ -53,6 +54,15 @@ export function SecuritySettingsPanel({
               className="rounded border-gray-300 text-indigo-600"
             />
             Require MFA for all users
+          </label>
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={settings.passkeySatisfiesMfa}
+              onChange={(e) => set('passkeySatisfiesMfa', e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600"
+            />
+            Passkey login satisfies MFA (skip second factor when passkey is used)
           </label>
         </CardContent>
       </Card>
@@ -186,6 +196,7 @@ export function SecuritySettingsPanel({
 export function mapApiToSecuritySettings(api: Record<string, unknown>): SecuritySettingsFormState {
   return {
     mfaRequired: Boolean(api.mfaRequired),
+    passkeySatisfiesMfa: api.passkeySatisfiesMfa !== false,
     passwordMinLength: Number(api.passwordMinLength ?? 8),
     passwordRequireUppercase: api.passwordRequireUppercase !== false,
     passwordRequireLowercase: api.passwordRequireLowercase !== false,

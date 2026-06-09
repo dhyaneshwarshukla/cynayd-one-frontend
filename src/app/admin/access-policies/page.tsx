@@ -42,6 +42,7 @@ import {
 
 const DEFAULT_BASELINE: SecuritySettingsFormState = {
   mfaRequired: false,
+  passkeySatisfiesMfa: true,
   passwordMinLength: 8,
   passwordRequireUppercase: true,
   passwordRequireLowercase: true,

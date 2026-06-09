@@ -101,9 +101,14 @@ export interface AuthResponse {
   code?: string;
   userId?: string;
   email?: string;
+  mfaMethods?: string[];
+  challengeId?: string;
+  nonce?: string;
   mustEnrollMfa?: boolean;
   enrollmentReason?: 'policy' | 'risk' | 'org_setting';
   requestContext?: Record<string, unknown>;
+  preferredChallenge?: string;
+  availableChallenges?: string[];
 }
 
 export interface PinLock {
@@ -2403,14 +2408,39 @@ class ApiClient {
     });
   }
 
-  async sendMfaEmailCode(userId?: string): Promise<{ message: string }> {
-    if (userId) {
+  async sendMfaEmailCode(input?: {
+    userId?: string;
+    attemptId?: string;
+    nonce?: string;
+  }): Promise<{ message: string }> {
+    if (input?.attemptId && input?.nonce) {
       return this.request('/api/auth/mfa/email/send-login', {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({
+          attemptId: input.attemptId,
+          nonce: input.nonce,
+        }),
+      });
+    }
+    if (input?.userId) {
+      return this.request('/api/auth/mfa/email/send-login', {
+        method: 'POST',
+        body: JSON.stringify({ userId: input.userId }),
       });
     }
     return this.request('/api/mfa/email/send', { method: 'POST' });
+  }
+
+  async completeMagicLinkLogin(input: {
+    challengeId: string;
+    nonce: string;
+    mfaToken?: string;
+    rememberMe?: boolean;
+  }): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/api/auth/magic-link/complete', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   async getRiskInsightsDashboard(): Promise<Record<string, unknown>> {
@@ -2484,11 +2514,31 @@ class ApiClient {
   }
 
   async webauthnAuthenticateFinish(
-    response: AuthenticationResponseJSON
+    responseOrResume:
+      | AuthenticationResponseJSON
+      | {
+          challengeId: string;
+          nonce: string;
+          mfaToken: string;
+          rememberMe?: boolean;
+        },
+    options?: { rememberMe?: boolean }
   ): Promise<AuthResponse> {
+    const body =
+      'challengeId' in responseOrResume
+        ? {
+            challengeId: responseOrResume.challengeId,
+            nonce: responseOrResume.nonce,
+            mfaToken: responseOrResume.mfaToken,
+            rememberMe: responseOrResume.rememberMe,
+          }
+        : {
+            response: responseOrResume,
+            rememberMe: options?.rememberMe,
+          };
     return this.request<AuthResponse>('/api/auth/webauthn/authenticate/finish', {
       method: 'POST',
-      body: JSON.stringify({ response }),
+      body: JSON.stringify(body),
     });
   }
 

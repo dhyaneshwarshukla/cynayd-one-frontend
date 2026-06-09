@@ -90,6 +90,10 @@ export const LoginForm: React.FC = () => {
   const [challengeNonce, setChallengeNonce] = useState<string | null>(null);
   const [showMfaModal, setShowMfaModal] = useState(false);
   const [mfaUserId, setMfaUserId] = useState<string | null>(null);
+  const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [mfaModalMode, setMfaModalMode] = useState<'challenge' | 'passkey'>('challenge');
+  const [mfaAttemptId, setMfaAttemptId] = useState<string | null>(null);
+  const [mfaAttemptNonce, setMfaAttemptNonce] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState('');
   const [pendingPassword, setPendingPassword] = useState('');
   const [pendingRememberMe, setPendingRememberMe] = useState(false);
@@ -188,12 +192,13 @@ export const LoginForm: React.FC = () => {
       setPendingRememberMe(rememberMe);
       setPendingEmail(email);
       setApprovalContext((result as AuthResponse & { requestContext?: Record<string, unknown> }).requestContext ?? null);
+      const preferred = (result as AuthResponse & { preferredChallenge?: string }).preferredChallenge;
       setApprovalMessage(
-        result.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+        result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
           ? 'Check your email for an approval code, or approve from your mobile app.'
           : 'Approve this sign-in from your CYNAYD mobile app.'
       );
-      if (result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
+      if (result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email') {
         setLoginStep('email_otp');
       } else {
         setLoginStep('awaiting_approval');
@@ -392,6 +397,17 @@ export const LoginForm: React.FC = () => {
               setPendingPassword(data.password);
               setPendingRememberMe(Boolean(data.rememberMe));
               setMfaUserId(apiErr.response.data.userId || null);
+              setMfaMethods(
+                (apiErr.response.data as { mfaMethods?: string[] }).mfaMethods || ['totp']
+              );
+              setMfaModalMode('challenge');
+              setMfaAttemptId(
+                (apiErr.response.data as { challengeId?: string }).challengeId ||
+                  challengeId
+              );
+              setMfaAttemptNonce(
+                (apiErr.response.data as { nonce?: string }).nonce || challengeNonce
+              );
               setShowMfaModal(true);
               return;
             }
@@ -580,12 +596,34 @@ export const LoginForm: React.FC = () => {
       const options = await apiClient.webauthnAuthenticateStart(email);
       const assertion = await authenticateWithPasskey(options);
       const response = await apiClient.webauthnAuthenticateFinish(assertion);
-      if (response.accessToken) {
+
+      if (response.code === 'MFA_REQUIRED') {
+        setPendingEmail(email);
+        setMfaUserId(response.userId || null);
+        setMfaMethods(response.mfaMethods || ['totp']);
+        setMfaModalMode('passkey');
+        setMfaAttemptId(response.challengeId || null);
+        setMfaAttemptNonce(response.nonce || null);
+        setShowMfaModal(true);
+        return;
+      }
+
+      if (
+        response.code === 'APPROVAL_REQUIRED' ||
+        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      ) {
+        setPendingEmail(email);
+        if (response.challengeId) setChallengeId(response.challengeId);
+        if (response.nonce) setChallengeNonce(response.nonce);
+        await handleLoginPasswordResult(response, '', false, email);
+        return;
+      }
+
+      if (response.accessToken && response.user) {
         apiClient.storeAuthToken(response.accessToken);
-        const fullUser = await apiClient.getCurrentUser();
-        addRecentAccount({ email: fullUser.email, name: fullUser.name });
+        addRecentAccount({ email: response.user.email, name: response.user.name });
         refreshRecentAccounts();
-        setUserDirectly(fullUser);
+        setUserDirectly(response.user);
         triggerLoginSuccess();
         router.push('/dashboard');
       }
@@ -1037,15 +1075,20 @@ export const LoginForm: React.FC = () => {
         onClose={() => setShowMfaModal(false)}
         userId={mfaUserId || ''}
         email={pendingEmail}
-        mode="challenge"
+        attemptId={mfaAttemptId || challengeId || undefined}
+        attemptNonce={mfaAttemptNonce || challengeNonce || undefined}
+        mfaMethods={mfaMethods}
+        mode={mfaModalMode}
         onChallengeVerify={async (mfaToken) => {
-          if (!challengeId || !challengeNonce) {
+          const id = mfaAttemptId || challengeId;
+          const nonce = mfaAttemptNonce || challengeNonce;
+          if (!id || !nonce) {
             throw new Error('Login session expired. Please start again.');
           }
           const { apiClient } = await import('../../lib/api-client');
           return apiClient.loginPassword({
-            challengeId,
-            nonce: challengeNonce,
+            challengeId: id,
+            nonce,
             password: pendingPassword,
             rememberMe: pendingRememberMe,
             mfaToken,
@@ -1053,6 +1096,14 @@ export const LoginForm: React.FC = () => {
         }}
         onSuccess={async (result) => {
           setShowMfaModal(false);
+          if (result.accessToken && result.user) {
+            const { apiClient } = await import('../../lib/api-client');
+            apiClient.storeAuthToken(result.accessToken);
+            setUserDirectly(result.user);
+            triggerLoginSuccess();
+            router.push('/dashboard');
+            return;
+          }
           await handleLoginPasswordResult(
             result,
             pendingPassword,

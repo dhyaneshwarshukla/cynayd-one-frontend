@@ -14,7 +14,10 @@ interface MFAVerificationModalProps {
   userId: string;
   email: string;
   password?: string;
-  mode?: 'legacy' | 'challenge';
+  attemptId?: string;
+  attemptNonce?: string;
+  mfaMethods?: string[];
+  mode?: 'legacy' | 'challenge' | 'passkey' | 'magic_link';
   onChallengeVerify?: (mfaToken: string) => Promise<AuthResponse>;
 }
 
@@ -25,6 +28,9 @@ export function MFAVerificationModal({
   userId,
   email,
   password,
+  attemptId,
+  attemptNonce,
+  mfaMethods = ['totp'],
   mode = 'legacy',
   onChallengeVerify,
 }: MFAVerificationModalProps) {
@@ -33,7 +39,23 @@ export function MFAVerificationModal({
   const [error, setError] = useState<string | null>(null);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
 
+  const emailMfaAvailable = mfaMethods.includes('email');
+
   const completeLogin = async (mfaToken: string) => {
+    if (mode === 'magic_link' && attemptId && attemptNonce) {
+      return apiClient.completeMagicLinkLogin({
+        challengeId: attemptId,
+        nonce: attemptNonce,
+        mfaToken,
+      });
+    }
+    if (mode === 'passkey' && attemptId && attemptNonce) {
+      return apiClient.webauthnAuthenticateFinish({
+        challengeId: attemptId,
+        nonce: attemptNonce,
+        mfaToken,
+      });
+    }
     if (mode === 'challenge' && onChallengeVerify) {
       return onChallengeVerify(mfaToken);
     }
@@ -51,12 +73,31 @@ export function MFAVerificationModal({
     try {
       setIsLoading(true);
       setError(null);
-      await apiClient.sendMfaEmailCode(userId);
+      if (attemptId && attemptNonce) {
+        await apiClient.sendMfaEmailCode({ attemptId, nonce: attemptNonce });
+      } else {
+        await apiClient.sendMfaEmailCode({ userId });
+      }
       setEmailCodeSent(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send email code');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSuccessResponse = (response: AuthResponse) => {
+    if (response.accessToken && response.refreshToken && response.user) {
+      onSuccess(response);
+    } else if (
+      response.code === 'APPROVAL_REQUIRED' ||
+      response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+    ) {
+      onSuccess(response);
+    } else if (response.accessToken && response.user) {
+      onSuccess(response);
+    } else {
+      setError('Invalid response from server');
     }
   };
 
@@ -69,19 +110,8 @@ export function MFAVerificationModal({
     try {
       setIsLoading(true);
       setError(null);
-
       const response = await completeLogin(mfaCode);
-
-      if (response.accessToken && response.refreshToken && response.user) {
-        onSuccess(response);
-      } else if (
-        response.code === 'APPROVAL_REQUIRED' ||
-        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
-      ) {
-        onSuccess(response);
-      } else {
-        setError('Invalid response from server');
-      }
+      handleSuccessResponse(response);
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { code?: string; message?: string } }; message?: string };
       if (apiErr.response?.data?.code === 'INVALID_MFA_CODE') {
@@ -103,19 +133,8 @@ export function MFAVerificationModal({
     try {
       setIsLoading(true);
       setError(null);
-
       const response = await completeLogin(mfaCode);
-
-      if (response.accessToken && response.refreshToken && response.user) {
-        onSuccess(response);
-      } else if (
-        response.code === 'APPROVAL_REQUIRED' ||
-        response.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
-      ) {
-        onSuccess(response);
-      } else {
-        setError('Invalid response from server');
-      }
+      handleSuccessResponse(response);
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { code?: string; message?: string } }; message?: string };
       if (apiErr.response?.data?.code === 'INVALID_MFA_CODE') {
@@ -195,14 +214,16 @@ export function MFAVerificationModal({
                 {isLoading ? <LoadingSpinner size="sm" /> : 'Verify Code'}
               </Button>
 
-              <Button
-                onClick={handleSendEmailCode}
-                disabled={isLoading}
-                variant="outline"
-                className="w-full"
-              >
-                {emailCodeSent ? 'Email code sent' : 'Send code to email'}
-              </Button>
+              {emailMfaAvailable && (
+                <Button
+                  onClick={handleSendEmailCode}
+                  disabled={isLoading}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {emailCodeSent ? 'Email code sent' : 'Send code to email'}
+                </Button>
+              )}
 
               <div className="text-center">
                 <span className="text-sm text-gray-500">or</span>

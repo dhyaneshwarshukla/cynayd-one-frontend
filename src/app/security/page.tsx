@@ -44,6 +44,7 @@ const VALID_TABS: TabId[] = ['events', 'threats', 'sessions', 'settings'];
 
 const DEFAULT_SETTINGS: SecuritySettingsFormState = {
   mfaRequired: false,
+  passkeySatisfiesMfa: true,
   passwordMinLength: 8,
   passwordRequireUppercase: true,
   passwordRequireLowercase: true,
