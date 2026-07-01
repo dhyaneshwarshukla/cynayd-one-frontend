@@ -90,6 +90,7 @@ export const LoginForm: React.FC = () => {
   const [showMfaModal, setShowMfaModal] = useState(false);
   const [mfaUserId, setMfaUserId] = useState<string | null>(null);
   const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [mfaEmailOtpSent, setMfaEmailOtpSent] = useState(false);
   const [mfaModalMode, setMfaModalMode] = useState<'challenge' | 'passkey'>('challenge');
   const [mfaAttemptId, setMfaAttemptId] = useState<string | null>(null);
   const [mfaAttemptNonce, setMfaAttemptNonce] = useState<string | null>(null);
@@ -391,21 +392,22 @@ export const LoginForm: React.FC = () => {
               message?: string;
             };
             if (apiErr.response?.data?.code === 'MFA_REQUIRED') {
+              const mfaData = apiErr.response.data as {
+                userId?: string;
+                mfaMethods?: string[];
+                emailOtpSent?: boolean;
+                challengeId?: string;
+                nonce?: string;
+              };
               setPendingEmail(normalizedEmail);
               setPendingPassword(data.password);
               setPendingRememberMe(Boolean(data.rememberMe));
-              setMfaUserId(apiErr.response.data.userId || null);
-              setMfaMethods(
-                (apiErr.response.data as { mfaMethods?: string[] }).mfaMethods || ['totp']
-              );
+              setMfaUserId(mfaData.userId || null);
+              setMfaMethods(mfaData.mfaMethods || ['totp']);
+              setMfaEmailOtpSent(Boolean(mfaData.emailOtpSent));
               setMfaModalMode('challenge');
-              setMfaAttemptId(
-                (apiErr.response.data as { challengeId?: string }).challengeId ||
-                  challengeId
-              );
-              setMfaAttemptNonce(
-                (apiErr.response.data as { nonce?: string }).nonce || challengeNonce
-              );
+              setMfaAttemptId(mfaData.challengeId || challengeId);
+              setMfaAttemptNonce(mfaData.nonce || challengeNonce);
               setShowMfaModal(true);
               return;
             }
@@ -599,6 +601,7 @@ export const LoginForm: React.FC = () => {
         setPendingEmail(email);
         setMfaUserId(response.userId || null);
         setMfaMethods(response.mfaMethods || ['totp']);
+        setMfaEmailOtpSent(Boolean(response.emailOtpSent));
         setMfaModalMode('passkey');
         setMfaAttemptId(response.challengeId || null);
         setMfaAttemptNonce(response.nonce || null);
@@ -1071,12 +1074,16 @@ export const LoginForm: React.FC = () => {
 
       <MFAVerificationModal
         isOpen={showMfaModal}
-        onClose={() => setShowMfaModal(false)}
+        onClose={() => {
+          setShowMfaModal(false);
+          setMfaEmailOtpSent(false);
+        }}
         userId={mfaUserId || ''}
         email={pendingEmail}
         attemptId={mfaAttemptId || challengeId || undefined}
         attemptNonce={mfaAttemptNonce || challengeNonce || undefined}
         mfaMethods={mfaMethods}
+        emailOtpSent={mfaEmailOtpSent}
         mode={mfaModalMode}
         onChallengeVerify={async (mfaToken) => {
           const id = mfaAttemptId || challengeId;
@@ -1095,6 +1102,7 @@ export const LoginForm: React.FC = () => {
         }}
         onSuccess={async (result) => {
           setShowMfaModal(false);
+          setMfaEmailOtpSent(false);
           if (result.accessToken && result.user) {
             const { apiClient } = await import('../../lib/api-client');
             apiClient.storeAuthToken(result.accessToken);

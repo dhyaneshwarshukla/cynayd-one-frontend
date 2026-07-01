@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
@@ -17,6 +17,7 @@ interface MFAVerificationModalProps {
   attemptId?: string;
   attemptNonce?: string;
   mfaMethods?: string[];
+  emailOtpSent?: boolean;
   mode?: 'legacy' | 'challenge' | 'passkey' | 'magic_link';
   onChallengeVerify?: (mfaToken: string) => Promise<AuthResponse>;
 }
@@ -31,6 +32,7 @@ export function MFAVerificationModal({
   attemptId,
   attemptNonce,
   mfaMethods = ['totp'],
+  emailOtpSent = false,
   mode = 'legacy',
   onChallengeVerify,
 }: MFAVerificationModalProps) {
@@ -40,6 +42,55 @@ export function MFAVerificationModal({
   const [emailCodeSent, setEmailCodeSent] = useState(false);
 
   const emailMfaAvailable = mfaMethods.includes('email');
+  const totpAvailable = mfaMethods.includes('totp');
+
+  useEffect(() => {
+    if (isOpen) {
+      setEmailCodeSent(emailOtpSent);
+    }
+  }, [isOpen, emailOtpSent]);
+
+  const getVerificationMessage = (): React.ReactNode => {
+    const otpSent = emailOtpSent || emailCodeSent;
+
+    if (totpAvailable && emailMfaAvailable) {
+      if (otpSent) {
+        return (
+          <>
+            Enter the 6-digit code from your <strong>authenticator app</strong>, or the code sent to{' '}
+            <strong>{email}</strong>
+          </>
+        );
+      }
+      return (
+        <>
+          Enter the 6-digit code from your <strong>authenticator app</strong>, or send a code to{' '}
+          <strong>{email}</strong>
+        </>
+      );
+    }
+
+    if (emailMfaAvailable) {
+      if (otpSent) {
+        return (
+          <>
+            Enter the 6-digit code sent to <strong>{email}</strong>
+          </>
+        );
+      }
+      return (
+        <>
+          A verification code will be sent to <strong>{email}</strong> — click &quot;Send code to email&quot;
+        </>
+      );
+    }
+
+    return (
+      <>
+        Enter the 6-digit code from your authenticator app for <strong>{email}</strong>
+      </>
+    );
+  };
 
   const completeLogin = async (mfaToken: string) => {
     if (mode === 'magic_link' && attemptId && attemptNonce) {
@@ -150,6 +201,7 @@ export function MFAVerificationModal({
   const handleClose = () => {
     setMfaCode('');
     setError(null);
+    setEmailCodeSent(false);
     onClose();
   };
 
@@ -183,7 +235,7 @@ export function MFAVerificationModal({
               Enter Verification Code
             </h3>
             <p className="text-sm text-gray-600">
-              Enter the 6-digit code from your authenticator app for <strong>{email}</strong>
+              {getVerificationMessage()}
             </p>
           </div>
 

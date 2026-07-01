@@ -118,6 +118,28 @@ export interface AuthResponse {
   requestContext?: Record<string, unknown>;
   preferredChallenge?: string;
   availableChallenges?: string[];
+  emailOtpSent?: boolean;
+}
+
+function throwMfaRequired(response: AuthResponse): never {
+  const mfaError = new Error('MFA required') as Error & {
+    response: { data: Partial<AuthResponse> & { code: string } };
+  };
+  mfaError.response = {
+    data: {
+      message: response.message,
+      code: response.code!,
+      userId: response.userId,
+      email: response.email,
+      mfaMethods: response.mfaMethods,
+      emailOtpSent: response.emailOtpSent,
+      challengeId: response.challengeId,
+      nonce: response.nonce,
+      preferredChallenge: response.preferredChallenge,
+      availableChallenges: response.availableChallenges,
+    },
+  };
+  throw mfaError;
 }
 
 export interface PinLock {
@@ -716,19 +738,8 @@ class ApiClient {
       body: JSON.stringify(credentials),
     });
     
-    // Check if MFA is required
     if (response.code === 'MFA_REQUIRED') {
-      // Create an error object that mimics the expected format
-      const mfaError = new Error('MFA required') as any;
-      mfaError.response = {
-        data: {
-          message: response.message,
-          code: response.code,
-          userId: response.userId,
-          email: response.email
-        }
-      };
-      throw mfaError;
+      throwMfaRequired(response);
     }
     
     if (response.accessToken) {
@@ -764,16 +775,7 @@ class ApiClient {
     });
 
     if (response.code === 'MFA_REQUIRED') {
-      const mfaError = new Error('MFA required') as any;
-      mfaError.response = {
-        data: {
-          message: response.message,
-          code: response.code,
-          userId: response.userId,
-          email: response.email,
-        },
-      };
-      throw mfaError;
+      throwMfaRequired(response);
     }
 
     if (response.accessToken) {

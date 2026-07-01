@@ -18,6 +18,7 @@ export default function MagicLinkPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -34,6 +35,7 @@ export default function MagicLinkPage() {
     if (data.code === 'MFA_REQUIRED') {
       setUserId((data.userId as string) || null);
       setMfaMethods((data.mfaMethods as string[]) || ['totp']);
+      setEmailOtpSent(Boolean(data.emailOtpSent));
       setAttemptId((data.challengeId as string) || null);
       setAttemptNonce((data.nonce as string) || null);
       setStatus('mfa');
@@ -121,6 +123,7 @@ export default function MagicLinkPage() {
           attemptId={attemptId}
           attemptNonce={attemptNonce}
           mfaMethods={mfaMethods}
+          emailOtpSent={emailOtpSent}
           mode="magic_link"
           onSuccess={(response) => {
             if (response.accessToken && response.user) {
