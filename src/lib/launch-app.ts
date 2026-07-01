@@ -19,27 +19,6 @@ function isSamlEnabled(metadata?: string): boolean {
   }
 }
 
-function getAppBaseUrl(app: App): string | null {
-  if (app.url && app.url.trim()) {
-    return app.url.trim();
-  }
-
-  if (app.domain && app.domain.trim()) {
-    const domain = app.domain.trim();
-    if (domain.startsWith('http://') || domain.startsWith('https://')) {
-      return domain;
-    }
-    return `https://${domain}`;
-  }
-
-  return null;
-}
-
-function appendExchangeCode(baseUrl: string, code: string): string {
-  const delimiter = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${delimiter}code=${encodeURIComponent(code)}`;
-}
-
 function openSamlAutoSubmitWindow(html: string, appName: string): void {
   const samlWindow = window.open('', '_blank');
   if (!samlWindow) {
@@ -60,21 +39,15 @@ async function launchViaSaml(appSlug: string, appName: string): Promise<void> {
 }
 
 async function launchViaExchangeCode(appDetails: App): Promise<void> {
-  const baseUrl = getAppBaseUrl(appDetails);
-  if (!baseUrl) {
-    throw new Error('Application URL or domain is not configured. Please update this app in Admin > Apps.');
+  console.info(`[launch-app] "${appDetails.slug}" -> SSO launch path (POST /api/sso/exchange-code)`);
+
+  const { launchUrl } = await apiClient.exchangeSsoCode(appDetails.slug);
+
+  if (!launchUrl?.trim()) {
+    throw new Error(`Server did not return a launch URL for "${appDetails.name}". Check backend logs.`);
   }
 
-  console.info(`[launch-app] "${appDetails.slug}" -> SSO exchange code path (POST /api/sso/exchange-code)`);
-
-  const { code } = await apiClient.exchangeSsoCode(appDetails.slug);
-
-  if (!code) {
-    throw new Error(`Server did not return a valid exchange code for "${appDetails.name}". Check backend logs.`);
-  }
-
-  const redirectUrl = appendExchangeCode(baseUrl, code);
-  const appWindow = window.open(redirectUrl, '_blank');
+  const appWindow = window.open(launchUrl.trim(), '_blank');
   if (!appWindow) {
     throw new Error('Popup blocked. Please allow popups for this site to access ' + appDetails.name + '.');
   }
@@ -83,7 +56,7 @@ async function launchViaExchangeCode(appDetails: App): Promise<void> {
 /**
  * Launch an app using the correct SSO mechanism:
  *   - SAML enabled in app.metadata  -> POST /api/apps/:slug/saml/sso  (auto-submit SAML form)
- *   - SAML NOT enabled              -> POST /api/sso/exchange-code (opaque code in redirect URL)
+ *   - SAML NOT enabled              -> POST /api/sso/exchange-code (redirect via launchUrl with ?sso_token=)
  */
 export async function launchAppWithFallback(appSlug: string): Promise<void> {
   const appDetails = await apiClient.getAppBySlug(appSlug);

@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
+import { launchAppWithFallback } from '@/lib/launch-app';
 import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 
@@ -53,21 +54,7 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      const { code } = await apiClient.exchangeSsoCode(appSlug);
-
-      if (!code) {
-        throw new Error('Failed to generate SSO exchange code');
-      }
-
-      const app = apps.find((item) => item.slug === appSlug);
-      if (!app) {
-        throw new Error('App not found');
-      }
-
-      const baseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL || window.location.origin;
-      const connectUrl = `${baseUrl}/connect?code=${encodeURIComponent(code)}&app_slug=${encodeURIComponent(appSlug)}`;
-
-      window.open(connectUrl, '_blank');
+      await launchAppWithFallback(appSlug);
     } catch (err) {
       setError('Failed to access app');
       console.error('App access error:', err);

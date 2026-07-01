@@ -45,6 +45,15 @@ export interface AppWithAccess extends App {
   };
 }
 
+export interface SsoExchangeCodeResponse {
+  success?: boolean;
+  ssoToken: string;
+  launchUrl: string;
+  code: string;
+  expiresIn: number;
+  app?: { id: string; name: string; slug: string; url?: string | null };
+}
+
 export interface LoginCredentials {
   email: string;
   password: string;
@@ -2052,12 +2061,12 @@ class ApiClient {
     });
   }
 
-  async generateSSOToken(appSlug: string): Promise<{ code: string; expiresIn: number }> {
+  async generateSSOToken(appSlug: string): Promise<SsoExchangeCodeResponse> {
     return this.exchangeSsoCode(appSlug);
   }
 
-  async exchangeSsoCode(appSlug: string): Promise<{ code: string; expiresIn: number }> {
-    return this.request<{ code: string; expiresIn: number }>('/api/sso/exchange-code', {
+  async exchangeSsoCode(appSlug: string): Promise<SsoExchangeCodeResponse> {
+    return this.request<SsoExchangeCodeResponse>('/api/sso/exchange-code', {
       method: 'POST',
       body: JSON.stringify({ appSlug }),
     });

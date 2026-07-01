@@ -22,17 +22,9 @@ interface SSOConnectState {
   error?: string;
 }
 
-function appendDeprecatedSsoToken(baseUrl: string, token: string): string {
-  console.warn(
-    '[connect] sso_token in URL is deprecated; integrate POST /api/sso/redeem-code with ?code= instead'
-  );
+function appendSsoToken(baseUrl: string, token: string): string {
   const delimiter = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${delimiter}sso_token=${encodeURIComponent(token)}`;
-}
-
-function appendExchangeCode(baseUrl: string, code: string): string {
-  const delimiter = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${delimiter}code=${encodeURIComponent(code)}`;
 }
 
 function ConnectPageContent() {
@@ -63,7 +55,7 @@ function ConnectPageContent() {
       const appUrl = result.app.url?.trim();
 
       if (appUrl) {
-        const redirectUrl = appendDeprecatedSsoToken(appUrl, result.ssoToken);
+        const redirectUrl = appendSsoToken(appUrl, result.ssoToken);
         setState({
           status: 'redirecting',
           message: 'Redirecting to app...',
@@ -91,10 +83,6 @@ function ConnectPageContent() {
   const handleLegacyConnect = useCallback(async () => {
     if (!legacyToken) return;
 
-    console.warn(
-      '[connect] sso_token query parameter is deprecated; use exchange code flow instead'
-    );
-
     try {
       setState({ status: 'loading', message: 'Validating SSO token...' });
 
@@ -107,7 +95,7 @@ function ConnectPageContent() {
       const appUrl = appDetails?.url?.trim() || app?.url?.trim();
 
       if (appUrl) {
-        const redirectUrl = appendDeprecatedSsoToken(appUrl, legacyToken);
+        const redirectUrl = appendSsoToken(appUrl, legacyToken);
         setState({
           status: 'redirecting',
           message: 'Redirecting to app...',
@@ -132,34 +120,9 @@ function ConnectPageContent() {
     }
   }, [legacyToken, appSlug]);
 
-  const handleForwardCodeToApp = useCallback(async () => {
-    if (!exchangeCode || !appSlug) return;
-
-    try {
-      setState({ status: 'loading', message: 'Resolving app URL...' });
-      const appDetails = await apiClient.getAppBySlug(appSlug);
-      const appUrl = appDetails?.url?.trim();
-
-      if (!appUrl) {
-        await handleCodeConnect();
-        return;
-      }
-
-      const redirectUrl = appendExchangeCode(appUrl, exchangeCode);
-      setState({
-        status: 'redirecting',
-        message: 'Redirecting to app...',
-        redirectUrl,
-      });
-      window.location.href = redirectUrl;
-    } catch {
-      await handleCodeConnect();
-    }
-  }, [exchangeCode, appSlug, handleCodeConnect]);
-
   useEffect(() => {
     if (exchangeCode && appSlug) {
-      void handleForwardCodeToApp();
+      void handleCodeConnect();
     } else if (legacyToken) {
       void handleLegacyConnect();
     } else {
@@ -169,11 +132,11 @@ function ConnectPageContent() {
         error: 'Missing code or SSO token in URL parameters',
       });
     }
-  }, [exchangeCode, legacyToken, appSlug, handleForwardCodeToApp, handleLegacyConnect]);
+  }, [exchangeCode, legacyToken, appSlug, handleCodeConnect, handleLegacyConnect]);
 
   const handleRetry = () => {
     if (exchangeCode && appSlug) {
-      void handleForwardCodeToApp();
+      void handleCodeConnect();
     } else if (legacyToken) {
       void handleLegacyConnect();
     }
