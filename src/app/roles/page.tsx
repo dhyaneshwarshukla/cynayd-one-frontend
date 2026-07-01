@@ -11,7 +11,6 @@ import { apiClient } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { useToast } from '@/hooks/useToast';
 import ToastContainer from '@/components/common/ToastContainer';
-import { cn } from '@/utils/cn';
 
 // Define Role and Permission interfaces locally
 interface Role {
@@ -158,7 +157,7 @@ export default function RolesPage() {
       const users = await apiClient.getUsersWithRole(roleId);
       setRoleUsers(prev => ({ ...prev, [roleId]: users }));
       return users;
-    } catch (err: any) {
+    } catch {
       toastActions.showToast({
         type: 'error',
         title: 'Error',
@@ -245,7 +244,7 @@ export default function RolesPage() {
       setError(null);
       
       // Update role via API
-      const updatedRole = await apiClient.updateRole(selectedRole.id, {
+      await apiClient.updateRole(selectedRole.id, {
         name: editRoleName.trim(),
         description: editRoleDescription.trim() || undefined
       });

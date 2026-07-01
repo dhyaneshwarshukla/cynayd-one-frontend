@@ -7,7 +7,7 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { 
   Squares2X2Icon, 
   PlusIcon, 
@@ -15,10 +15,8 @@ import {
   PencilIcon,
   TrashIcon,
   EyeIcon,
-  CogIcon,
   CheckCircleIcon,
   XCircleIcon,
-  GlobeAltIcon,
   LinkIcon
 } from '@heroicons/react/24/outline';
 
@@ -43,8 +41,7 @@ interface OrganizationAppManagementProps {
 }
 
 export default function OrganizationAppManagement({ 
-  organizationId, 
-  currentUserRole: _currentUserRole,
+  organizationId,
 }: OrganizationAppManagementProps) {
   const [apps, setApps] = useState<OrganizationApp[]>([]);
   const [isLoading, setIsLoading] = useState(true);

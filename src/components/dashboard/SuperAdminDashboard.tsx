@@ -40,7 +40,7 @@ interface SuperAdminDashboardProps {
   user: any;
 }
 
-export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) {
+export default function SuperAdminDashboard({ user: _user }: SuperAdminDashboardProps) {
   const router = useRouter();
   const [exportError, setExportError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats>({ 
@@ -54,7 +54,7 @@ export default function SuperAdminDashboard({ user }: SuperAdminDashboardProps) 
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
-  const [users, setUsers] = useState<DashboardUser[]>([]);
+  const [_users, setUsers] = useState<DashboardUser[]>([]);
   const [securityAlerts, setSecurityAlerts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

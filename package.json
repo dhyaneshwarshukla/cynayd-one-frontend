@@ -6,13 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "export": "next build && next export"
+    "lint": "next lint"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.3.4",
+    "@scalar/api-reference-react": "^0.5.2",
     "@simplewebauthn/browser": "^13.3.0",
     "@sls-next/lambda-at-edge": "^3.7.0",
     "autoprefixer": "^10.4.17",

@@ -277,7 +277,6 @@ export default function SAMLIntegrationPage() {
 
   const idpEntityId = orgSamlConfig?.entityId || `${baseUrl}/saml`;
   const idpSsoUrl = orgSamlConfig?.ssoUrl || `${baseUrl}/api/saml/sso`;
-  const idpSloUrl = orgSamlConfig?.sloUrl || `${baseUrl}/api/saml/slo`;
 
   return (
     <UnifiedLayout

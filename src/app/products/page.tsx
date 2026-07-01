@@ -53,33 +53,20 @@ export default function ProductsPage() {
 
   const handleAppAccess = async (appSlug: string) => {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiBase}/api/apps/${appSlug}/sso-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+      const { code } = await apiClient.exchangeSsoCode(appSlug);
 
-      if (!response.ok) {
-        throw new Error('Failed to generate SSO token');
+      if (!code) {
+        throw new Error('Failed to generate SSO exchange code');
       }
 
-      const { ssoToken } = await response.json();
-
-      // Find the app to get its actual URL
-      const app = apps.find(app => app.slug === appSlug);
+      const app = apps.find((item) => item.slug === appSlug);
       if (!app) {
         throw new Error('App not found');
       }
 
-      // Use the new SSO connect endpoint for proper redirection
       const baseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL || window.location.origin;
-      const connectUrl = `${baseUrl}/connect?sso_token=${ssoToken}&app_slug=${appSlug}`;
-      
-      console.log('Redirecting to app via SSO connect:', connectUrl);
-      console.log('App details:', { name: app.name, url: app.url, slug: app.slug });
+      const connectUrl = `${baseUrl}/connect?code=${encodeURIComponent(code)}&app_slug=${encodeURIComponent(appSlug)}`;
+
       window.open(connectUrl, '_blank');
     } catch (err) {
       setError('Failed to access app');

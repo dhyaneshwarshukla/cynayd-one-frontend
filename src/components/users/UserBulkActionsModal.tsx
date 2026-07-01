@@ -22,7 +22,7 @@ export const UserBulkActionsModal: React.FC<UserBulkActionsModalProps> = ({
   selectedCount,
   onAction,
   availableRoles,
-  isLoading = false,
+  isLoading: _isLoading = false,
 }) => {
   const [action, setAction] = useState<'delete' | 'activate' | 'deactivate' | 'changeRole'>('activate');
   const [role, setRole] = useState(availableRoles.length > 0 ? availableRoles[0].name.toLowerCase() : 'user');

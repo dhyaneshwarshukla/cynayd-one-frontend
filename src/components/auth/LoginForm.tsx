@@ -25,7 +25,7 @@ import {
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().optional(),
-  rememberMe: z.boolean().optional().default(false),
+  rememberMe: z.coerce.boolean().optional().default(false),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -80,7 +80,6 @@ export const LoginForm: React.FC = () => {
   const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
   const { isLoading, resendVerification, setUserDirectly, triggerLoginSuccess } = useAuth();
   const router = useRouter();
-  const formLoadedAtRef = useRef(Date.now());
   const [honeypot, setHoneypot] = useState('');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [magicLinkBusy, setMagicLinkBusy] = useState(false);
@@ -100,7 +99,6 @@ export const LoginForm: React.FC = () => {
   const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [otpCode, setOtpCode] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
   const [showAccountPicker, setShowAccountPicker] = useState(false);

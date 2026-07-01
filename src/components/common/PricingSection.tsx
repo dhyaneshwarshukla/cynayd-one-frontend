@@ -115,7 +115,7 @@ export default function PricingSection({ highlightPlan }: PricingSectionProps) {
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {plans.map((plan, index) => {
+          {plans.map((plan) => {
             const pricing = getPriceForPeriod(plan.pricings);
             const isHighlighted = plan.slug === highlightPlan || plan.isDefault;
             const features = parseFeatures(plan.features);

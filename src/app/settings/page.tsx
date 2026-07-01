@@ -17,7 +17,7 @@ import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import { PINSetupModal } from '@/components/auth/PINSetupModal';
 import { PasskeyManager } from '@/components/security/PasskeyManager';
 import PlanManagement from '@/components/admin/PlanManagement';
-import { isAdminUser, isOrgAdmin } from '@/utils/tenant';
+import { isAdminUser } from '@/utils/tenant';
 
 const VALID_TABS = ['profile', 'security', 'preferences', 'plan', 'organization'] as const;
 type TabId = (typeof VALID_TABS)[number];
@@ -99,7 +99,6 @@ function SettingsPageContent() {
   const searchParams = useSearchParams();
 
   const userIsAdmin = isAdminUser(user?.role);
-  const userIsOrgAdmin = isOrgAdmin(user?.role);
 
   const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);

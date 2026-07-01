@@ -120,6 +120,10 @@ export interface PinLock {
   inactivityTimeoutMs?: number;
 }
 
+export interface LogoutResult {
+  redirected: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -405,8 +409,13 @@ export interface SystemSettings {
 class ApiClient {
   private baseURL: string;
   private authToken: string | null;
+  private cookieSessionActive = false;
+  private stepUpToken: string | null = null;
+  private stepUpTokenExpiresAt = 0;
   private sessionInvalidatedHandler: (() => void) | null = null;
+  private refreshInFlight: Promise<boolean> | null = null;
   private static readonly SESSION_ID_KEY = 'login_session_id';
+  private static readonly STEP_UP_TTL_MS = 5 * 60 * 1000;
 
   constructor() {
     this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -472,15 +481,89 @@ class ApiClient {
     }
   }
 
-  private handleSessionRevoked(): void {
-    void fetch(`${this.baseURL}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => {});
+  private clearLocalAuthState(): void {
     this.removeStoredToken();
+    this.cookieSessionActive = false;
+    this.stepUpToken = null;
+    this.stepUpTokenExpiresAt = 0;
     this.clearMustEnrollMfa();
     this.clearStoredSessionId();
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('step_up_token');
+    }
+  }
+
+  private redirectToBrowserLogout(): void {
+    window.location.href = `${this.baseURL}/api/auth/logout`;
+  }
+
+  private handleSessionRevoked(): void {
+    if (typeof window !== 'undefined') {
+      this.redirectToBrowserLogout();
+      return;
+    }
+    this.clearLocalAuthState();
     this.sessionInvalidatedHandler?.();
+  }
+
+  private isSessionRevokedError(
+    status: number,
+    endpoint: string,
+    errorMessage: string,
+    errorData: Record<string, unknown>
+  ): boolean {
+    if (status !== 401) return false;
+    if (
+      endpoint.endsWith('/api/auth/activity') ||
+      endpoint.endsWith('/api/auth/pin/verify') ||
+      endpoint.includes('/api/auth/login/challenge/') ||
+      endpoint.endsWith('/api/auth/login/password')
+    ) {
+      return false;
+    }
+    return (
+      errorMessage.toLowerCase().includes('session revoked') ||
+      errorMessage.toLowerCase().includes('session expired') ||
+      errorData.error === 'Session revoked' ||
+      errorData.error === 'Session expired'
+    );
+  }
+
+  /** Rotate session using httpOnly refresh cookie (no JS access to refresh token). */
+  async restoreSession(): Promise<boolean> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+
+    this.refreshInFlight = (async () => {
+      try {
+        const response = await fetch(`${this.baseURL}/api/auth/refresh-token`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        if (!response.ok) {
+          return false;
+        }
+
+        const data = (await response.json().catch(() => ({}))) as {
+          accessToken?: string;
+        };
+        if (data.accessToken) {
+          this.setInMemoryToken(data.accessToken);
+        }
+        this.cookieSessionActive = true;
+        return true;
+      } catch {
+        return false;
+      } finally {
+        this.refreshInFlight = null;
+      }
+    })();
+
+    return this.refreshInFlight;
   }
 
   private removeStoredToken(): void {
@@ -491,7 +574,8 @@ class ApiClient {
   // HTTP request helper
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    allowSessionRefresh = true
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const headers: Record<string, string> = {
@@ -560,17 +644,26 @@ class ApiClient {
       }
 
       if (
-        !endpoint.endsWith('/api/auth/activity') &&
-        !endpoint.endsWith('/api/auth/pin/verify') &&
-        !endpoint.includes('/api/auth/login/challenge/') &&
-        !endpoint.endsWith('/api/auth/login/password') &&
-        response.status === 401 &&
-        (errorMessage.toLowerCase().includes('session revoked') ||
-          errorMessage.toLowerCase().includes('session expired') ||
-          errorData.error === 'Session revoked' ||
-          errorData.error === 'Session expired')
+        this.isSessionRevokedError(
+          response.status,
+          endpoint,
+          errorMessage,
+          errorData
+        )
       ) {
         this.handleSessionRevoked();
+      } else if (
+        allowSessionRefresh &&
+        response.status === 401 &&
+        !endpoint.includes('/api/auth/refresh-token') &&
+        !endpoint.includes('/api/auth/login') &&
+        !endpoint.includes('/api/auth/logout') &&
+        !endpoint.includes('/api/auth/register')
+      ) {
+        const restored = await this.restoreSession();
+        if (restored) {
+          return this.request<T>(endpoint, options, false);
+        }
       }
       
       const error = new Error(errorMessage) as any;
@@ -597,7 +690,7 @@ class ApiClient {
       }
       try {
         return JSON.parse(text);
-      } catch (e) {
+      } catch {
         // If JSON parsing fails, return undefined for void responses
         return undefined as any;
       }
@@ -798,42 +891,50 @@ class ApiClient {
     return response;
   }
 
-  async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
-    const response = await this.request<{ accessToken: string }>('/api/auth/refresh-token', {
-      method: 'POST',
-      body: JSON.stringify({ refreshToken }),
-    });
+  async refreshToken(refreshToken?: string): Promise<{ accessToken: string }> {
+    const response = await this.request<{ accessToken: string }>(
+      '/api/auth/refresh-token',
+      {
+        method: 'POST',
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+      },
+      false
+    );
     
     this.setInMemoryToken(response.accessToken);
+    this.cookieSessionActive = true;
     return response;
   }
 
-  async logout(): Promise<void> {
+  async logout(): Promise<LogoutResult> {
     try {
       await this.request('/api/auth/logout', {
         method: 'POST',
       });
-    } catch (error) {
-      console.warn('Logout request failed, but clearing local state');
-    } finally {
-      this.removeStoredToken();
-      this.clearMustEnrollMfa();
-      this.clearStoredSessionId();
+      this.clearLocalAuthState();
+      return { redirected: false };
+    } catch {
+      console.warn('Logout request failed, falling back to browser logout');
+      if (typeof window !== 'undefined') {
+        this.redirectToBrowserLogout();
+        return { redirected: true };
+      }
+      this.clearLocalAuthState();
+      return { redirected: false };
     }
   }
 
-  async logoutAll(): Promise<void> {
+  async logoutAll(): Promise<LogoutResult> {
     try {
       await this.request('/api/auth/logoutAll', {
         method: 'POST',
       });
-    } catch (error) {
+    } catch {
       console.warn('LogoutAll request failed, but clearing local state');
     } finally {
-      this.removeStoredToken();
-      this.clearMustEnrollMfa();
-      this.clearStoredSessionId();
+      this.clearLocalAuthState();
     }
+    return { redirected: false };
   }
 
   async resetPassword(email: string): Promise<{ message: string }> {
@@ -852,7 +953,9 @@ class ApiClient {
 
   // User endpoints
   async getCurrentUser(): Promise<User> {
-    return this.request<User>('/api/users/me');
+    const user = await this.request<User>('/api/users/me');
+    this.cookieSessionActive = true;
+    return user;
   }
 
   async updateProfile(data: Partial<User>): Promise<User> {
@@ -953,21 +1056,15 @@ class ApiClient {
       let finalResult: any = null;
 
       // Track upload progress
-      let uploadComplete = false;
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {
           const progress = Math.round((e.loaded / e.total) * 100);
           onProgress(progress);
-          // Mark upload as complete when it reaches 100%
-          if (progress >= 100) {
-            uploadComplete = true;
-          }
         }
       });
 
       // Track when upload completes (but before response)
       xhr.upload.addEventListener('load', () => {
-        uploadComplete = true;
         // Signal that upload is done, processing has started
         if (onProgress) {
           onProgress(100);
@@ -995,7 +1092,7 @@ class ApiClient {
               } else if (parsed.type === 'complete') {
                 finalResult = parsed;
               }
-            } catch (e) {
+            } catch {
               // Ignore incomplete JSON chunks
             }
           }
@@ -1014,7 +1111,7 @@ class ApiClient {
                 if (parsed.type === 'complete') {
                   finalResult = parsed;
                 }
-              } catch (e) {
+              } catch {
                 // Ignore parse errors
               }
             }
@@ -1029,14 +1126,14 @@ class ApiClient {
               const response = JSON.parse(xhr.responseText);
               resolve(response);
             }
-          } catch (e) {
+          } catch {
             reject(new Error('Failed to parse response'));
           }
         } else {
           try {
             const errorData = JSON.parse(xhr.responseText);
             reject(new Error(errorData.message || errorData.error || `HTTP error! status: ${xhr.status}`));
-          } catch (e) {
+          } catch {
             reject(new Error(`HTTP error! status: ${xhr.status}`));
           }
         }
@@ -1288,11 +1385,14 @@ class ApiClient {
     if (options?.endDate) params.append('endDate', options.endDate.toISOString());
     params.append('format', options?.format ?? 'csv');
 
+    const headers: Record<string, string> = {};
+    const token = this.getAuthToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${this.baseURL}/api/audit-logs/export?${params.toString()}`, {
-      headers: {
-        'Authorization': `Bearer ${this.getAuthToken()}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       credentials: 'include',
     });
 
@@ -1364,10 +1464,14 @@ class ApiClient {
 
   // Security Reports
   async exportSecurityReport(format: 'csv' | 'json'): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    const token = this.getAuthToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${this.baseURL}/api/security/report?format=${format}`, {
-      headers: {
-        Authorization: `Bearer ${this.getAuthToken()}`,
-      },
+      headers,
       credentials: 'include',
     });
 
@@ -1948,9 +2052,29 @@ class ApiClient {
     });
   }
 
-  async generateSSOToken(appSlug: string): Promise<{ ssoToken: string }> {
-    return this.request<{ ssoToken: string }>(`/api/apps/${appSlug}/sso-token`, {
+  async generateSSOToken(appSlug: string): Promise<{ code: string; expiresIn: number }> {
+    return this.exchangeSsoCode(appSlug);
+  }
+
+  async exchangeSsoCode(appSlug: string): Promise<{ code: string; expiresIn: number }> {
+    return this.request<{ code: string; expiresIn: number }>('/api/sso/exchange-code', {
       method: 'POST',
+      body: JSON.stringify({ appSlug }),
+    });
+  }
+
+  async redeemSsoCode(
+    code: string,
+    appSlug: string
+  ): Promise<{
+    success: boolean;
+    ssoToken: string;
+    user: User;
+    app: { id: string; name: string; slug: string; url?: string | null };
+  }> {
+    return this.request('/api/sso/redeem-code', {
+      method: 'POST',
+      body: JSON.stringify({ code, appSlug }),
     });
   }
 
@@ -2565,8 +2689,15 @@ class ApiClient {
   }
 
   getStepUpToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem('step_up_token');
+    if (this.stepUpToken && Date.now() < this.stepUpTokenExpiresAt) {
+      return this.stepUpToken;
+    }
+    this.stepUpToken = null;
+    this.stepUpTokenExpiresAt = 0;
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('step_up_token');
+    }
+    return null;
   }
 
   async withStepUp<T>(fn: (stepUpToken: string) => Promise<T>): Promise<T> {
@@ -2584,7 +2715,8 @@ class ApiClient {
       : null;
     if (!password) throw new Error('Step-up cancelled');
     const newToken = await this.performStepUp(password);
-    sessionStorage.setItem('step_up_token', newToken);
+    this.stepUpToken = newToken;
+    this.stepUpTokenExpiresAt = Date.now() + ApiClient.STEP_UP_TTL_MS;
     return fn(newToken);
   }
 
@@ -2620,7 +2752,7 @@ class ApiClient {
 
   // Utility methods
   isAuthenticated(): boolean {
-    return !!this.authToken;
+    return !!this.authToken || this.cookieSessionActive;
   }
 
   getAuthToken(): string | null {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../common/Button';
 import { Menu } from '@headlessui/react';
@@ -20,7 +20,6 @@ export const UniversalHeader: React.FC<UniversalHeaderProps> = ({
   variant = 'dashboard'
 }) => {
   const { user, isAuthenticated, logoutCurrentDevice, logoutEverywhere } = useAuth();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const isLanding = variant === 'landing';
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'admin' || user?.role === 'super_admin';

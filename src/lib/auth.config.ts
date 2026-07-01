@@ -81,7 +81,7 @@ export const authConfig: NextAuthOptions = {
     verifyRequest: "/auth/verify-request",
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user: _user, account, profile: _profile }) {
       if (account?.provider) {
         try {
           // For OAuth providers, we'll handle user creation in the backend

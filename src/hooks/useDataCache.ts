@@ -158,7 +158,7 @@ class DataCache {
         // This would be implemented by the user to sync with the server
         // await syncChange(change);
         this.pendingChanges.delete(change.id);
-      } catch (error) {
+      } catch {
         change.retryCount++;
         // Exponential backoff
         setTimeout(() => {

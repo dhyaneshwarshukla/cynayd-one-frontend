@@ -8,7 +8,6 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
-import AppManagement from '@/components/admin/AppManagement';
 import OrganizationUserManagement from '@/components/admin/OrganizationUserManagement';
 import OrganizationAppManagement from '@/components/admin/OrganizationAppManagement';
 import OrganizationSettings from '@/components/admin/OrganizationSettings';
@@ -19,9 +18,6 @@ import {
   ChartBarIcon, 
   CogIcon,
   PlusIcon,
-  EyeIcon,
-  PencilIcon,
-  TrashIcon,
   BellIcon,
   ShieldCheckIcon,
   ClockIcon,

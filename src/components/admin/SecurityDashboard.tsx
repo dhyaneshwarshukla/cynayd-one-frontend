@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Card } from '../common/Card';
+import React, { useState } from 'react';
 import { Button } from '../common/Button';
 import { Alert } from '../common/Alert';
 import { AuditLogViewer } from './AuditLogViewer';

@@ -7,7 +7,7 @@ import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Alert } from '@/components/common/Alert';
 import { apiClient } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 
 interface App {
   id: string;
@@ -48,7 +48,7 @@ export default function AdminRegisterPage() {
       setError(null);
       
       // Register the admin user
-      const response = await apiClient.register({
+      await apiClient.register({
         name: adminData.name,
         email: adminData.email,
         password: adminData.password,

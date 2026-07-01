@@ -271,10 +271,10 @@ interface MultiStepProgressProps {
 
 export const MultiStepProgress: React.FC<MultiStepProgressProps> = ({
   steps,
-  currentStep,
+  currentStep: _currentStep,
   className = '',
   showLabels = true,
-  variant = 'default',
+  variant: _variant = 'default',
 }) => {
   const getStepStatusClasses = (status: Step['status']) => {
     switch (status) {

@@ -6,9 +6,8 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { 
-  CogIcon, 
   BuildingOfficeIcon,
   PencilIcon,
   CheckCircleIcon,
@@ -41,7 +40,6 @@ interface OrganizationInfo {
 
 export default function OrganizationSettings({ 
   organizationId, 
-  currentUserRole,
   dashboardStats 
 }: OrganizationSettingsProps) {
   const [organization, setOrganization] = useState<OrganizationInfo | null>(null);

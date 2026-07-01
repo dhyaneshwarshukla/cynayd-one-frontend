@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Card } from '@/components/common/Card';
@@ -12,18 +13,13 @@ import {
   LifebuoyIcon,
   ChatBubbleLeftRightIcon,
   QuestionMarkCircleIcon,
-  EnvelopeIcon,
-  PhoneIcon,
   ClockIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   UserIcon,
   ChartBarIcon,
-  DocumentTextIcon,
-  BellIcon,
 } from '@heroicons/react/24/outline';
 
 interface SupportTicket {
@@ -61,7 +57,8 @@ interface FAQ {
 }
 
 export default function AdminSupportPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'tickets' | 'faqs' | 'analytics'>('tickets');
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,13 +80,26 @@ export default function AdminSupportPage() {
     category: 'general' as 'technical' | 'billing' | 'feature-request' | 'bug-report' | 'general',
   });
 
+  const userRole = user?.role?.toUpperCase();
+  const isAdminUser = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace(`/auth/login?next=${encodeURIComponent('/admin/support')}`);
+      return;
+    }
+    if (!authLoading && isAuthenticated && !isAdminUser) {
+      router.replace('/403');
+    }
+  }, [authLoading, isAuthenticated, isAdminUser, router]);
+
   useEffect(() => {
     document.title = 'Support Management | CYNAYD One';
-    if (!authLoading && user) {
+    if (!authLoading && user && isAdminUser) {
       fetchData();
       fetchUsers();
     }
-  }, [authLoading, user, filterStatus, filterPriority, filterCategory]);
+  }, [authLoading, user, isAdminUser, filterStatus, filterPriority, filterCategory]);
 
   const fetchUsers = async () => {
     try {
@@ -322,7 +332,7 @@ export default function AdminSupportPage() {
     totalFAQs: faqs.length,
   };
 
-  if (authLoading || loading) {
+  if (authLoading || loading || !isAdminUser) {
     return (
       <UnifiedLayout title="Support Management" subtitle="Manage support tickets and FAQs" variant="dashboard">
         <div className="flex items-center justify-center py-20">

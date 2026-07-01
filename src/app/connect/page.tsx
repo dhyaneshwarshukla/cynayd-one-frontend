@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState, Suspense } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { apiClient } from '@/lib/api-client';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { Button } from '@/components/common/Button';
-import { 
+import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 
 interface SSOConnectState {
@@ -21,109 +22,161 @@ interface SSOConnectState {
   error?: string;
 }
 
+function appendDeprecatedSsoToken(baseUrl: string, token: string): string {
+  console.warn(
+    '[connect] sso_token in URL is deprecated; integrate POST /api/sso/redeem-code with ?code= instead'
+  );
+  const delimiter = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${delimiter}sso_token=${encodeURIComponent(token)}`;
+}
+
+function appendExchangeCode(baseUrl: string, code: string): string {
+  const delimiter = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${delimiter}code=${encodeURIComponent(code)}`;
+}
+
 function ConnectPageContent() {
   const searchParams = useSearchParams();
   const [state, setState] = useState<SSOConnectState>({
     status: 'loading',
-    message: 'Validating SSO token...'
+    message: 'Connecting to app...',
   });
 
-  const ssoToken = searchParams.get('sso_token');
+  const exchangeCode = searchParams.get('code');
+  const legacyToken = searchParams.get('sso_token');
   const appSlug = searchParams.get('app_slug');
 
-  useEffect(() => {
-    if (!ssoToken) {
+  const handleCodeConnect = useCallback(async () => {
+    if (!exchangeCode || !appSlug) {
       setState({
         status: 'error',
-        message: 'No SSO token provided',
-        error: 'Missing SSO token in URL parameters'
+        message: 'Missing parameters',
+        error: 'Both code and app_slug are required',
       });
       return;
     }
 
-    handleSSOConnect();
-  }, [ssoToken, appSlug]);
-
-  const handleSSOConnect = async () => {
     try {
+      setState({ status: 'loading', message: 'Redeeming exchange code...' });
+
+      const result = await apiClient.redeemSsoCode(exchangeCode, appSlug);
+      const appUrl = result.app.url?.trim();
+
+      if (appUrl) {
+        const redirectUrl = appendDeprecatedSsoToken(appUrl, result.ssoToken);
+        setState({
+          status: 'redirecting',
+          message: 'Redirecting to app...',
+          redirectUrl,
+        });
+        window.location.href = redirectUrl;
+        return;
+      }
+
       setState({
-        status: 'loading',
-        message: 'Connecting to app...'
+        status: 'success',
+        message: 'Successfully connected',
+        redirectUrl: `/app-sso?app=${encodeURIComponent(appSlug)}`,
       });
-
-      // Build the API URL with proper parameters - call the backend API
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const apiUrl = new URL('/api/sso/connect', apiBaseUrl);
-      apiUrl.searchParams.set('sso_token', ssoToken!);
-      
-      // Only add app_slug if it exists
-      if (appSlug) {
-        apiUrl.searchParams.set('app_slug', appSlug);
-      }
-
-      console.log('Calling SSO connect API:', apiUrl.toString());
-
-      // Call the SSO connect API endpoint
-      const response = await fetch(apiUrl.toString(), {
-        method: 'GET',
-        redirect: 'manual', // Handle redirects manually
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-
-      console.log('SSO connect response:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      if (response.status === 302) {
-        // Get the redirect URL from the Location header
-        const redirectUrl = response.headers.get('Location');
-        console.log('Got redirect URL from API:', redirectUrl);
-        
-        if (redirectUrl) {
-          setState({
-            status: 'redirecting',
-            message: 'Redirecting to app...',
-            redirectUrl
-          });
-          
-          // Redirect immediately to the app URL
-          window.location.href = redirectUrl;
-        } else {
-          throw new Error('No redirect URL provided');
-        }
-      } else if (response.ok) {
-        // Handle successful response
-        const data = await response.json();
-        setState({
-          status: 'success',
-          message: 'Successfully connected to app',
-          redirectUrl: data.redirectUrl
-        });
-      } else {
-        // Handle error response
-        const errorData = await response.json();
-        setState({
-          status: 'error',
-          message: 'Failed to connect to app',
-          error: errorData.error || 'Unknown error occurred'
-        });
-      }
     } catch (error) {
-      console.error('SSO connect error:', error);
+      console.error('SSO code redeem error:', error);
       setState({
         status: 'error',
         message: 'Connection failed',
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
       });
     }
-  };
+  }, [exchangeCode, appSlug]);
+
+  const handleLegacyConnect = useCallback(async () => {
+    if (!legacyToken) return;
+
+    console.warn(
+      '[connect] sso_token query parameter is deprecated; use exchange code flow instead'
+    );
+
+    try {
+      setState({ status: 'loading', message: 'Validating SSO token...' });
+
+      const result = await apiClient.validateSSOToken(legacyToken, appSlug ?? undefined);
+      const app = appSlug
+        ? result.accessibleApps.find((a) => a.slug === appSlug)
+        : result.accessibleApps[0];
+
+      const appDetails = appSlug ? await apiClient.getAppBySlug(appSlug) : null;
+      const appUrl = appDetails?.url?.trim() || app?.url?.trim();
+
+      if (appUrl) {
+        const redirectUrl = appendDeprecatedSsoToken(appUrl, legacyToken);
+        setState({
+          status: 'redirecting',
+          message: 'Redirecting to app...',
+          redirectUrl,
+        });
+        window.location.href = redirectUrl;
+        return;
+      }
+
+      setState({
+        status: 'success',
+        message: 'Token validated',
+        redirectUrl: appSlug ? `/app-sso?app=${encodeURIComponent(appSlug)}` : '/products',
+      });
+    } catch (error) {
+      console.error('Legacy SSO connect error:', error);
+      setState({
+        status: 'error',
+        message: 'Connection failed',
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    }
+  }, [legacyToken, appSlug]);
+
+  const handleForwardCodeToApp = useCallback(async () => {
+    if (!exchangeCode || !appSlug) return;
+
+    try {
+      setState({ status: 'loading', message: 'Resolving app URL...' });
+      const appDetails = await apiClient.getAppBySlug(appSlug);
+      const appUrl = appDetails?.url?.trim();
+
+      if (!appUrl) {
+        await handleCodeConnect();
+        return;
+      }
+
+      const redirectUrl = appendExchangeCode(appUrl, exchangeCode);
+      setState({
+        status: 'redirecting',
+        message: 'Redirecting to app...',
+        redirectUrl,
+      });
+      window.location.href = redirectUrl;
+    } catch {
+      await handleCodeConnect();
+    }
+  }, [exchangeCode, appSlug, handleCodeConnect]);
+
+  useEffect(() => {
+    if (exchangeCode && appSlug) {
+      void handleForwardCodeToApp();
+    } else if (legacyToken) {
+      void handleLegacyConnect();
+    } else {
+      setState({
+        status: 'error',
+        message: 'No SSO credentials provided',
+        error: 'Missing code or SSO token in URL parameters',
+      });
+    }
+  }, [exchangeCode, legacyToken, appSlug, handleForwardCodeToApp, handleLegacyConnect]);
 
   const handleRetry = () => {
-    handleSSOConnect();
+    if (exchangeCode && appSlug) {
+      void handleForwardCodeToApp();
+    } else if (legacyToken) {
+      void handleLegacyConnect();
+    }
   };
 
   const handleManualRedirect = () => {
@@ -170,37 +223,26 @@ function ConnectPageContent() {
       <div className="max-w-md mx-auto">
         <Card className="p-8 text-center">
           <div className="flex flex-col items-center space-y-6">
-            {/* Status Icon */}
-            <div className="flex items-center justify-center">
-              {getStatusIcon()}
-            </div>
+            <div className="flex items-center justify-center">{getStatusIcon()}</div>
 
-            {/* Status Message */}
             <div className="space-y-2">
               <h3 className={`text-lg font-semibold ${getStatusColor()}`}>
                 {state.message}
               </h3>
-              
+
               {state.status === 'loading' && (
                 <p className="text-sm text-gray-600">
                   Please wait while we validate your access...
                 </p>
               )}
-              
+
               {state.status === 'redirecting' && (
                 <p className="text-sm text-gray-600">
                   You will be redirected automatically
                 </p>
               )}
-              
-              {state.status === 'success' && (
-                <p className="text-sm text-gray-600">
-                  You can now access the application
-                </p>
-              )}
             </div>
 
-            {/* Error Details */}
             {state.status === 'error' && state.error && (
               <Alert variant="error" className="text-left">
                 <div className="space-y-2">
@@ -210,7 +252,6 @@ function ConnectPageContent() {
               </Alert>
             )}
 
-            {/* Action Buttons */}
             <div className="flex flex-col space-y-3 w-full">
               {state.status === 'error' && (
                 <Button
@@ -221,35 +262,25 @@ function ConnectPageContent() {
                   Try Again
                 </Button>
               )}
-              
+
               {state.status === 'success' && state.redirectUrl && (
                 <Button
                   onClick={handleManualRedirect}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
                 >
                   <GlobeAltIcon className="w-4 h-4 mr-2" />
-                  Go to App
+                  Continue
                 </Button>
-              )}
-              
-              {state.status === 'redirecting' && (
-                <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
-                  <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                  <span>Redirecting...</span>
-                </div>
               )}
             </div>
 
-            {/* Debug Information (only in development) */}
             {process.env.NODE_ENV === 'development' && (
               <div className="mt-6 p-4 bg-gray-100 rounded-lg text-left text-xs">
                 <p className="font-medium mb-2">Debug Information:</p>
                 <p><strong>App Slug:</strong> {appSlug || 'undefined'}</p>
-                <p><strong>Token Present:</strong> {ssoToken ? 'Yes' : 'No'}</p>
+                <p><strong>Code Present:</strong> {exchangeCode ? 'Yes' : 'No'}</p>
+                <p><strong>Legacy Token:</strong> {legacyToken ? 'Yes' : 'No'}</p>
                 <p><strong>Status:</strong> {state.status}</p>
-                {state.redirectUrl && (
-                  <p><strong>Redirect URL:</strong> {state.redirectUrl}</p>
-                )}
               </div>
             )}
           </div>
@@ -261,23 +292,17 @@ function ConnectPageContent() {
 
 export default function ConnectPage() {
   return (
-    <Suspense fallback={
-      <UnifiedLayout title="SSO Connect" subtitle="Loading...">
-        <div className="max-w-md mx-auto">
-          <Card className="p-8 text-center">
-            <div className="flex flex-col items-center space-y-6">
+    <Suspense
+      fallback={
+        <UnifiedLayout title="SSO Connect" subtitle="Loading...">
+          <div className="max-w-md mx-auto">
+            <Card className="p-8 text-center">
               <LoadingSpinner size="lg" />
-              <h3 className="text-lg font-semibold text-blue-600">
-                Loading connection...
-              </h3>
-              <p className="text-sm text-gray-600">
-                Please wait while we prepare your connection...
-              </p>
-            </div>
-          </Card>
-        </div>
-      </UnifiedLayout>
-    }>
+            </Card>
+          </div>
+        </UnifiedLayout>
+      }
+    >
       <ConnectPageContent />
     </Suspense>
   );

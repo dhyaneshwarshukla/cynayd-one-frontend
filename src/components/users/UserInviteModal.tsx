@@ -42,7 +42,7 @@ export const UserInviteModal: React.FC<UserInviteModalProps> = ({
   availableOrganizations = [],
   isSuperAdmin = false,
   defaultOrganizationId,
-  isLoading = false,
+  isLoading: _isLoading = false,
 }) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');

@@ -5,7 +5,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
-import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient, Plan } from '@/lib/api-client';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
@@ -49,7 +48,7 @@ interface OrganizationStats {
 
 export default function OrganizationsPage() {
   const { user, isAuthenticated } = useAuth();
-  const [toasts, toastActions] = useToast();
+  const [, toastActions] = useToast();
 
   // Set page title
   useEffect(() => {

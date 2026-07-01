@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '../common/Button';
-import { Input } from '../common/Input';
-import { AppCard, AppWithAccess } from './AppCard';
+import { AppWithAccess } from './AppCard';
 
 interface User {
   id: string;
@@ -56,7 +55,7 @@ export const AppAccessModal: React.FC<AppAccessModalProps> = ({
       setSelectedUserId('');
       setQuota('');
       setExpiresAt('');
-    } catch (err) {
+    } catch {
       setError('Failed to assign access');
     } finally {
       setIsLoading(false);
@@ -68,7 +67,7 @@ export const AppAccessModal: React.FC<AppAccessModalProps> = ({
       setIsLoading(true);
       setError(null);
       await onRevokeAccess(userId);
-    } catch (err) {
+    } catch {
       setError('Failed to revoke access');
     } finally {
       setIsLoading(false);
@@ -80,7 +79,7 @@ export const AppAccessModal: React.FC<AppAccessModalProps> = ({
       setIsLoading(true);
       setError(null);
       await onUpdateQuota(userId, newQuota);
-    } catch (err) {
+    } catch {
       setError('Failed to update quota');
     } finally {
       setIsLoading(false);

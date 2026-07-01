@@ -35,9 +35,9 @@ function getAppBaseUrl(app: App): string | null {
   return null;
 }
 
-function appendSsoToken(baseUrl: string, ssoToken: string): string {
+function appendExchangeCode(baseUrl: string, code: string): string {
   const delimiter = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${delimiter}sso_token=${encodeURIComponent(ssoToken)}`;
+  return `${baseUrl}${delimiter}code=${encodeURIComponent(code)}`;
 }
 
 function openSamlAutoSubmitWindow(html: string, appName: string): void {
@@ -59,21 +59,21 @@ async function launchViaSaml(appSlug: string, appName: string): Promise<void> {
   openSamlAutoSubmitWindow(html, appName);
 }
 
-async function launchViaJwtSsoToken(appDetails: App): Promise<void> {
+async function launchViaExchangeCode(appDetails: App): Promise<void> {
   const baseUrl = getAppBaseUrl(appDetails);
   if (!baseUrl) {
     throw new Error('Application URL or domain is not configured. Please update this app in Admin > Apps.');
   }
 
-  console.info(`[launch-app] "${appDetails.slug}" -> JWT SSO token path (POST /api/apps/${appDetails.slug}/sso-token)`);
+  console.info(`[launch-app] "${appDetails.slug}" -> SSO exchange code path (POST /api/sso/exchange-code)`);
 
-  const result = await apiClient.generateSSOToken(appDetails.slug);
+  const { code } = await apiClient.exchangeSsoCode(appDetails.slug);
 
-  if (!result || typeof result.ssoToken !== 'string' || !result.ssoToken) {
-    throw new Error(`Server did not return a valid SSO token for "${appDetails.name}". Check backend logs.`);
+  if (!code) {
+    throw new Error(`Server did not return a valid exchange code for "${appDetails.name}". Check backend logs.`);
   }
 
-  const redirectUrl = appendSsoToken(baseUrl, result.ssoToken);
+  const redirectUrl = appendExchangeCode(baseUrl, code);
   const appWindow = window.open(redirectUrl, '_blank');
   if (!appWindow) {
     throw new Error('Popup blocked. Please allow popups for this site to access ' + appDetails.name + '.');
@@ -83,10 +83,7 @@ async function launchViaJwtSsoToken(appDetails: App): Promise<void> {
 /**
  * Launch an app using the correct SSO mechanism:
  *   - SAML enabled in app.metadata  -> POST /api/apps/:slug/saml/sso  (auto-submit SAML form)
- *   - SAML NOT enabled              -> POST /api/apps/:slug/sso-token (5-min JWT, redirect with ?sso_token=)
- *
- * The decision is made from the app's metadata fetched fresh from
- * GET /api/apps/by-slug/:slug, which is the single source of truth.
+ *   - SAML NOT enabled              -> POST /api/sso/exchange-code (opaque code in redirect URL)
  */
 export async function launchAppWithFallback(appSlug: string): Promise<void> {
   const appDetails = await apiClient.getAppBySlug(appSlug);
@@ -105,5 +102,5 @@ export async function launchAppWithFallback(appSlug: string): Promise<void> {
     return;
   }
 
-  await launchViaJwtSsoToken(appDetails);
+  await launchViaExchangeCode(appDetails);
 }

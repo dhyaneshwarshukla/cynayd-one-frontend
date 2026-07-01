@@ -19,7 +19,6 @@ import {
   normalizeSeverity,
 } from '@/components/security/security-event-utils';
 import {
-  SecuritySettingsPanel,
   mapApiToSecuritySettings,
   type SecuritySettingsFormState,
 } from '@/components/security/SecuritySettingsPanel';
@@ -85,8 +84,7 @@ function SecurityPageContent() {
   });
   const [threatAlerts, setThreatAlerts] = useState<ThreatAlert[]>([]);
   const [ipWhitelist, setIpWhitelist] = useState<string[]>([]);
-  const [settings, setSettings] = useState<SecuritySettingsFormState>(DEFAULT_SETTINGS);
-  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [_settings, setSettings] = useState<SecuritySettingsFormState>(DEFAULT_SETTINGS);
 
   const [severityFilter, setSeverityFilter] = useState('all');
   const [eventTypeFilter, setEventTypeFilter] = useState('all');
@@ -253,18 +251,6 @@ function SecurityPageContent() {
       notify('Report exported', 'success');
     } catch {
       notify('Export failed', 'error');
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    setSettingsSaving(true);
-    try {
-      await apiClient.updateSecuritySettings(settings);
-      notify('Settings saved', 'success');
-    } catch {
-      notify('Failed to save settings', 'error');
-    } finally {
-      setSettingsSaving(false);
     }
   };
 

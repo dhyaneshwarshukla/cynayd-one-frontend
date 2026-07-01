@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, Organization, Plan, Pricing, type SecurityEvent } from '@/lib/api-client';
+import { apiClient, Organization, Pricing, type SecurityEvent } from '@/lib/api-client';
 import {
   formatEventTypeLabel,
   normalizeSeverity,
@@ -10,7 +10,6 @@ import {
 } from '@/components/security/security-event-utils';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
-import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
@@ -81,14 +80,14 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     activeAppAccess: 0
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [_organizations, setOrganizations] = useState<any[]>([]);
   const [securityAlerts, setSecurityAlerts] = useState<SecurityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // App-related state
-  const [apps, setApps] = useState<App[]>([]);
-  const [users, setUsers] = useState<DashboardUser[]>([]);
+  const [_apps, setApps] = useState<App[]>([]);
+  const [_users, setUsers] = useState<DashboardUser[]>([]);
   
   // Plan-related state
   const [organizationPlan, setOrganizationPlan] = useState<Organization | null>(null);

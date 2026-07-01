@@ -3,7 +3,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from './Button';
 import { Card } from './Card';
-import { Alert } from './Alert';
 
 interface Props {
   children: ReactNode;

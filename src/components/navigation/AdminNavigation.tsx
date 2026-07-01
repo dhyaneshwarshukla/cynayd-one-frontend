@@ -25,20 +25,11 @@ const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): 
   });
 };
 
-const getRoleDisplayName = (role: string): string => {
-  const roleMap: { [key: string]: string } = {
-    'SUPER_ADMIN': 'Super Admin',
-    'ADMIN': 'Admin',
-    'USER': 'User'
-  };
-  return roleMap[role] || role;
-};
 import {
   HomeIcon,
   UsersIcon,
   CogIcon,
   ChartBarIcon,
-  DocumentTextIcon,
   ShieldCheckIcon,
   Squares2X2Icon,
   CommandLineIcon,
@@ -94,13 +85,6 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
     { name: "Support", href: "/admin/support", icon: LifebuoyIcon, permission: 'support' },
     { name: "Settings", href: "/settings", icon: CogIcon, permission: 'settings' },
-  ];
-
-  // Combine all navigation for rendering
-  const navigation = [
-    ...mainNavigation,
-    ...managementNavigation,
-    ...systemNavigation,
   ];
 
   const isMobile = variant === 'mobile';

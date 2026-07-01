@@ -8,7 +8,6 @@ import { AppIcon } from '@/components/common/AppIcon';
 import {
   ArrowTopRightOnSquareIcon,
   ClockIcon,
-  CheckCircleIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 

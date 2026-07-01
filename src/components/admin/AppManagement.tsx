@@ -7,19 +7,16 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ResponsiveGrid, ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { Input } from '@/components/common/Input';
 import { AppIcon } from '@/components/common/AppIcon';
-import { apiClient, UserAppAccess as ApiUserAppAccess } from '@/lib/api-client';
+import { apiClient } from '@/lib/api-client';
 import { 
   PlusIcon, 
-  EyeIcon, 
   PencilIcon, 
   TrashIcon,
   UserPlusIcon,
   UsersIcon,
-  ClockIcon,
   CheckCircleIcon,
   XCircleIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 
@@ -114,11 +111,6 @@ export default function AppManagement() {
       console.log('Starting to fetch data...');
       console.log('Environment API URL:', process.env.NEXT_PUBLIC_API_URL || 'Not set');
       
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 10000); // 10 second timeout
-      });
-
       try {
         console.log('Attempting to fetch apps...');
         const appsData = await apiClient.getApps();

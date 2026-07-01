@@ -5,7 +5,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { UniversalHeader } from './UniversalHeader';
 import { AdminNavigation } from '../navigation/AdminNavigation';
 import { LoadingSpinner } from '../common/LoadingSpinner';
-import { Button } from '../common/Button';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';

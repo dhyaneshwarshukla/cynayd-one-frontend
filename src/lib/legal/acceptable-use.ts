@@ -1,4 +1,4 @@
-import { COMPANY_NAME, LEGAL_EMAIL, PRODUCT_NAME } from "./links";
+import { LEGAL_EMAIL, PRODUCT_NAME } from "./links";
 import type { LegalDocument } from "./types";
 
 export const acceptableUsePolicy: LegalDocument = {

@@ -1,6 +1,5 @@
 import React from 'react';
 import { Card } from '../common/Card';
-import { LoadingSpinner } from '../common/LoadingSpinner';
 
 interface ActivityItem {
   id: string;

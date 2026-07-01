@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
-import { apiClient, Plan, Pricing, App, AddOn } from '@/lib/api-client';
+import { apiClient, Plan, App, AddOn } from '@/lib/api-client';
 import { useToast } from '@/hooks/useToast';
 
 interface AppLimit {
@@ -40,8 +39,7 @@ interface PlanFormData {
 }
 
 export default function PlansManagementPage() {
-  const { user } = useAuth();
-  const [toasts, toastActions] = useToast();
+  const [, toastActions] = useToast();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
@@ -122,13 +120,6 @@ export default function PlansManagementPage() {
     } catch (error) {
       console.error('Error fetching add-ons:', error);
     }
-  };
-
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
   };
 
   const handleCreatePlan = async () => {

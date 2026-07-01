@@ -42,8 +42,7 @@ export default function ProfilePage() {
     register,
     handleSubmit,
     formState: { errors },
-    reset,
-    watch
+    reset
   } = useForm<ChangePasswordFormData>({
     resolver: zodResolver(changePasswordSchema),
   });

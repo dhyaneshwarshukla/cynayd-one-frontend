@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import apiClient, { User, LoginCredentials, RegisterData } from '../lib/api-client';
+import apiClient, { User, LoginCredentials, RegisterData, LogoutResult } from '../lib/api-client';
 import { clearSessionLocked, touchUserInteraction } from '../lib/session-lock-storage';
 
 interface AuthContextType {
@@ -76,8 +76,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             syncMustEnrollMfa();
             setIsLoading(false);
           }
-        } catch (error: any) {
-          // Only logout if we have a token but it's invalid
+        } catch {
+          // Expired access token: try silent refresh via httpOnly refresh cookie
+          const restored = await apiClient.restoreSession();
+          if (restored) {
+            try {
+              const userData = await apiClient.getCurrentUser();
+              if (isMounted) {
+                clearTimeout(timeoutId);
+                setUser(userData);
+                syncMustEnrollMfa();
+                setIsLoading(false);
+              }
+              return;
+            } catch {
+              // fall through
+            }
+          }
+
+          // Only logout if we have a stale in-memory token
           if (apiClient.getAuthToken()) {
             apiClient.logout();
           }
@@ -212,7 +229,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const verifyEmail = async (token: string) => {
     try {
       setIsLoading(true);
-      const response = await apiClient.verifyEmail(token);
+      await apiClient.verifyEmail(token);
       
       // Fetch full user profile to get all required fields
       const fullUser = await apiClient.getCurrentUser();
@@ -253,10 +270,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }
   };
 
-  const performLogout = async (logoutFn: () => Promise<void>) => {
+  const performLogout = async (logoutFn: () => Promise<LogoutResult>) => {
     try {
       setIsLoading(true);
-      await logoutFn();
+      const result = await logoutFn();
+      if (result.redirected) {
+        return;
+      }
       setUser(null);
       clearMustEnrollMfa();
       onLogoutSuccess?.();

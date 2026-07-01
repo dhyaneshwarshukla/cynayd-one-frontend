@@ -7,7 +7,7 @@ import { Card } from '@/components/common/Card';
 import { BrandLink } from '@/components/common/BrandLink';
 
 function VerifyEmailContent() {
-  const { verifyEmail, isLoading } = useAuth();
+  const { verifyEmail } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');

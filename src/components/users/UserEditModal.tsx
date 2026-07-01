@@ -24,7 +24,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
   onUpdate,
   availableRoles,
   isSuperAdmin = false,
-  isLoading = false,
+  isLoading: _isLoading = false,
 }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

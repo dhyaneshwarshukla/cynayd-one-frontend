@@ -882,7 +882,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
                   </Button>
                 </div>
                 <div className="space-y-4">
-                  {userAppAccess.slice(0, 3).map((access, index) => (
+                  {userAppAccess.slice(0, 3).map((access) => (
                     <div key={access.id} className="flex items-center p-3 bg-green-50 rounded-lg">
                       <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
                         <UserPlusIcon className="w-4 h-4 text-green-600" />

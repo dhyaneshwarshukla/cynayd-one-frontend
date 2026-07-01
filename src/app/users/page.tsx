@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { Button } from '@/components/common/Button';
@@ -9,7 +10,7 @@ import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
 import { apiClient, Role, User } from '@/lib/api-client';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 
 // Using User from UI package
 
@@ -36,7 +37,8 @@ export default function UsersPage() {
   useEffect(() => {
     document.title = 'Users | CYNAYD One';
   }, []);
-  const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [organization, setOrganization] = useState<{ id: string; name: string } | null>(null);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
@@ -113,9 +115,16 @@ export default function UsersPage() {
   const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
   const isManager = userRole === 'ADMIN'; // ADMIN role can manage users
   const canManageUsers = isAdmin || isManager;
-  
-  // Temporary: Always allow user management for debugging
-  const canManageUsersDebug = true;
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace(`/auth/login?next=${encodeURIComponent('/users')}`);
+      return;
+    }
+    if (!authLoading && isAuthenticated && !canManageUsers) {
+      setIsLoading(false);
+    }
+  }, [authLoading, isAuthenticated, canManageUsers, router]);
 
   // Form validation functions
   const validateEmail = (email: string): string => {
@@ -152,15 +161,6 @@ export default function UsersPage() {
     
     setFormErrors(errors);
     return Object.values(errors).every(error => error === '');
-  };
-
-  const generateRandomPassword = (): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
   };
 
   const downloadCsvTemplate = () => {
@@ -243,19 +243,19 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    if (isAuthenticated && canManageUsersDebug) {
-      console.log('👤 Current user:', user);
-      console.log('🔐 User role:', user?.role);
-      console.log('✅ Can manage users:', canManageUsers);
-      fetchUsers(currentPage, pageSize);
-      fetchAvailableRoles();
-      
-      // Fetch organizations for SuperAdmin users
-      if (isSuperAdmin) {
-        fetchAvailableOrganizations();
+    if (!isAuthenticated || !canManageUsers) {
+      if (!authLoading && !isAuthenticated) {
+        setIsLoading(false);
       }
+      return;
     }
-  }, [isAuthenticated, canManageUsersDebug, user, isSuperAdmin, currentPage, pageSize]);
+    fetchUsers(currentPage, pageSize);
+    fetchAvailableRoles();
+
+    if (isSuperAdmin) {
+      fetchAvailableOrganizations();
+    }
+  }, [isAuthenticated, canManageUsers, user, isSuperAdmin, currentPage, pageSize, authLoading]);
 
   // Update bulkRole when availableRoles change
   useEffect(() => {
@@ -416,9 +416,6 @@ export default function UsersPage() {
       setError(null);
       setSuccessMessage(null);
       
-      // Generate password if needed
-      const finalPassword = generatePassword ? generateRandomPassword() : invitePassword;
-      
       // Determine target organization
       const targetOrganizationId = isSuperAdmin ? inviteOrganizationId : user?.organizationId;
       
@@ -485,28 +482,6 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleUserStatus = async (user: User) => {
-    try {
-      setError(null);
-      setSuccessMessage(null);
-      
-      const isCurrentlyActive = (user as any).isActive !== false;
-      const updatedUser = isCurrentlyActive 
-        ? await apiClient.deactivateUser(user.id)
-        : await apiClient.activateUser(user.id);
-      
-      setUsers(users.map(u => 
-        u.id === user.id ? { ...u, ...updatedUser, isActive: updatedUser.isActive !== undefined ? updatedUser.isActive : !isCurrentlyActive } : u
-      ));
-      
-      setSuccessMessage(`User ${isCurrentlyActive ? 'deactivated' : 'activated'} successfully!`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setError(`Failed to ${(user as any).isActive !== false ? 'deactivate' : 'activate'} user`);
-      console.error('Update user status error:', err);
-    }
-  };
-  
   const handleDeactivateUser = async (userId: string) => {
     try {
       setError(null);
@@ -602,7 +577,7 @@ export default function UsersPage() {
         try {
           switch (bulkAction) {
             case 'delete':
-              const deleteResponse = await apiClient.deleteUser(userId);
+              await apiClient.deleteUser(userId);
               setUsers(users.filter(u => u.id !== userId));
               break;
             case 'activate':
@@ -663,11 +638,17 @@ export default function UsersPage() {
     }
   };
 
-  const getStatusBadgeColor = () => {
-    return 'bg-green-100 text-green-800'; // All users are considered active
-  };
+  if (authLoading || (!isAuthenticated && !authLoading)) {
+    return (
+      <UnifiedLayout title="User Management" subtitle="Loading...">
+        <div className="flex justify-center py-20">
+          <LoadingSpinner size="lg" />
+        </div>
+      </UnifiedLayout>
+    );
+  }
 
-  if (!canManageUsersDebug) {
+  if (!canManageUsers) {
     return (
       <UnifiedLayout
         title="Access Denied"

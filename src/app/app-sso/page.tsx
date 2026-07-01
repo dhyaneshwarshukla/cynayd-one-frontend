@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { Card } from '@/components/common/Card';
@@ -8,7 +8,6 @@ import { Alert } from '@/components/common/Alert';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { AppIcon } from '@/components/common/AppIcon';
-
 
 interface SSOValidationResult {
   user: {
@@ -26,6 +25,7 @@ interface SSOValidationResult {
     icon?: string;
     iconUrl?: string;
     color?: string;
+    url?: string;
     access?: {
       assignedAt: string;
       expiresAt?: string;
@@ -35,81 +35,88 @@ interface SSOValidationResult {
   }>;
 }
 
+function appendDeprecatedSsoToken(baseUrl: string, token: string): string {
+  console.warn(
+    '[app-sso] sso_token in URL is deprecated; integrate POST /api/sso/redeem-code with ?code= instead'
+  );
+  const delimiter = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${delimiter}sso_token=${encodeURIComponent(token)}`;
+}
+
 function AppSSOContent() {
   const searchParams = useSearchParams();
-  const ssoToken = searchParams.get('sso_token');
+  const exchangeCode = searchParams.get('code');
+  const legacyToken = searchParams.get('sso_token');
   const appSlug = searchParams.get('app');
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ssoData, setSsoData] = useState<SSOValidationResult | null>(null);
-  const [currentApp, setCurrentApp] = useState<any>(null);
+  const [currentApp, setCurrentApp] = useState<SSOValidationResult['accessibleApps'][number] | null>(null);
 
-  useEffect(() => {
-    if (ssoToken && appSlug) {
-      validateSSOToken();
-    } else {
-      setError('No SSO token or app slug provided');
-      setIsLoading(false);
+  const validateWithToken = useCallback(async (token: string, slug: string) => {
+    const result = await apiClient.validateSSOToken(token, slug);
+    setSsoData(result);
+
+    const app = result.accessibleApps.find((item) => item.slug === slug);
+    if (!app) {
+      setError(`Access denied to ${slug} app`);
+      return;
     }
-  }, [ssoToken, appSlug]);
 
-  const validateSSOToken = async () => {
+    setCurrentApp(app);
+
+    const appDetails = await apiClient.getAppBySlug(slug);
+    const appUrl = appDetails?.url?.trim() || app.url?.trim();
+
+    if (appUrl) {
+      const redirectUrl = appendDeprecatedSsoToken(appUrl, token);
+      window.location.href = redirectUrl;
+      return;
+    }
+  }, []);
+
+  const runValidation = useCallback(async () => {
+    if (!appSlug) {
+      setError('No app slug provided');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
-      
-      console.log('Validating SSO token for app:', appSlug);
-      
-      // Validate the SSO token
-      const result = await apiClient.validateSSOToken(ssoToken!, appSlug!);
-      setSsoData(result);
-      
-      // Find the current app in the accessible apps
-      const app = result.accessibleApps.find(app => app.slug === appSlug);
-      if (app) {
-        setCurrentApp(app);
-        
-        // Get the app details to check if it has a URL
-        console.log(`Fetching app details for slug: ${appSlug}`);
-        const appDetails = await apiClient.getAppBySlug(appSlug!);
-        console.log('App details received:', appDetails);
-        
-        if (appDetails && appDetails.url) {
-          // Redirect to the actual app URL with SSO token
-          console.log(`Redirecting to app URL: ${appDetails.url}`);
-          console.log(`SSO Token: ${ssoToken}`);
-          const redirectUrl = `${appDetails.url}?sso_token=${ssoToken}`;
-          console.log(`Full redirect URL: ${redirectUrl}`);
-          
-          // Add a small delay to ensure console logs are visible
-          setTimeout(() => {
-            console.log('Executing redirect now...');
-            try {
-              window.location.href = redirectUrl;
-            } catch (error) {
-              console.error('Redirect failed:', error);
-              // Fallback: try using window.open
-              window.open(redirectUrl, '_blank');
-            }
-          }, 1000);
-          return;
-        } else {
-          // If no URL is set, show the demo interface
-          console.log('No app URL configured, showing demo interface');
-          console.log('App details:', appDetails);
-        }
-      } else {
-        setError(`Access denied to ${appSlug} app`);
+
+      let token = legacyToken;
+
+      if (exchangeCode) {
+        const redeemed = await apiClient.redeemSsoCode(exchangeCode, appSlug);
+        token = redeemed.ssoToken;
       }
-      
-    } catch (err: any) {
+
+      if (!token) {
+        setError('No SSO code or token provided');
+        return;
+      }
+
+      if (legacyToken && !exchangeCode) {
+        console.warn(
+          '[app-sso] sso_token query parameter is deprecated; use exchange code flow instead'
+        );
+      }
+
+      await validateWithToken(token, appSlug);
+    } catch (err: unknown) {
       console.error('SSO validation error:', err);
-      setError(err.message || 'Failed to validate SSO token');
+      setError(err instanceof Error ? err.message : 'Failed to validate SSO credentials');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [appSlug, exchangeCode, legacyToken, validateWithToken]);
+
+  useEffect(() => {
+    void runValidation();
+  }, [runValidation]);
 
   const handleLogout = async () => {
     try {
@@ -149,13 +156,8 @@ function AppSSOContent() {
             <h2 className="text-xl font-semibold text-gray-900 mb-2">
               Access Denied
             </h2>
-            <p className="text-gray-600 mb-6">
-              {error}
-            </p>
-            <Button 
-              onClick={handleLogout}
-              className="w-full"
-            >
+            <p className="text-gray-600 mb-6">{error}</p>
+            <Button onClick={handleLogout} className="w-full">
               Return to Login
             </Button>
           </div>
@@ -176,12 +178,9 @@ function AppSSOContent() {
               App Not Found
             </h2>
             <p className="text-gray-600 mb-6">
-              The app "{appSlug}" was not found in your accessible apps.
+              The app &quot;{appSlug}&quot; was not found in your accessible apps.
             </p>
-            <Button 
-              onClick={handleLogout}
-              className="w-full"
-            >
+            <Button onClick={handleLogout} className="w-full">
               Return to Login
             </Button>
           </div>
@@ -190,10 +189,8 @@ function AppSSOContent() {
     );
   }
 
-  // Render the app interface
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* App Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
@@ -218,11 +215,7 @@ function AppSSOContent() {
               <span className="text-sm text-gray-600">
                 Role: {ssoData?.user.role}
               </span>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleLogout}
-              >
+              <Button variant="outline" size="sm" onClick={handleLogout}>
                 Logout
               </Button>
             </div>
@@ -230,7 +223,6 @@ function AppSSOContent() {
         </div>
       </div>
 
-      {/* App Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card className="p-8">
           <div className="text-center">
@@ -243,33 +235,35 @@ function AppSSOContent() {
             <p className="text-gray-600 mb-6">
               You have successfully accessed the <strong>{currentApp.name}</strong> application.
             </p>
-            
+
             {currentApp.description && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <p className="text-gray-700">{currentApp.description}</p>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <h3 className="font-semibold text-blue-900 mb-2">Access Details</h3>
-                <p className="text-sm text-blue-700">
-                  Assigned: {new Date(currentApp.access.assignedAt).toLocaleDateString()}
-                </p>
-                {currentApp.access.expiresAt && (
+            {currentApp.access && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">Access Details</h3>
                   <p className="text-sm text-blue-700">
-                    Expires: {new Date(currentApp.access.expiresAt).toLocaleDateString()}
+                    Assigned: {new Date(currentApp.access.assignedAt).toLocaleDateString()}
                   </p>
-                )}
+                  {currentApp.access.expiresAt && (
+                    <p className="text-sm text-blue-700">
+                      Expires: {new Date(currentApp.access.expiresAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-green-900 mb-2">Usage</h3>
+                  <p className="text-sm text-green-700">
+                    Used: {currentApp.access.usedQuota} / {currentApp.access.quota || 'Unlimited'}
+                  </p>
+                </div>
               </div>
-              
-              <div className="bg-green-50 rounded-lg p-4">
-                <h3 className="font-semibold text-green-900 mb-2">Usage</h3>
-                <p className="text-sm text-green-700">
-                  Used: {currentApp.access.usedQuota} / {currentApp.access.quota || 'Unlimited'}
-                </p>
-              </div>
-            </div>
+            )}
 
             <Alert variant="info" className="mb-6">
               <div className="flex items-center">
@@ -281,15 +275,10 @@ function AppSSOContent() {
             </Alert>
 
             <div className="flex space-x-4 justify-center">
-              <Button 
-                onClick={() => window.location.href = '/dashboard'}
-                variant="outline"
-              >
+              <Button onClick={() => { window.location.href = '/dashboard'; }} variant="outline">
                 Back to Dashboard
               </Button>
-              <Button 
-                onClick={() => window.location.href = '/products'}
-              >
+              <Button onClick={() => { window.location.href = '/products'; }}>
                 View All Apps
               </Button>
             </div>
@@ -302,18 +291,20 @@ function AppSSOContent() {
 
 export default function AppSSOPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="p-8 max-w-md w-full mx-4">
-          <div className="text-center">
-            <LoadingSpinner size="lg" />
-            <h2 className="text-xl font-semibold text-gray-900 mt-4">
-              Loading...
-            </h2>
-          </div>
-        </Card>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <Card className="p-8 max-w-md w-full mx-4">
+            <div className="text-center">
+              <LoadingSpinner size="lg" />
+              <h2 className="text-xl font-semibold text-gray-900 mt-4">
+                Loading...
+              </h2>
+            </div>
+          </Card>
+        </div>
+      }
+    >
       <AppSSOContent />
     </Suspense>
   );

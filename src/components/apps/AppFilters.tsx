@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { SearchBar } from '../common/SearchBar';
-import { FilterBar } from '../common/FilterBar';
 import { Button } from '../common/Button';
 import { FunnelIcon } from '@heroicons/react/24/outline';
 

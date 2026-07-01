@@ -19,7 +19,7 @@ export interface RealtimeDataOptions<T> {
 export function useRealtimeData<T = any>(
   options: RealtimeDataOptions<T>
 ): [any, ApiActions, boolean, boolean] {
-  const [toasts, toastActions] = useToast();
+  const [, toastActions] = useToast();
   const [apiState, apiActions] = useApiState<T>(null);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [isRequestInProgress, setIsRequestInProgress] = useState(false);
@@ -174,7 +174,7 @@ export function useRealtimeData<T = any>(
     }
   }, [websocketEvents, onDataUpdate, onNewItem, onItemUpdate, onItemDelete, showNotifications, apiActions, toastActions, apiEndpoint]);
 
-  const [socket, socketActions, isConnected] = useWebSocket(websocketUrl, {
+  const [, , isConnected] = useWebSocket(websocketUrl, {
     onMessage: handleWebSocketMessage,
     onOpen: () => setIsWebSocketConnected(true),
     onClose: () => setIsWebSocketConnected(false),

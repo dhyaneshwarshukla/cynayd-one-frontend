@@ -6,18 +6,16 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Input } from '@/components/common/Input';
-import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
+import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { 
   UsersIcon, 
-  PlusIcon, 
   MagnifyingGlassIcon,
   PencilIcon,
   TrashIcon,
   EnvelopeIcon,
   UserPlusIcon,
   CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon
+  XCircleIcon
 } from '@heroicons/react/24/outline';
 
 // Using User interface from UI package instead of OrganizationUser

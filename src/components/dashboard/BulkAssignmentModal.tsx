@@ -165,9 +165,19 @@ export const BulkAssignmentModal: React.FC<BulkAssignmentModalProps> = ({
       }
     } catch (error: any) {
       console.error('Failed to perform bulk assignment:', error);
+
+      const missingAppIds = error.response?.data?.missingAppIds as string[] | undefined;
+      let errorMessage = error.message || 'Failed to perform bulk assignment';
+      if (missingAppIds?.length) {
+        const appNames = missingAppIds
+          .map((id) => apps.find((app) => app.id === id)?.name ?? id)
+          .join(', ');
+        errorMessage = `${errorMessage}: ${appNames}`;
+      }
+
       setAssignmentResults({
         success: false,
-        error: error.message || 'Failed to perform bulk assignment',
+        error: errorMessage,
         summary: {
           total: selectedAppIds.size * selectedUserIds.size,
           successful: 0,
