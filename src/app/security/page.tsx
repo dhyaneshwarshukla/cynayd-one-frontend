@@ -73,6 +73,7 @@ function SecurityPageContent() {
 
   const [activeTab, setActiveTab] = useState<TabId>('events');
   const [tabLoading, setTabLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [securingEventId, setSecuringEventId] = useState<string | null>(null);
 
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);

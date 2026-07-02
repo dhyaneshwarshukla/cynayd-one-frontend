@@ -43,7 +43,7 @@ export function RejectedLoginAlerts({
             <div className="font-medium">{event.eventType}</div>
             <div className="text-red-800">
               {event.ipAddress ? `From ${event.ipAddress}` : 'Unknown source'}
-              {event.createdAt ? ` · ${new Date(event.createdAt).toLocaleString()}` : ''}
+              {event.timestamp ? ` · ${new Date(event.timestamp).toLocaleString()}` : ''}
             </div>
             {onSecureAccount ? (
               <Button
