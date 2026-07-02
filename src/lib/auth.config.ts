@@ -14,6 +14,8 @@ interface User {
   image?: string;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 export const authConfig: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -49,18 +51,31 @@ export const authConfig: NextAuthOptions = {
         const { email, password } = parsedCredentials.data;
 
         try {
-          // Call our backend API for authentication
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/login`, {
+          const startResponse = await fetch(`${API_URL}/api/auth/login/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email }),
+          });
+          if (!startResponse.ok) return null;
+
+          const startData = await startResponse.json();
+          const passwordResponse = await fetch(`${API_URL}/api/auth/login/password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              challengeId: startData.challengeId,
+              nonce: startData.nonce,
+              password,
+            }),
           });
 
-          if (!response.ok) {
+          if (!passwordResponse.ok) return null;
+
+          const data = await passwordResponse.json();
+          if (!data.user || !data.accessToken) {
             return null;
           }
 
-          const data = await response.json();
           return {
             id: data.user.id,
             email: data.user.email,
@@ -119,4 +134,3 @@ export const authConfig: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
-

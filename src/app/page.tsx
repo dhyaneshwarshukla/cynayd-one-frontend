@@ -58,7 +58,7 @@ export default function HomePage() {
       "@type": "Organization",
       name: "CYNAYD",
       url: siteUrl,
-      logo: `${siteUrl}/logo.png`,
+      logo: `${siteUrl}/cynayd-logo.png`,
       contactPoint: {
         "@type": "ContactPoint",
         contactType: "Customer Service",

@@ -19,6 +19,8 @@ interface MFAVerificationModalProps {
   mfaMethods?: string[];
   emailOtpSent?: boolean;
   mode?: 'legacy' | 'challenge' | 'passkey' | 'magic_link';
+  passkeyMfaAllowed?: boolean;
+  rememberMe?: boolean;
   onChallengeVerify?: (mfaToken: string) => Promise<AuthResponse>;
 }
 
@@ -34,10 +36,13 @@ export function MFAVerificationModal({
   mfaMethods = ['totp'],
   emailOtpSent = false,
   mode = 'legacy',
+  passkeyMfaAllowed = false,
+  rememberMe = false,
   onChallengeVerify,
 }: MFAVerificationModalProps) {
   const [mfaCode, setMfaCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
 
@@ -198,6 +203,43 @@ export function MFAVerificationModal({
     }
   };
 
+  const handlePasskeyMfa = async () => {
+    if (!attemptId || !attemptNonce) {
+      setError('Login session expired. Please start again.');
+      return;
+    }
+    if (!window.PublicKeyCredential) {
+      setError('Passkeys are not supported in this browser.');
+      return;
+    }
+    try {
+      setPasskeyBusy(true);
+      setError(null);
+      const { authenticateWithPasskey } = await import('../../lib/webauthn');
+      const options = await apiClient.startMfaPasskey(attemptId, attemptNonce);
+      const assertion = await authenticateWithPasskey(options);
+      const response = await apiClient.finishMfaPasskeyVerifyLogin({
+        attemptId,
+        nonce: attemptNonce,
+        response: assertion,
+        rememberMe,
+      });
+      handleSuccessResponse(response);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Passkey verification failed');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const passkeyButtonLabel = (): string => {
+    if (typeof window === 'undefined') return 'Use passkey instead';
+    const ua = window.navigator.userAgent.toLowerCase();
+    if (ua.includes('windows')) return 'Use Windows Hello instead';
+    if (ua.includes('mac')) return 'Use Touch ID / passkey instead';
+    return 'Use passkey instead';
+  };
+
   const handleClose = () => {
     setMfaCode('');
     setError(null);
@@ -260,11 +302,22 @@ export function MFAVerificationModal({
             <div className="space-y-2">
               <Button
                 onClick={handleVerify}
-                disabled={isLoading || mfaCode.length !== 6}
+                disabled={isLoading || passkeyBusy || mfaCode.length !== 6}
                 className="w-full"
               >
                 {isLoading ? <LoadingSpinner size="sm" /> : 'Verify Code'}
               </Button>
+
+              {passkeyMfaAllowed && attemptId && attemptNonce ? (
+                <Button
+                  onClick={() => void handlePasskeyMfa()}
+                  disabled={isLoading || passkeyBusy}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {passkeyBusy ? <LoadingSpinner size="sm" /> : passkeyButtonLabel()}
+                </Button>
+              ) : null}
 
               {emailMfaAvailable && (
                 <Button

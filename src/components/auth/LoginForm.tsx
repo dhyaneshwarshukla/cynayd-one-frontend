@@ -13,6 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield, X } from 'lucide-react';
 import { LegalFooterLinks } from '../legal/LegalFooterLinks';
 import { MFAVerificationModal } from './MFAVerificationModal';
+import { AwaitingApprovalPanel } from './AwaitingApprovalPanel';
 import type { AuthResponse } from '../../lib/api-client';
 import {
   addRecentAccount,
@@ -99,6 +100,13 @@ export const LoginForm: React.FC = () => {
   const [pendingRememberMe, setPendingRememberMe] = useState(false);
   const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [approvalExpiresAt, setApprovalExpiresAt] = useState<string | null>(null);
+  const [passkeyFallbackAllowed, setPasskeyFallbackAllowed] = useState(false);
+  const [emailOtpFallbackAllowed, setEmailOtpFallbackAllowed] = useState(false);
+  const [backupApprovalAllowed, setBackupApprovalAllowed] = useState(false);
+  const [passkeyApprovalBusy, setPasskeyApprovalBusy] = useState(false);
+  const [backupApprovalBusy, setBackupApprovalBusy] = useState(false);
+  const [passkeyMfaAllowed, setPasskeyMfaAllowed] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
@@ -191,6 +199,14 @@ export const LoginForm: React.FC = () => {
       setPendingRememberMe(rememberMe);
       setPendingEmail(email);
       setApprovalContext((result as AuthResponse & { requestContext?: Record<string, unknown> }).requestContext ?? null);
+      setApprovalExpiresAt(
+        (result as AuthResponse & { expiresAt?: string }).expiresAt ?? null
+      );
+      setPasskeyFallbackAllowed(result.passkeyFallbackAllowed === true);
+      setEmailOtpFallbackAllowed(
+        result.emailOtpFallbackAllowed === true || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      );
+      setBackupApprovalAllowed(result.backupApprovalAllowed === true);
       const preferred = (result as AuthResponse & { preferredChallenge?: string }).preferredChallenge;
       setApprovalMessage(
         result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
@@ -224,14 +240,18 @@ export const LoginForm: React.FC = () => {
             pollRef.current = null;
           }
           await completeLoginRedirect();
-        } else if (status.status === 'cancelled' || status.status === 'expired') {
+        } else if (
+          status.status === 'rejected' ||
+          status.status === 'cancelled' ||
+          status.status === 'expired'
+        ) {
           if (pollRef.current) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
           setError(
-            status.status === 'cancelled'
-              ? 'Login approval was rejected.'
+            status.status === 'rejected' || status.status === 'cancelled'
+              ? 'Login denied. The sign-in attempt was rejected.'
               : 'Login approval expired. Please try again.'
           );
           setLoginStep('password');
@@ -405,6 +425,9 @@ export const LoginForm: React.FC = () => {
               setMfaUserId(mfaData.userId || null);
               setMfaMethods(mfaData.mfaMethods || ['totp']);
               setMfaEmailOtpSent(Boolean(mfaData.emailOtpSent));
+              setPasskeyMfaAllowed(
+                Boolean((mfaData as { passkeyMfaAllowed?: boolean }).passkeyMfaAllowed)
+              );
               setMfaModalMode('challenge');
               setMfaAttemptId(mfaData.challengeId || challengeId);
               setMfaAttemptNonce(mfaData.nonce || challengeNonce);
@@ -528,6 +551,71 @@ export const LoginForm: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to send approval code');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePasskeyApprovalFallback = async () => {
+    if (!challengeId || !challengeNonce) return;
+    if (!window.PublicKeyCredential) {
+      setError('Passkeys are not supported in this browser.');
+      return;
+    }
+    setPasskeyApprovalBusy(true);
+    setError(null);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      const { authenticateWithPasskey } = await import('../../lib/webauthn');
+      const options = await apiClient.startPasskeyApproval(challengeId, challengeNonce);
+      const assertion = await authenticateWithPasskey(options);
+      const response = await apiClient.finishPasskeyApproval({
+        challengeId,
+        nonce: challengeNonce,
+        response: assertion,
+        rememberMe: pendingRememberMe,
+      });
+      if (response.accessToken && response.user) {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        apiClient.storeAuthToken(response.accessToken);
+        await completeLoginRedirect();
+        return;
+      }
+      setError('Unable to complete login with passkey.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Passkey approval failed');
+    } finally {
+      setPasskeyApprovalBusy(false);
+    }
+  };
+
+  const handleBackupApprovalFallback = async (backupCode: string) => {
+    if (!challengeId || !challengeNonce) return;
+    setBackupApprovalBusy(true);
+    setError(null);
+    try {
+      const { apiClient } = await import('../../lib/api-client');
+      const response = await apiClient.verifyBackupApproval({
+        challengeId,
+        nonce: challengeNonce,
+        backupCode,
+        rememberMe: pendingRememberMe,
+      });
+      if (response.accessToken && response.user) {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        apiClient.storeAuthToken(response.accessToken);
+        await completeLoginRedirect();
+        return;
+      }
+      setError('Invalid recovery code.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Recovery code verification failed');
+    } finally {
+      setBackupApprovalBusy(false);
     }
   };
 
@@ -987,25 +1075,22 @@ export const LoginForm: React.FC = () => {
           )}
 
           {loginStep === 'awaiting_approval' && (
-            <div className="space-y-3 rounded-lg border border-violet-200 bg-violet-50 p-4">
-              <p className="text-sm font-medium text-violet-900">
-                {approvalMessage || 'Waiting for mobile approval…'}
-              </p>
-              {approvalContext?.ipAddress ? (
-                <p className="text-xs text-violet-800">
-                  Sign-in attempt from {String(approvalContext.ipAddress)}
-                </p>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={handleRequestApprovalEmailOtp}
-                disabled={isFormLoading}
-              >
-                Send email code instead
-              </Button>
-            </div>
+            <AwaitingApprovalPanel
+              message={approvalMessage}
+              requestContext={approvalContext}
+              expiresAt={approvalExpiresAt}
+              onRequestEmailOtp={
+                emailOtpFallbackAllowed ? handleRequestApprovalEmailOtp : undefined
+              }
+              emailOtpLoading={isFormLoading}
+              emailOtpFallbackAllowed={emailOtpFallbackAllowed}
+              passkeyFallbackAllowed={passkeyFallbackAllowed}
+              backupApprovalAllowed={backupApprovalAllowed}
+              passkeyFallbackLoading={passkeyApprovalBusy}
+              backupApprovalLoading={backupApprovalBusy}
+              onUsePasskeyFallback={handlePasskeyApprovalFallback}
+              onVerifyBackupCode={handleBackupApprovalFallback}
+            />
           )}
 
           {/* Submit Button */}
@@ -1084,6 +1169,8 @@ export const LoginForm: React.FC = () => {
         attemptNonce={mfaAttemptNonce || challengeNonce || undefined}
         mfaMethods={mfaMethods}
         emailOtpSent={mfaEmailOtpSent}
+        passkeyMfaAllowed={passkeyMfaAllowed}
+        rememberMe={pendingRememberMe}
         mode={mfaModalMode}
         onChallengeVerify={async (mfaToken) => {
           const id = mfaAttemptId || challengeId;

@@ -119,6 +119,14 @@ export interface AuthResponse {
   preferredChallenge?: string;
   availableChallenges?: string[];
   emailOtpSent?: boolean;
+  expiresAt?: string;
+  riskLevel?: string;
+  riskScore?: number;
+  hasPasskey?: boolean;
+  passkeyFallbackAllowed?: boolean;
+  passkeyMfaAllowed?: boolean;
+  emailOtpFallbackAllowed?: boolean;
+  backupApprovalAllowed?: boolean;
 }
 
 function throwMfaRequired(response: AuthResponse): never {
@@ -733,22 +741,29 @@ class ApiClient {
 
   // Authentication endpoints
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
+    const start = await this.loginStart(credentials.email);
+    const response = await this.loginPassword({
+      challengeId: start.challengeId,
+      nonce: start.nonce,
+      password: credentials.password,
+      rememberMe: credentials.rememberMe,
+      mfaToken: credentials.mfaToken,
     });
-    
+
     if (response.code === 'MFA_REQUIRED') {
       throwMfaRequired(response);
     }
-    
+
     if (response.accessToken) {
       this.persistAuthResponse(response);
     }
     if (typeof window !== 'undefined') {
       if (response.mustEnrollMfa) {
         sessionStorage.setItem('must_enroll_mfa', 'true');
-      } else {
+      } else if (
+        response.code !== 'APPROVAL_REQUIRED' &&
+        response.code !== 'APPROVAL_EMAIL_OTP_REQUIRED'
+      ) {
         sessionStorage.removeItem('must_enroll_mfa');
       }
     }
@@ -805,11 +820,12 @@ class ApiClient {
   async rejectLoginChallenge(
     challengeId: string,
     nonce: string,
-    deviceId?: string
-  ): Promise<{ status: string }> {
+    deviceId?: string,
+    secureAccount?: boolean
+  ): Promise<{ status: string; secureAccount?: boolean }> {
     return this.request(`/api/auth/login/challenge/${challengeId}/reject`, {
       method: 'POST',
-      body: JSON.stringify({ nonce, deviceId }),
+      body: JSON.stringify({ nonce, deviceId, secureAccount: secureAccount === true }),
     });
   }
 
@@ -861,6 +877,90 @@ class ApiClient {
     return response;
   }
 
+  async startPasskeyApproval(challengeId: string, nonce: string): Promise<PublicKeyCredentialRequestOptionsJSON> {
+    return this.request<PublicKeyCredentialRequestOptionsJSON>(
+      `/api/auth/login/challenge/${challengeId}/passkey-approval/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ nonce }),
+      }
+    );
+  }
+
+  async finishPasskeyApproval(input: {
+    challengeId: string;
+    nonce: string;
+    response: AuthenticationResponseJSON;
+    rememberMe?: boolean;
+  }): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>(
+      `/api/auth/login/challenge/${input.challengeId}/passkey-approval/finish`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          nonce: input.nonce,
+          response: input.response,
+          rememberMe: input.rememberMe,
+        }),
+      }
+    );
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
+    return response;
+  }
+
+  async verifyBackupApproval(input: {
+    challengeId: string;
+    nonce: string;
+    backupCode: string;
+    rememberMe?: boolean;
+  }): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>(
+      `/api/auth/login/challenge/${input.challengeId}/verify-backup-approval`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          nonce: input.nonce,
+          backupCode: input.backupCode,
+          rememberMe: input.rememberMe,
+        }),
+      }
+    );
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
+    return response;
+  }
+
+  async startMfaPasskey(attemptId: string, nonce: string): Promise<PublicKeyCredentialRequestOptionsJSON> {
+    return this.request<PublicKeyCredentialRequestOptionsJSON>('/api/mfa/passkey/start', {
+      method: 'POST',
+      body: JSON.stringify({ attemptId, nonce }),
+    });
+  }
+
+  async finishMfaPasskeyVerifyLogin(input: {
+    attemptId: string;
+    nonce: string;
+    response: AuthenticationResponseJSON;
+    rememberMe?: boolean;
+  }): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>('/api/mfa/passkey/verify-login', {
+      method: 'POST',
+      body: JSON.stringify({
+        attemptId: input.attemptId,
+        nonce: input.nonce,
+        response: input.response,
+        rememberMe: input.rememberMe,
+      }),
+    });
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
+    return response;
+  }
+
   getMustEnrollMfa(): boolean {
     if (typeof window === 'undefined') return false;
     return sessionStorage.getItem('must_enroll_mfa') === 'true';
@@ -897,8 +997,10 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ token }),
     });
-    
-    this.persistAuthResponse(response);
+
+    if (response.accessToken) {
+      this.persistAuthResponse(response);
+    }
     return response;
   }
 
@@ -1442,6 +1544,24 @@ class ApiClient {
     topUsers: Array<{ userId: string; count: number; user: any }>;
   }> {
     return this.request('/api/security-events/stats');
+  }
+
+  async getRejectedLoginSummary(days: 7 | 30 | 90 = 30): Promise<{
+    total7d: number;
+    total30d: number;
+    secureAccountCount7d: number;
+    secureAccountCount30d: number;
+    topIps: Array<{ ip: string; count: number; lastSeenAt: string }>;
+    daily: Array<{ date: string; count: number; secureAccountCount: number }>;
+  }> {
+    return this.request(`/api/security-events/rejected-logins/summary?days=${days}`);
+  }
+
+  async secureAccountFromSecurityEvent(eventId: string): Promise<{
+    success: boolean;
+    code: 'SECURITY_ACTION_APPLIED' | 'SECURITY_ACTION_ALREADY_APPLIED';
+  }> {
+    return this.request(`/api/security-events/${eventId}/secure-account`, { method: 'POST' });
   }
 
   // IP Whitelist Management

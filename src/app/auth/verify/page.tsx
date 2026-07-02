@@ -28,9 +28,8 @@ function VerifyEmailContent() {
         setStatus('success');
         setMessage('Email verified successfully! You can now log in to your account.');
         
-        // Redirect to dashboard after 3 seconds
         setTimeout(() => {
-          router.push('/dashboard');
+          router.push('/auth/login');
         }, 3000);
       } catch (error) {
         setStatus('error');
@@ -74,7 +73,7 @@ function VerifyEmailContent() {
                 {message}
               </p>
               <p className="text-sm text-gray-500">
-                Redirecting to dashboard in 3 seconds...
+                Redirecting to login in 3 seconds...
               </p>
             </>
           )}

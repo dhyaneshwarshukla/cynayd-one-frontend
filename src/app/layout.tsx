@@ -44,9 +44,9 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
+    icon: "/cynayd-logo-icon-only.png",
+    shortcut: "/cynayd-logo-icon-only.png",
+    apple: "/cynayd-logo-icon-only.png",
   },
   manifest: "/manifest.json",
   openGraph: {

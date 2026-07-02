@@ -4,18 +4,24 @@
   "description": "Transform your business with our comprehensive corporate platform. Manage your entire organization with built-in HR, secure communication, cloud storage, video conferencing, custom app integration, and business website generation.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#3b82f6",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "any",
-      "type": "image/x-icon"
+      "src": "/cynayd-logo-icon-only.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/cynayd-logo.png",
+      "sizes": "1672x941",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "categories": ["business", "productivity", "utilities"],
   "lang": "en-US",
   "dir": "ltr"
 }
-

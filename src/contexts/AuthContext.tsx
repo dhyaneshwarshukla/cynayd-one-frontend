@@ -229,14 +229,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const verifyEmail = async (token: string) => {
     try {
       setIsLoading(true);
-      await apiClient.verifyEmail(token);
-      
-      // Fetch full user profile to get all required fields
-      const fullUser = await apiClient.getCurrentUser();
-      setUser(fullUser);
-      
-      // Call success callback if provided
-      onRegisterSuccess?.();
+      const result = await apiClient.verifyEmail(token);
+      if (result.accessToken) {
+        const fullUser = await apiClient.getCurrentUser();
+        setUser(fullUser);
+        onRegisterSuccess?.();
+      }
     } catch (error) {
       console.error('Email verification failed:', error);
       throw error;

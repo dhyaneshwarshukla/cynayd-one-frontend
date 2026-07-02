@@ -14,6 +14,8 @@ import { LiveSessionMonitor } from '@/components/security/LiveSessionMonitor';
 import { SecurityEventCard } from '@/components/security/SecurityEventCard';
 import { SecurityEventDetailModal } from '@/components/security/SecurityEventDetailModal';
 import { SecurityRelatedLinks } from '@/components/security/SecurityRelatedLinks';
+import { RejectedLoginAlerts } from '@/components/security/RejectedLoginAlerts';
+import { RejectedLoginSummaryWidget } from '@/components/security/RejectedLoginSummaryWidget';
 import {
   COMMON_EVENT_TYPES,
   normalizeSeverity,
@@ -71,7 +73,7 @@ function SecurityPageContent() {
 
   const [activeTab, setActiveTab] = useState<TabId>('events');
   const [tabLoading, setTabLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [securingEventId, setSecuringEventId] = useState<string | null>(null);
 
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([]);
@@ -113,6 +115,7 @@ function SecurityPageContent() {
     router.replace(`/security?tab=${tabId}`, { scroll: false });
   };
 
+
   const loadEvents = useCallback(async () => {
     const [eventsRes, statsRes] = await Promise.all([
       apiClient.getSecurityEvents({ limit: 50, offset: 0 }),
@@ -148,6 +151,23 @@ function SecurityPageContent() {
       );
     }
   }, []);
+
+  const handleSecureAccount = useCallback(async (eventId: string) => {
+    setSecuringEventId(eventId);
+    try {
+      const result = await apiClient.secureAccountFromSecurityEvent(eventId);
+      const msg =
+        result.code === 'SECURITY_ACTION_ALREADY_APPLIED'
+          ? 'Account protection was already applied for this alert.'
+          : 'Account protection applied. Check your email if a reset was sent.';
+      showToast({ type: 'success', title: msg });
+      await loadEvents();
+    } catch {
+      showToast({ type: 'error', title: 'Unable to secure account. Try again later.' });
+    } finally {
+      setSecuringEventId(null);
+    }
+  }, [loadEvents, showToast]);
 
   const loadThreats = useCallback(async () => {
     const [threats, whitelist] = await Promise.all([
@@ -367,6 +387,13 @@ function SecurityPageContent() {
         <>
           {activeTab === 'events' && (
             <section className="space-y-4">
+              <RejectedLoginSummaryWidget />
+              <RejectedLoginAlerts
+                events={securityEvents}
+                userEmail={user?.email}
+                onSecureAccount={handleSecureAccount}
+                securingEventId={securingEventId}
+              />
               <div className="flex flex-wrap gap-3">
                 <select
                   value={severityFilter}

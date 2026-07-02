@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { MFAVerificationModal } from '@/components/auth/MFAVerificationModal';
+import { AwaitingApprovalPanel } from '@/components/auth/AwaitingApprovalPanel';
+import { Input } from '@/components/common/Input';
+import { Button } from '@/components/common/Button';
 
 type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'email_otp';
 
@@ -15,11 +18,21 @@ export default function MagicLinkPage() {
   const [status, setStatus] = useState<MagicLinkStatus>('loading');
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [attemptNonce, setAttemptNonce] = useState<string | null>(null);
+  const [approvalExpiresAt, setApprovalExpiresAt] = useState<string | null>(null);
+  const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [passkeyFallbackAllowed, setPasskeyFallbackAllowed] = useState(false);
+  const [emailOtpFallbackAllowed, setEmailOtpFallbackAllowed] = useState(false);
+  const [backupApprovalAllowed, setBackupApprovalAllowed] = useState(false);
+  const [passkeyApprovalBusy, setPasskeyApprovalBusy] = useState(false);
+  const [backupApprovalBusy, setBackupApprovalBusy] = useState(false);
+  const [passkeyMfaAllowed, setPasskeyMfaAllowed] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const completeLogin = async (accessToken: string) => {
@@ -36,6 +49,7 @@ export default function MagicLinkPage() {
       setUserId((data.userId as string) || null);
       setMfaMethods((data.mfaMethods as string[]) || ['totp']);
       setEmailOtpSent(Boolean(data.emailOtpSent));
+      setPasskeyMfaAllowed(Boolean(data.passkeyMfaAllowed));
       setAttemptId((data.challengeId as string) || null);
       setAttemptNonce((data.nonce as string) || null);
       setStatus('mfa');
@@ -45,6 +59,13 @@ export default function MagicLinkPage() {
     if (data.code === 'APPROVAL_REQUIRED' || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
       setAttemptId((data.challengeId as string) || null);
       setAttemptNonce((data.nonce as string) || null);
+      setApprovalExpiresAt((data.expiresAt as string) || null);
+      setApprovalContext((data.requestContext as Record<string, unknown>) || null);
+      setPasskeyFallbackAllowed(data.passkeyFallbackAllowed === true);
+      setEmailOtpFallbackAllowed(
+        data.emailOtpFallbackAllowed === true || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      );
+      setBackupApprovalAllowed(data.backupApprovalAllowed === true);
       const preferred = data.preferredChallenge as string | undefined;
       setApprovalMessage(
         data.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
@@ -88,7 +109,11 @@ export default function MagicLinkPage() {
         if (challenge.status === 'approved' && challenge.accessToken) {
           if (pollRef.current) clearInterval(pollRef.current);
           await completeLogin(challenge.accessToken);
-        } else if (challenge.status === 'cancelled' || challenge.status === 'expired') {
+        } else if (
+          challenge.status === 'rejected' ||
+          challenge.status === 'cancelled' ||
+          challenge.status === 'expired'
+        ) {
           if (pollRef.current) clearInterval(pollRef.current);
           setStatus('error');
         }
@@ -102,16 +127,113 @@ export default function MagicLinkPage() {
     };
   }, [status, attemptId, attemptNonce]);
 
+  const handleVerifyOtp = async () => {
+    if (!attemptId || !attemptNonce || !otpCode.trim()) return;
+    setOtpError(null);
+    try {
+      const response = await apiClient.verifyChallengeEmailOtp({
+        challengeId: attemptId,
+        nonce: attemptNonce,
+        otp: otpCode.trim(),
+      });
+      if (response.accessToken) {
+        await completeLogin(response.accessToken);
+      }
+    } catch {
+      setOtpError('Invalid or expired code.');
+    }
+  };
+
+  const handlePasskeyApprovalFallback = async () => {
+    if (!attemptId || !attemptNonce || !window.PublicKeyCredential) return;
+    setPasskeyApprovalBusy(true);
+    try {
+      const { authenticateWithPasskey } = await import('@/lib/webauthn');
+      const options = await apiClient.startPasskeyApproval(attemptId, attemptNonce);
+      const assertion = await authenticateWithPasskey(options);
+      const response = await apiClient.finishPasskeyApproval({
+        challengeId: attemptId,
+        nonce: attemptNonce,
+        response: assertion,
+      });
+      if (response.accessToken) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        await completeLogin(response.accessToken);
+      }
+    } catch {
+      setStatus('error');
+    } finally {
+      setPasskeyApprovalBusy(false);
+    }
+  };
+
+  const handleBackupApprovalFallback = async (backupCode: string) => {
+    if (!attemptId || !attemptNonce) return;
+    setBackupApprovalBusy(true);
+    try {
+      const response = await apiClient.verifyBackupApproval({
+        challengeId: attemptId,
+        nonce: attemptNonce,
+        backupCode,
+      });
+      if (response.accessToken) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        await completeLogin(response.accessToken);
+      }
+    } catch {
+      setStatus('error');
+    } finally {
+      setBackupApprovalBusy(false);
+    }
+  };
+
+  const handleRequestApprovalEmailOtp = async () => {
+    if (!attemptId || !attemptNonce) return;
+    try {
+      await apiClient.requestChallengeEmailOtp(attemptId, attemptNonce);
+      setApprovalMessage('Approval code sent to your email.');
+      setStatus('email_otp');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const approvalPanelProps = {
+    message: approvalMessage,
+    requestContext: approvalContext,
+    expiresAt: approvalExpiresAt,
+    emailOtpFallbackAllowed,
+    passkeyFallbackAllowed,
+    backupApprovalAllowed,
+    passkeyFallbackLoading: passkeyApprovalBusy,
+    backupApprovalLoading: backupApprovalBusy,
+    onUsePasskeyFallback: handlePasskeyApprovalFallback,
+    onVerifyBackupCode: handleBackupApprovalFallback,
+    onRequestEmailOtp: emailOtpFallbackAllowed ? handleRequestApprovalEmailOtp : undefined,
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center p-4">
       {status === 'loading' && <p>Signing you in…</p>}
-      {status === 'error' && <p>Invalid or expired magic link.</p>}
-      {(status === 'approval' || status === 'email_otp') && (
-        <div className="max-w-md text-center">
-          <p>{approvalMessage}</p>
-          {status === 'email_otp' && attemptId && attemptNonce && (
-            <p className="mt-2 text-sm text-gray-500">Enter the code from your email to continue.</p>
-          )}
+      {status === 'error' && <p>Invalid, denied, or expired magic link.</p>}
+      {status === 'approval' && (
+        <div className="w-full max-w-md">
+          <AwaitingApprovalPanel {...approvalPanelProps} />
+        </div>
+      )}
+      {status === 'email_otp' && attemptId && attemptNonce && (
+        <div className="w-full max-w-md space-y-4">
+          <AwaitingApprovalPanel {...approvalPanelProps} />
+          <Input
+            label="Approval code"
+            value={otpCode}
+            onChange={(e) => setOtpCode(e.target.value)}
+            placeholder="Enter code from email"
+          />
+          {otpError ? <p className="text-sm text-red-600">{otpError}</p> : null}
+          <Button type="button" className="w-full" onClick={() => void handleVerifyOtp()}>
+            Verify code
+          </Button>
         </div>
       )}
       {status === 'mfa' && attemptId && attemptNonce && (
@@ -124,6 +246,7 @@ export default function MagicLinkPage() {
           attemptNonce={attemptNonce}
           mfaMethods={mfaMethods}
           emailOtpSent={emailOtpSent}
+          passkeyMfaAllowed={passkeyMfaAllowed}
           mode="magic_link"
           onSuccess={(response) => {
             if (response.accessToken && response.user) {
