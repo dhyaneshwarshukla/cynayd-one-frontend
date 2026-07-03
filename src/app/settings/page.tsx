@@ -13,6 +13,7 @@ import { Alert } from '@/components/common/Alert';
 import { apiClient, UserSettings, SystemSettings } from '@/lib/api-client';
 import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
+import { DisableMFAModal } from '@/components/auth/DisableMFAModal';
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import { PINSetupModal } from '@/components/auth/PINSetupModal';
 import { PasskeyManager } from '@/components/security/PasskeyManager';
@@ -114,6 +115,7 @@ function SettingsPageContent() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [showMFASetup, setShowMFASetup] = useState(false);
+  const [showDisableMFA, setShowDisableMFA] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPINSetup, setShowPINSetup] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
@@ -255,25 +257,26 @@ function SettingsPageContent() {
 
   const handleMfaToggle = async () => {
     if (userSettings.security.mfaEnabled) {
-      const password = window.prompt('Enter your password to disable MFA:');
-      if (!password) return;
-      try {
-        setIsLoading(true);
-        await apiClient.disableMFA(password);
-        const mfaStatus = await apiClient.getMFAStatus();
-        setUserSettings((prev) => ({
-          ...prev,
-          security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
-        }));
-        setMfaStatus(mfaStatus);
-        flash('MFA disabled');
-      } catch (err: unknown) {
-        flash(err instanceof Error ? err.message : 'Failed to disable MFA', true);
-      } finally {
-        setIsLoading(false);
-      }
+      setShowDisableMFA(true);
     } else {
       setShowMFASetup(true);
+    }
+  };
+
+  const handleMfaDisableSuccess = async () => {
+    try {
+      setIsLoading(true);
+      const mfaStatus = await apiClient.getMFAStatus();
+      setUserSettings((prev) => ({
+        ...prev,
+        security: { ...prev.security, mfaEnabled: mfaStatus.enabled },
+      }));
+      setMfaStatus(mfaStatus);
+      flash('MFA disabled');
+    } catch (err: unknown) {
+      flash(err instanceof Error ? err.message : 'Failed to refresh MFA status', true);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -783,6 +786,11 @@ function SettingsPageContent() {
         isOpen={showMFASetup}
         onClose={() => setShowMFASetup(false)}
         onSuccess={() => void handleMfaSuccess()}
+      />
+      <DisableMFAModal
+        isOpen={showDisableMFA}
+        onClose={() => setShowDisableMFA(false)}
+        onSuccess={() => void handleMfaDisableSuccess()}
       />
       <ChangePasswordModal
         isOpen={showPasswordModal}

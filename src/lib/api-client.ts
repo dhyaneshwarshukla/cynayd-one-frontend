@@ -2438,10 +2438,10 @@ class ApiClient {
     return response;
   }
 
-  async disableMFA(password: string): Promise<{ message: string }> {
+  async disableMFA(password: string, mfaToken?: string): Promise<{ message: string }> {
     return this.request('/api/mfa/disable', {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, mfaToken }),
     });
   }
 
