@@ -76,7 +76,6 @@ const ACTION_OPTIONS = [
     label: 'Require MFA enrollment',
     description: 'Hard block until MFA is configured',
   },
-  { id: 'require_step_up', label: 'Step-up auth', description: 'Require additional verification' },
   {
     id: 'require_approval',
     label: 'Require mobile approval',
@@ -158,8 +157,6 @@ function actionBadgeClass(action: string): string {
       return 'bg-amber-100 text-amber-900 ring-amber-200';
     case 'require_mfa_enrollment':
       return 'bg-orange-100 text-orange-900 ring-orange-200';
-    case 'require_step_up':
-      return 'bg-blue-100 text-blue-800 ring-blue-200';
     case 'require_approval':
       return 'bg-violet-100 text-violet-800 ring-violet-200';
     default:
@@ -207,8 +204,11 @@ export default function AccessPoliciesPage() {
   const [scheduleEnd, setScheduleEnd] = useState(18);
   const [countries, setCountries] = useState('');
   const [blockIfVpn, setBlockIfVpn] = useState(false);
+  const [blockIfProxy, setBlockIfProxy] = useState(false);
   const [blockAction, setBlockAction] = useState(false);
+  const [useMinTrustScore, setUseMinTrustScore] = useState(false);
   const [minTrustScore, setMinTrustScore] = useState(50);
+  const [matchUnknownCountry, setMatchUnknownCountry] = useState(false);
   const [selectedActions, setSelectedActions] = useState<string[]>(['require_mfa']);
   const [baseline, setBaseline] = useState<SecuritySettingsFormState>(DEFAULT_BASELINE);
   const [baselineSaving, setBaselineSaving] = useState(false);
@@ -284,7 +284,7 @@ export default function AccessPoliciesPage() {
       if (hasConditionFlag(policy, 'blockIfVpn') && hasConditionFlag(policy, 'blockIfProxy') && hasAction(policy, 'block')) {
         used.add('block-risky-network');
       }
-      if (hasAction(policy, 'require_step_up') && hasConditionFlag(policy, 'requireTrustedDevice') && hasAdminRoles(policy)) {
+      if (hasAction(policy, 'require_mfa') && hasConditionFlag(policy, 'requireTrustedDevice') && hasAdminRoles(policy)) {
         used.add('strict-enterprise');
       }
     }
@@ -384,8 +384,10 @@ export default function AccessPoliciesPage() {
       priority: 15,
       conditions: {
         ...(countryList.length ? { countries: countryList } : {}),
+        ...(countryList.length && matchUnknownCountry ? { matchUnknownCountry: true } : {}),
         ...(blockIfVpn ? { blockIfVpn: true } : {}),
-        minTrustScore,
+        ...(blockIfProxy ? { blockIfProxy: true } : {}),
+        ...(useMinTrustScore ? { minTrustScore } : {}),
       },
       actions: blockAction ? ['block'] : selectedActions.length ? selectedActions : ['allow'],
     });
@@ -583,7 +585,7 @@ export default function AccessPoliciesPage() {
                   <TemplateCard
                     icon={<InformationCircleIcon className="h-5 w-5" />}
                     title="Strict enterprise"
-                    description="MFA required, tighter lockout, VPN block, and admin step-up."
+                    description="MFA required, tighter lockout, VPN block, and admin MFA for untrusted devices."
                     disabled={saving}
                     onUse={() => void applyTemplate('strict-enterprise')}
                   />
@@ -663,6 +665,23 @@ export default function AccessPoliciesPage() {
                       onChange={(e) => setCountries(e.target.value)}
                     />
 
+                    {countries.trim().length > 0 && (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={matchUnknownCountry}
+                          onChange={(e) => setMatchUnknownCountry(e.target.checked)}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-gray-900">Apply to unknown locations</span>
+                          <span className="block text-xs text-gray-500">
+                            When enabled, sign-ins with an unresolved country also match this rule.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+
                     <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
                       <input
                         type="checkbox"
@@ -676,14 +695,44 @@ export default function AccessPoliciesPage() {
                       </span>
                     </label>
 
-                    <Input
-                      label="Minimum device trust score"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={minTrustScore}
-                      onChange={(e) => setMinTrustScore(Number(e.target.value))}
-                    />
+                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        checked={blockIfProxy}
+                        onChange={(e) => setBlockIfProxy(e.target.checked)}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">Match proxy logins</span>
+                        <span className="block text-xs text-gray-500">Apply when the session appears to use a proxy.</span>
+                      </span>
+                    </label>
+
+                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        checked={useMinTrustScore}
+                        onChange={(e) => setUseMinTrustScore(e.target.checked)}
+                      />
+                      <span className="flex-1">
+                        <span className="block text-sm font-medium text-gray-900">Require minimum device trust score</span>
+                        <span className="block text-xs text-gray-500">
+                          Policy matches only when device trust score is at or above this value.
+                        </span>
+                        {useMinTrustScore && (
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={minTrustScore}
+                            onChange={(e) => setMinTrustScore(Number(e.target.value))}
+                            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            aria-label="Minimum device trust score"
+                          />
+                        )}
+                      </span>
+                    </label>
 
                     <fieldset className="space-y-2">
                       <legend className="text-sm font-medium text-gray-700">Actions when matched</legend>
@@ -881,10 +930,6 @@ function InstructionsPanel({
                     <td className="px-3 py-2">
                       Hard block until MFA is configured (403 for users without MFA). Use sparingly.
                     </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 font-medium">require_step_up</td>
-                    <td className="px-3 py-2">Require additional verification at sign-in.</td>
                   </tr>
                   <tr>
                     <td className="px-3 py-2 font-medium">require_approval</td>

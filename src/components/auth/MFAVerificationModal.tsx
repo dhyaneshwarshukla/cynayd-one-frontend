@@ -62,14 +62,14 @@ export function MFAVerificationModal({
       if (otpSent) {
         return (
           <>
-            Enter the 6-digit code from your <strong>authenticator app</strong>, or the code sent to{' '}
+            Enter the 6-digit code from your <strong>Cynayd app</strong> or authenticator app, or the code sent to{' '}
             <strong>{email}</strong>
           </>
         );
       }
       return (
         <>
-          Enter the 6-digit code from your <strong>authenticator app</strong>, or send a code to{' '}
+          Enter the 6-digit code from your <strong>Cynayd app</strong> or authenticator app, or send a code to{' '}
           <strong>{email}</strong>
         </>
       );
@@ -92,7 +92,7 @@ export function MFAVerificationModal({
 
     return (
       <>
-        Enter the 6-digit code from your authenticator app for <strong>{email}</strong>
+        Enter the 6-digit code from your Cynayd app or authenticator app for <strong>{email}</strong>
       </>
     );
   };

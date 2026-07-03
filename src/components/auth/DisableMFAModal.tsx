@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { Alert } from '../common/Alert';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { apiClient } from '../../lib/api-client';
+import { useSessionEmailMfa } from '@/hooks/useSessionEmailMfa';
 
 interface DisableMFAModalProps {
   isOpen: boolean;
@@ -13,11 +14,54 @@ interface DisableMFAModalProps {
   onSuccess: () => void;
 }
 
+type MfaStatus = {
+  enabled: boolean;
+  hasSecret: boolean;
+  methods: string[];
+};
+
 export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalProps) {
   const [password, setPassword] = useState('');
   const [mfaToken, setMfaToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mfaStatus, setMfaStatus] = useState<MfaStatus | null>(null);
+  const {
+    challengeId,
+    emailCodeSent,
+    isSending,
+    sendError,
+    sendEmailCode,
+    resetEmailMfa,
+  } = useSessionEmailMfa();
+
+  const hasEmailMfa = mfaStatus?.methods.includes('email') ?? false;
+  const hasTotpMfa = mfaStatus?.hasSecret ?? false;
+  const emailOnly = hasEmailMfa && !hasTotpMfa;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    void apiClient
+      .getMFAStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setMfaStatus({
+            enabled: status.enabled,
+            hasSecret: status.hasSecret,
+            methods: status.methods ?? [],
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMfaStatus({ enabled: true, hasSecret: true, methods: ['totp'] });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -25,6 +69,7 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
     setPassword('');
     setMfaToken('');
     setError(null);
+    resetEmailMfa();
   };
 
   const handleClose = () => {
@@ -42,13 +87,26 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
     }
 
     if (!mfaToken.trim()) {
-      setError('Enter your current authenticator code or a backup code');
+      setError(
+        emailOnly
+          ? 'Enter the 6-digit code sent to your email'
+          : 'Enter your authenticator code, backup code, or email code'
+      );
+      return;
+    }
+
+    if (emailOnly && !challengeId) {
+      setError('Send a verification code to your email first');
       return;
     }
 
     try {
       setIsLoading(true);
-      await apiClient.disableMFA(password, mfaToken.trim());
+      await apiClient.disableMFA(
+        password,
+        mfaToken.trim(),
+        challengeId ?? undefined
+      );
       resetForm();
       onSuccess();
       onClose();
@@ -64,13 +122,13 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
       <Card className="w-full max-w-md p-6">
         <h2 className="text-lg font-semibold mb-2">Disable multi-factor authentication</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Enter your account password and a current authenticator code (or backup code) to turn off
-          MFA. Your account will be less protected.
+          Enter your account password and verify with your active MFA method to turn off MFA. Your
+          account will be less protected.
         </p>
 
-        {error && (
+        {(error || sendError) && (
           <Alert variant="error" className="mb-4">
-            {error}
+            {error || sendError}
           </Alert>
         )}
 
@@ -90,6 +148,24 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
             />
           </div>
 
+          {hasEmailMfa && (
+            <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+              <p className="text-sm font-medium text-gray-900">Email verification code</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void sendEmailCode()}
+                disabled={isLoading || isSending}
+                className="w-full"
+              >
+                {isSending ? 'Sending…' : emailCodeSent ? 'Resend code' : 'Send code to email'}
+              </Button>
+              {emailCodeSent && (
+                <p className="text-xs text-green-700">A verification code was sent to your email.</p>
+              )}
+            </div>
+          )}
+
           <div>
             <label htmlFor="disable-mfa-token" className="block text-sm font-medium text-gray-700 mb-1">
               MFA code
@@ -99,15 +175,24 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="6-digit code or backup code"
+              placeholder={
+                emailOnly
+                  ? '6-digit email code'
+                  : hasTotpMfa && hasEmailMfa
+                    ? 'Authenticator, backup, or email code'
+                    : '6-digit code or backup code'
+              }
               className="w-full rounded border px-3 py-2"
               value={mfaToken}
               onChange={(e) => setMfaToken(e.target.value)}
               disabled={isLoading}
             />
             <p className="mt-1 text-xs text-gray-500">
-              Use the code from your authenticator app now, or a backup code you saved when MFA was
-              enabled.
+              {emailOnly
+                ? 'Use the code from your email. Codes expire after about 10 minutes.'
+                : hasTotpMfa && hasEmailMfa
+                  ? 'Use your authenticator app, a backup code, or the email code you requested above.'
+                  : 'Use the code from your authenticator app now, or a backup code you saved when MFA was enabled.'}
             </p>
           </div>
 

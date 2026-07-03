@@ -2403,11 +2403,51 @@ class ApiClient {
   async setupMFA(): Promise<{
     secret: string;
     qrCodeUrl: string;
+    otpauthUrl?: string;
     backupCodes: string[];
   }> {
     return this.request('/api/mfa/setup', {
       method: 'POST',
     });
+  }
+
+  async startMfaDeviceEnrollment(backupCodes: string[]): Promise<{
+    success: boolean;
+    sessionId: string;
+    expiresAt: string;
+    push: { sent: boolean; reason?: string };
+    deepLink: string;
+    webFallbackUrl: string;
+  }> {
+    return this.request('/api/mfa/device-enrollment/start', {
+      method: 'POST',
+      body: JSON.stringify({ backupCodes }),
+    });
+  }
+
+  async getMfaDeviceEnrollmentStatus(sessionId: string): Promise<{
+    success: boolean;
+    status: 'pending' | 'completed' | 'cancelled' | 'expired';
+    expiresAt: string;
+  }> {
+    return this.request(`/api/mfa/device-enrollment/${encodeURIComponent(sessionId)}`);
+  }
+
+  async retryMfaDeviceEnrollmentPush(sessionId: string): Promise<{
+    success: boolean;
+    push: { sent: boolean; reason?: string };
+  }> {
+    return this.request(
+      `/api/mfa/device-enrollment/${encodeURIComponent(sessionId)}/retry-push`,
+      { method: 'POST' }
+    );
+  }
+
+  async cancelMfaDeviceEnrollment(sessionId: string): Promise<{ success: boolean; status: string }> {
+    return this.request(
+      `/api/mfa/device-enrollment/${encodeURIComponent(sessionId)}/cancel`,
+      { method: 'POST' }
+    );
   }
 
   async verifyMFASetup(token: string): Promise<{ verified: boolean }> {
@@ -2438,10 +2478,14 @@ class ApiClient {
     return response;
   }
 
-  async disableMFA(password: string, mfaToken?: string): Promise<{ message: string }> {
+  async disableMFA(
+    password: string,
+    mfaToken?: string,
+    mfaChallengeId?: string
+  ): Promise<{ message: string }> {
     return this.request('/api/mfa/disable', {
       method: 'POST',
-      body: JSON.stringify({ password, mfaToken }),
+      body: JSON.stringify({ password, mfaToken, mfaChallengeId }),
     });
   }
 
@@ -2663,6 +2707,10 @@ class ApiClient {
     });
   }
 
+  async sendSessionMfaEmailCode(): Promise<{ message: string; challengeId: string }> {
+    return this.request('/api/mfa/email/send', { method: 'POST' });
+  }
+
   async sendMfaEmailCode(input?: {
     userId?: string;
     attemptId?: string;
@@ -2811,10 +2859,14 @@ class ApiClient {
     });
   }
 
-  async performStepUp(password: string, mfaToken?: string): Promise<string> {
+  async performStepUp(
+    password: string,
+    mfaToken?: string,
+    mfaChallengeId?: string
+  ): Promise<string> {
     const data = await this.request<{ stepUpToken: string }>('/api/auth/step-up', {
       method: 'POST',
-      body: JSON.stringify({ password, mfaToken }),
+      body: JSON.stringify({ password, mfaToken, mfaChallengeId }),
     });
     return data.stepUpToken;
   }
