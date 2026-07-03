@@ -5,7 +5,6 @@ import {
   ShieldCheckIcon,
   ClockIcon,
   GlobeAltIcon,
-  PlusIcon,
   TrashIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -34,6 +33,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { isAdminUser } from '@/utils/tenant';
 import { SecurityRelatedLinks } from '@/components/security/SecurityRelatedLinks';
+import {
+  CreateAccessPolicyModal,
+  type CreateAccessPolicyPayload,
+} from '@/components/security/CreateAccessPolicyModal';
 import {
   SecuritySettingsPanel,
   mapApiToSecuritySettings,
@@ -66,22 +69,6 @@ interface Policy {
   conditions: unknown;
   actions: unknown;
 }
-
-const ACTION_OPTIONS = [
-  { id: 'allow', label: 'Allow', description: 'Permit sign-in when conditions match' },
-  { id: 'block', label: 'Block', description: 'Deny sign-in' },
-  { id: 'require_mfa', label: 'Require MFA', description: 'Challenge enrolled users; grace period for others' },
-  {
-    id: 'require_mfa_enrollment',
-    label: 'Require MFA enrollment',
-    description: 'Hard block until MFA is configured',
-  },
-  {
-    id: 'require_approval',
-    label: 'Require mobile approval',
-    description: 'Approve sign-in from the CYNAYD One Auth app',
-  },
-] as const;
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -194,22 +181,14 @@ export default function AccessPoliciesPage() {
   const hasLoadedOnce = useRef(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [showInstructions, setShowInstructions] = useState(true);
-  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Policy | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const [name, setName] = useState('');
   const [scheduleStart, setScheduleStart] = useState(9);
   const [scheduleEnd, setScheduleEnd] = useState(18);
-  const [countries, setCountries] = useState('');
-  const [blockIfVpn, setBlockIfVpn] = useState(false);
-  const [blockIfProxy, setBlockIfProxy] = useState(false);
-  const [blockAction, setBlockAction] = useState(false);
-  const [useMinTrustScore, setUseMinTrustScore] = useState(false);
-  const [minTrustScore, setMinTrustScore] = useState(50);
-  const [matchUnknownCountry, setMatchUnknownCountry] = useState(false);
-  const [selectedActions, setSelectedActions] = useState<string[]>(['require_mfa']);
   const [baseline, setBaseline] = useState<SecuritySettingsFormState>(DEFAULT_BASELINE);
   const [baselineSaving, setBaselineSaving] = useState(false);
   const [appliedTemplateIds, setAppliedTemplateIds] = useState<string[]>([]);
@@ -327,13 +306,17 @@ export default function AccessPoliciesPage() {
     }
   };
 
-  const createPolicy = async (body: Record<string, unknown>) => {
+  const createPolicy = async (
+    body: Record<string, unknown>,
+    options?: { closeModal?: boolean }
+  ) => {
     if (!canManage) return;
     setSaving(true);
     try {
       await apiClient.createAccessPolicy(body);
       notifySuccess('Policy created', String(body.name));
       setName('');
+      if (options?.closeModal) setShowCreateModal(false);
       await load({ background: true });
     } catch {
       notifyError('Could not create policy', 'Verify the name and settings, then try again.');
@@ -370,27 +353,32 @@ export default function AccessPoliciesPage() {
     }
   };
 
-  const createCustomPolicy = async () => {
-    if (!name.trim()) {
-      notifyError('Name required', 'Enter a policy name before creating.');
-      return;
-    }
-    const countryList = countries
+  const handleCreateFromModal = async (payload: CreateAccessPolicyPayload) => {
+    const countryList = payload.countries
       .split(',')
       .map((c) => c.trim().toUpperCase())
       .filter(Boolean);
-    await createPolicy({
-      name: name.trim(),
-      priority: 15,
-      conditions: {
-        ...(countryList.length ? { countries: countryList } : {}),
-        ...(countryList.length && matchUnknownCountry ? { matchUnknownCountry: true } : {}),
-        ...(blockIfVpn ? { blockIfVpn: true } : {}),
-        ...(blockIfProxy ? { blockIfProxy: true } : {}),
-        ...(useMinTrustScore ? { minTrustScore } : {}),
+    await createPolicy(
+      {
+        name: payload.name.trim(),
+        priority: 15,
+        conditions: {
+          ...(countryList.length ? { countries: countryList } : {}),
+          ...(countryList.length && payload.matchUnknownCountry
+            ? { matchUnknownCountry: true }
+            : {}),
+          ...(payload.blockIfVpn ? { blockIfVpn: true } : {}),
+          ...(payload.blockIfProxy ? { blockIfProxy: true } : {}),
+          ...(payload.useMinTrustScore ? { minTrustScore: payload.minTrustScore } : {}),
+        },
+        actions: payload.blockAction
+          ? ['block']
+          : payload.selectedActions.length
+            ? payload.selectedActions
+            : ['allow'],
       },
-      actions: blockAction ? ['block'] : selectedActions.length ? selectedActions : ['allow'],
-    });
+      { closeModal: true }
+    );
   };
 
   return (
@@ -410,6 +398,14 @@ export default function AccessPoliciesPage() {
         variant="danger"
         isLoading={deleting}
       />
+      {canManage && (
+        <CreateAccessPolicyModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSubmit={handleCreateFromModal}
+          saving={saving}
+        />
+      )}
 
       <div className="mx-auto max-w-6xl space-y-8 p-6">
         <SecurityRelatedLinks current="policies" />
@@ -460,18 +456,25 @@ export default function AccessPoliciesPage() {
           <section className="lg:col-span-3 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Active policies</h2>
-              <div className="relative max-w-xs w-full sm:w-64">
-                <MagnifyingGlassIcon
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                  aria-hidden
-                />
-                <input
-                  type="search"
-                  placeholder="Search policies…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-64">
+                  <MagnifyingGlassIcon
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    placeholder="Search policies…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                {canManage && (
+                  <Button onClick={() => setShowCreateModal(true)} className="shrink-0">
+                    Create policy
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -498,7 +501,7 @@ export default function AccessPoliciesPage() {
                   canManage && !search
                     ? {
                         label: 'Create your first policy',
-                        onClick: () => setShowCustomForm(true),
+                        onClick: () => setShowCreateModal(true),
                         variant: 'default',
                       }
                     : undefined
@@ -630,164 +633,13 @@ export default function AccessPoliciesPage() {
                 helperText="Leave blank to use the template default name."
               />
 
-              <Card>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between p-4 text-left"
-                  onClick={() => setShowCustomForm((v) => !v)}
-                  aria-expanded={showCustomForm}
-                >
-                  <div className="flex items-center gap-2">
-                    <PlusIcon className="h-5 w-5 text-indigo-600" />
-                    <span className="font-medium text-gray-900">Custom policy builder</span>
-                  </div>
-                  {showCustomForm ? (
-                    <ChevronUpIcon className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <ChevronDownIcon className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-
-                {showCustomForm && (
-                  <CardContent className="space-y-4 border-t pt-4">
-                    <Input
-                      label="Policy name"
-                      required
-                      placeholder="e.g. US & CA — require MFA"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                    <Input
-                      label="Countries"
-                      placeholder="US, CA, GB"
-                      helperText="Comma-separated ISO country codes. Leave empty for all regions."
-                      value={countries}
-                      onChange={(e) => setCountries(e.target.value)}
-                    />
-
-                    {countries.trim().length > 0 && (
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
-                        <input
-                          type="checkbox"
-                          className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                          checked={matchUnknownCountry}
-                          onChange={(e) => setMatchUnknownCountry(e.target.checked)}
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-gray-900">Apply to unknown locations</span>
-                          <span className="block text-xs text-gray-500">
-                            When enabled, sign-ins with an unresolved country also match this rule.
-                          </span>
-                        </span>
-                      </label>
-                    )}
-
-                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        checked={blockIfVpn}
-                        onChange={(e) => setBlockIfVpn(e.target.checked)}
-                      />
-                      <span>
-                        <span className="block text-sm font-medium text-gray-900">Match VPN logins</span>
-                        <span className="block text-xs text-gray-500">Apply when the session appears to use a VPN.</span>
-                      </span>
-                    </label>
-
-                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        checked={blockIfProxy}
-                        onChange={(e) => setBlockIfProxy(e.target.checked)}
-                      />
-                      <span>
-                        <span className="block text-sm font-medium text-gray-900">Match proxy logins</span>
-                        <span className="block text-xs text-gray-500">Apply when the session appears to use a proxy.</span>
-                      </span>
-                    </label>
-
-                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        checked={useMinTrustScore}
-                        onChange={(e) => setUseMinTrustScore(e.target.checked)}
-                      />
-                      <span className="flex-1">
-                        <span className="block text-sm font-medium text-gray-900">Require minimum device trust score</span>
-                        <span className="block text-xs text-gray-500">
-                          Policy matches only when device trust score is at or above this value.
-                        </span>
-                        {useMinTrustScore && (
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={minTrustScore}
-                            onChange={(e) => setMinTrustScore(Number(e.target.value))}
-                            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            aria-label="Minimum device trust score"
-                          />
-                        )}
-                      </span>
-                    </label>
-
-                    <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium text-gray-700">Actions when matched</legend>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-red-100 bg-red-50/50 p-3">
-                        <input
-                          type="checkbox"
-                          className="mt-1 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                          checked={blockAction}
-                          onChange={(e) => setBlockAction(e.target.checked)}
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-gray-900">Block sign-in</span>
-                          <span className="block text-xs text-gray-500">Overrides action checkboxes below.</span>
-                        </span>
-                      </label>
-                      {!blockAction && (
-                        <div className="space-y-2">
-                          {ACTION_OPTIONS.map((opt) => (
-                            <label
-                              key={opt.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
-                            >
-                              <input
-                                type="checkbox"
-                                className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={selectedActions.includes(opt.id)}
-                                onChange={(e) => {
-                                  setSelectedActions((prev) =>
-                                    e.target.checked
-                                      ? [...prev, opt.id]
-                                      : prev.filter((x) => x !== opt.id)
-                                  );
-                                }}
-                              />
-                              <span>
-                                <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
-                                <span className="block text-xs text-gray-500">{opt.description}</span>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </fieldset>
-
-                    <Button
-                      className="w-full"
-                      loading={saving}
-                      disabled={saving}
-                      onClick={() => void createCustomPolicy()}
-                    >
-                      Create custom policy
-                    </Button>
-                  </CardContent>
-                )}
-              </Card>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowCreateModal(true)}
+              >
+                Create custom policy
+              </Button>
             </aside>
           )}
         </div>
@@ -857,7 +709,7 @@ function InstructionsPanel({
               <ol className="list-decimal space-y-1.5 pl-5 text-gray-600">
                 <li>
                   Choose a <strong>quick template</strong> on the right (VPN block, business-hours MFA) or
-                  open the <strong>custom policy builder</strong> for country lists and trust scores.
+                  click <strong>Create policy</strong> for country lists and trust scores.
                 </li>
                 <li>
                   Optionally enter a <strong>policy name</strong> before using a template; otherwise the

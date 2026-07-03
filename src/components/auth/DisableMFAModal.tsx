@@ -132,6 +132,25 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
           </Alert>
         )}
 
+        {hasTotpMfa && !emailOnly && (
+          <Alert variant="info" className="mb-4">
+            <p className="text-sm font-medium text-blue-900 mb-1">Using Cynayd Auth on your phone?</p>
+            <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+              <li>
+                Open <strong>Cynayd One Auth</strong> → <strong>Settings</strong> → turn off MFA there
+                (your code fills in automatically), or
+              </li>
+              <li>
+                Sign in on the app and use the 6-digit code from the MFA step, then paste it below
+              </li>
+              <li>Or use a backup code{hasEmailMfa ? ', or send an email code' : ''} instead</li>
+            </ul>
+            <p className="text-xs text-blue-700 mt-2">
+              If you use Google Authenticator or another app, enter the code from that app instead.
+            </p>
+          </Alert>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="disable-mfa-password" className="block text-sm font-medium text-gray-700 mb-1">
@@ -191,8 +210,10 @@ export function DisableMFAModal({ isOpen, onClose, onSuccess }: DisableMFAModalP
               {emailOnly
                 ? 'Use the code from your email. Codes expire after about 10 minutes.'
                 : hasTotpMfa && hasEmailMfa
-                  ? 'Use your authenticator app, a backup code, or the email code you requested above.'
-                  : 'Use the code from your authenticator app now, or a backup code you saved when MFA was enabled.'}
+                  ? 'Enter a code from Cynayd Auth, another authenticator app, a backup code, or your email code above.'
+                  : hasTotpMfa
+                    ? 'Enter a code from Cynayd Auth, another authenticator app, or a backup code you saved when MFA was enabled.'
+                    : 'Use the code from your authenticator app now, or a backup code you saved when MFA was enabled.'}
             </p>
           </div>
 
