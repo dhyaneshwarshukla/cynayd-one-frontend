@@ -5,6 +5,7 @@ import { UnifiedLayout } from '@/components/layout/UnifiedLayout';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { MobileApprovalSetupBanner } from '@/components/auth/MobileApprovalSetupBanner';
 import UserDashboard from '../../components/dashboard/UserDashboard';
 import AdminDashboard from '../../components/dashboard/AdminDashboard';
 import SuperAdminDashboard from '../../components/dashboard/SuperAdminDashboard';
@@ -93,6 +94,7 @@ export default function DashboardPage() {
       variant="dashboard"
       breadcrumb={breadcrumb}
     >
+      <MobileApprovalSetupBanner />
       {isSuperAdmin ? (
         <SuperAdminDashboard user={user} />
       ) : isAdmin ? (

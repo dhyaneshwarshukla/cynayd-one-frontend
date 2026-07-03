@@ -9,6 +9,7 @@ interface AwaitingApprovalPanelProps {
   message?: string | null;
   requestContext?: Record<string, unknown> | null;
   expiresAt?: string | null;
+  pushDelivered?: boolean;
   onRequestEmailOtp?: () => void;
   emailOtpLoading?: boolean;
   emailOtpFallbackAllowed?: boolean;
@@ -40,6 +41,7 @@ export function AwaitingApprovalPanel({
   message,
   requestContext,
   expiresAt,
+  pushDelivered,
   onRequestEmailOtp,
   emailOtpLoading,
   emailOtpFallbackAllowed = false,
@@ -99,6 +101,13 @@ export function AwaitingApprovalPanel({
           Expires in {formatCountdown(remainingMs)}
         </p>
       )}
+
+      {pushDelivered === false ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          No push notification was sent. Open the <strong>CYNAYD One Auth</strong> app manually to
+          approve this sign-in.
+        </p>
+      ) : null}
 
       <div className="rounded-lg border border-violet-100 bg-white/70 p-3 text-xs text-violet-900">
         {browser ? <p>Browser: {String(browser)}</p> : null}

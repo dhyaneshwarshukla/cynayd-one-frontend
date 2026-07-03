@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { MFAVerificationModal } from '@/components/auth/MFAVerificationModal';
 import { AwaitingApprovalPanel } from '@/components/auth/AwaitingApprovalPanel';
+import {
+  markMobileApprovalSetupPrompt,
+  useLoginChallengePolling,
+} from '@/hooks/useLoginChallengePolling';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 
@@ -33,7 +37,8 @@ export default function MagicLinkPage() {
   const [passkeyApprovalBusy, setPasskeyApprovalBusy] = useState(false);
   const [backupApprovalBusy, setBackupApprovalBusy] = useState(false);
   const [passkeyMfaAllowed, setPasskeyMfaAllowed] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pushDelivered, setPushDelivered] = useState<boolean | undefined>(undefined);
+  const [bootstrapNoDevices, setBootstrapNoDevices] = useState(false);
 
   const completeLogin = async (accessToken: string) => {
     apiClient.storeAuthToken(accessToken);
@@ -66,10 +71,14 @@ export default function MagicLinkPage() {
         data.emailOtpFallbackAllowed === true || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
       );
       setBackupApprovalAllowed(data.backupApprovalAllowed === true);
+      setPushDelivered(typeof data.pushDelivered === 'boolean' ? data.pushDelivered : undefined);
+      setBootstrapNoDevices(
+        data.bootstrapNoDevices === true || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      );
       const preferred = data.preferredChallenge as string | undefined;
       setApprovalMessage(
         data.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
-          ? 'Check your email for an approval code, or approve from your mobile app.'
+          ? 'Check your email for a verification code.'
           : 'Approve this sign-in from your CYNAYD mobile app.'
       );
       setStatus(data.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email' ? 'email_otp' : 'approval');
@@ -100,32 +109,19 @@ export default function MagicLinkPage() {
       .catch(() => setStatus('error'));
   }, [searchParams]);
 
-  useEffect(() => {
-    if (status !== 'approval' || !attemptId || !attemptNonce) return;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const challenge = await apiClient.getLoginChallengeStatus(attemptId, attemptNonce, false);
-        if (challenge.status === 'approved' && challenge.accessToken) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          await completeLogin(challenge.accessToken);
-        } else if (
-          challenge.status === 'rejected' ||
-          challenge.status === 'cancelled' ||
-          challenge.status === 'expired'
-        ) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setStatus('error');
-        }
-      } catch {
-        // keep polling
+  useLoginChallengePolling({
+    challengeId: attemptId,
+    nonce: attemptNonce,
+    rememberMe: false,
+    enabled: status === 'approval',
+    poll: (id, nonce, rememberMe) => apiClient.getLoginChallengeStatus(id, nonce, rememberMe),
+    onApproved: async (challenge) => {
+      if (challenge.accessToken) {
+        await completeLogin(challenge.accessToken);
       }
-    }, 2000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [status, attemptId, attemptNonce]);
+    },
+    onTerminal: () => setStatus('error'),
+  });
 
   const handleVerifyOtp = async () => {
     if (!attemptId || !attemptNonce || !otpCode.trim()) return;
@@ -137,6 +133,9 @@ export default function MagicLinkPage() {
         otp: otpCode.trim(),
       });
       if (response.accessToken) {
+        if (bootstrapNoDevices) {
+          markMobileApprovalSetupPrompt();
+        }
         await completeLogin(response.accessToken);
       }
     } catch {
@@ -157,7 +156,6 @@ export default function MagicLinkPage() {
         response: assertion,
       });
       if (response.accessToken) {
-        if (pollRef.current) clearInterval(pollRef.current);
         await completeLogin(response.accessToken);
       }
     } catch {
@@ -177,7 +175,6 @@ export default function MagicLinkPage() {
         backupCode,
       });
       if (response.accessToken) {
-        if (pollRef.current) clearInterval(pollRef.current);
         await completeLogin(response.accessToken);
       }
     } catch {
@@ -202,6 +199,7 @@ export default function MagicLinkPage() {
     message: approvalMessage,
     requestContext: approvalContext,
     expiresAt: approvalExpiresAt,
+    pushDelivered,
     emailOtpFallbackAllowed,
     passkeyFallbackAllowed,
     backupApprovalAllowed,

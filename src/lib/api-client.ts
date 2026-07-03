@@ -127,6 +127,10 @@ export interface AuthResponse {
   passkeyMfaAllowed?: boolean;
   emailOtpFallbackAllowed?: boolean;
   backupApprovalAllowed?: boolean;
+  approvalRequired?: boolean;
+  bootstrapNoDevices?: boolean;
+  pushDelivered?: boolean;
+  pushDeliveryWarning?: string;
 }
 
 function throwMfaRequired(response: AuthResponse): never {

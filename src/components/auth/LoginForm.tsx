@@ -14,6 +14,10 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield, X } from 'lucide-react';
 import { LegalFooterLinks } from '../legal/LegalFooterLinks';
 import { MFAVerificationModal } from './MFAVerificationModal';
 import { AwaitingApprovalPanel } from './AwaitingApprovalPanel';
+import {
+  markMobileApprovalSetupPrompt,
+  useLoginChallengePolling,
+} from '../../hooks/useLoginChallengePolling';
 import type { AuthResponse } from '../../lib/api-client';
 import {
   addRecentAccount,
@@ -108,7 +112,8 @@ export const LoginForm: React.FC = () => {
   const [backupApprovalBusy, setBackupApprovalBusy] = useState(false);
   const [passkeyMfaAllowed, setPasskeyMfaAllowed] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pushDelivered, setPushDelivered] = useState<boolean | undefined>(undefined);
+  const [bootstrapNoDevices, setBootstrapNoDevices] = useState(false);
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [selectedAccountEmail, setSelectedAccountEmail] = useState('');
@@ -122,13 +127,27 @@ export const LoginForm: React.FC = () => {
     errorRef.current = error;
   }, [error]);
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-      }
-    };
-  }, []);
+  useLoginChallengePolling({
+    challengeId,
+    nonce: challengeNonce,
+    rememberMe: pendingRememberMe,
+    enabled: loginStep === 'awaiting_approval',
+    poll: async (id, nonce, rememberMe) => {
+      const { apiClient } = await import('../../lib/api-client');
+      return apiClient.getLoginChallengeStatus(id, nonce, rememberMe);
+    },
+    onApproved: async () => {
+      await completeLoginRedirect();
+    },
+    onTerminal: (status) => {
+      setError(
+        status.status === 'rejected' || status.status === 'cancelled'
+          ? 'Login denied. The sign-in attempt was rejected.'
+          : 'Login approval expired. Please try again.'
+      );
+      setLoginStep('password');
+    },
+  });
 
   useEffect(() => {
     const accounts = getRecentAccounts();
@@ -195,6 +214,8 @@ export const LoginForm: React.FC = () => {
     email: string
   ) => {
     if (result.code === 'APPROVAL_REQUIRED' || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
+      if (result.challengeId) setChallengeId(result.challengeId);
+      if (result.nonce) setChallengeNonce(result.nonce);
       setPendingPassword(password);
       setPendingRememberMe(rememberMe);
       setPendingEmail(email);
@@ -207,10 +228,18 @@ export const LoginForm: React.FC = () => {
         result.emailOtpFallbackAllowed === true || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
       );
       setBackupApprovalAllowed(result.backupApprovalAllowed === true);
+      setPushDelivered(
+        typeof (result as AuthResponse & { pushDelivered?: boolean }).pushDelivered === 'boolean'
+          ? (result as AuthResponse & { pushDelivered?: boolean }).pushDelivered
+          : undefined
+      );
+      setBootstrapNoDevices(
+        result.bootstrapNoDevices === true || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
+      );
       const preferred = (result as AuthResponse & { preferredChallenge?: string }).preferredChallenge;
       setApprovalMessage(
         result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
-          ? 'Check your email for an approval code, or approve from your mobile app.'
+          ? 'Check your email for a verification code.'
           : 'Approve this sign-in from your CYNAYD mobile app.'
       );
       if (result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email') {
@@ -226,53 +255,28 @@ export const LoginForm: React.FC = () => {
     }
   };
 
-  const startApprovalPolling = (id: string, nonce: string, rememberMe: boolean) => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-    }
-    pollRef.current = setInterval(async () => {
-      try {
-        const { apiClient } = await import('../../lib/api-client');
-        const status = await apiClient.getLoginChallengeStatus(id, nonce, rememberMe);
-        if (status.status === 'approved' && status.accessToken) {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          await completeLoginRedirect();
-        } else if (
-          status.status === 'rejected' ||
-          status.status === 'cancelled' ||
-          status.status === 'expired'
-        ) {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          setError(
-            status.status === 'rejected' || status.status === 'cancelled'
-              ? 'Login denied. The sign-in attempt was rejected.'
-              : 'Login approval expired. Please try again.'
-          );
-          setLoginStep('password');
-        }
-      } catch {
-        // Keep polling during in-progress login
-      }
-    }, 2000);
-  };
-
-  useEffect(() => {
-    if (loginStep === 'awaiting_approval' && challengeId && challengeNonce) {
-      startApprovalPolling(challengeId, challengeNonce, pendingRememberMe);
-    }
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+  const applyApprovalError = (err: unknown) => {
+    const apiErr = err as {
+      response?: { data?: { code?: string; message?: string }; status?: number };
+      message?: string;
     };
-  }, [loginStep, challengeId, challengeNonce, pendingRememberMe]);
+    const code = apiErr.response?.data?.code;
+    const message =
+      apiErr.response?.data?.message || apiErr.message || 'Sign-in could not be completed.';
+    if (code === 'APPROVAL_UNAVAILABLE') {
+      setError(
+        'Mobile approval is required but no approval method is available. Install CYNAYD One Auth or contact your administrator.'
+      );
+      setLoginStep('password');
+      return;
+    }
+    if (code === 'APPROVAL_CHALLENGE_REQUIRED') {
+      setError('Mobile approval is required. Please start sign-in again.');
+      resetToEmailStep();
+      return;
+    }
+    setError(message);
+  };
 
   const applyLoginStartError = (err: unknown, email: string) => {
     const apiErr = err as {
@@ -442,11 +446,30 @@ export const LoginForm: React.FC = () => {
         resetToEmailStep();
         return;
       }
-    } catch (err: any) {
-      console.error('Login error:', err);
-      
-      // Extract error message from response data first, then fallback to error message
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to login';
+    } catch (err: unknown) {
+      if (
+        (err as { response?: { data?: { code?: string } } })?.response?.data?.code ===
+          'APPROVAL_UNAVAILABLE' ||
+        (err as { response?: { data?: { code?: string } } })?.response?.data?.code ===
+          'APPROVAL_CHALLENGE_REQUIRED'
+      ) {
+        applyApprovalError(err);
+        setIsSubmitting(false);
+        return;
+      }
+      const errAny = err as {
+        response?: {
+          data?: {
+            code?: string;
+            message?: string;
+            lockedUntil?: string;
+            userEmail?: string;
+            attemptsRemaining?: number;
+          };
+        };
+        message?: string;
+      };
+      const errorMessage = errAny.response?.data?.message || errAny.message || 'Failed to login';
       
       // Always set error message to display it
       errorRef.current = errorMessage; // Set ref first
@@ -466,9 +489,9 @@ export const LoginForm: React.FC = () => {
       }, 0);
       
       // Check if it's an account locked error FIRST (before setting generic error)
-      if (err.response?.data?.code === 'ACCOUNT_LOCKED' || errorMessage.toLowerCase().includes('account is locked') || errorMessage.toLowerCase().includes('locked until')) {
-        const lockedUntil = err.response?.data?.lockedUntil;
-        const userEmail = err.response?.data?.userEmail || data.email;
+      if (errAny.response?.data?.code === 'ACCOUNT_LOCKED' || errorMessage.toLowerCase().includes('account is locked') || errorMessage.toLowerCase().includes('locked until')) {
+        const lockedUntil = errAny.response?.data?.lockedUntil;
+        const userEmail = errAny.response?.data?.userEmail || data.email;
         const lockMessage = lockedUntil 
           ? `Account is locked until ${new Date(lockedUntil).toLocaleString()}.`
           : errorMessage.includes('locked') ? errorMessage : 'Account is locked.';
@@ -481,9 +504,9 @@ export const LoginForm: React.FC = () => {
       }
 
       // Check if it's an invalid credentials error with attempt count
-      if (err.response?.data?.code === 'INVALID_CREDENTIALS') {
-        const attemptsRemaining = err.response.data.attemptsRemaining;
-        const errorMsg = err.response.data.message || errorMessage;
+      if (errAny.response?.data?.code === 'INVALID_CREDENTIALS') {
+        const attemptsRemaining = errAny.response.data.attemptsRemaining;
+        const errorMsg = errAny.response.data.message || errorMessage;
         setError(errorMsg);
         // Show warning if attempts are low
         if (attemptsRemaining <= 3 && attemptsRemaining > 0) {
@@ -520,6 +543,9 @@ export const LoginForm: React.FC = () => {
         rememberMe,
       });
       if (response.accessToken && response.user) {
+        if (bootstrapNoDevices) {
+          markMobileApprovalSetupPrompt();
+        }
         await completeLoginRedirect();
       } else if (
         response.code === 'APPROVAL_REQUIRED' ||
@@ -574,10 +600,6 @@ export const LoginForm: React.FC = () => {
         rememberMe: pendingRememberMe,
       });
       if (response.accessToken && response.user) {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
         apiClient.storeAuthToken(response.accessToken);
         await completeLoginRedirect();
         return;
@@ -603,10 +625,6 @@ export const LoginForm: React.FC = () => {
         rememberMe: pendingRememberMe,
       });
       if (response.accessToken && response.user) {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
         apiClient.storeAuthToken(response.accessToken);
         await completeLoginRedirect();
         return;
@@ -1057,7 +1075,15 @@ export const LoginForm: React.FC = () => {
 
           {loginStep === 'email_otp' && (
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-gray-700">Email OTP</label>
+              <label className="block text-sm font-semibold text-gray-700">Email verification code</label>
+              {bootstrapNoDevices ? (
+                <p className="text-sm text-gray-600">
+                  Check your email for the sign-in code. After you sign in, install{' '}
+                  <strong>CYNAYD One Auth</strong> to approve future sign-ins from your phone.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600">{approvalMessage}</p>
+              )}
               <Input
                 value={otpCode}
                 onChange={(e) => setOtpCode((e.target as HTMLInputElement).value)}
@@ -1079,6 +1105,7 @@ export const LoginForm: React.FC = () => {
               message={approvalMessage}
               requestContext={approvalContext}
               expiresAt={approvalExpiresAt}
+              pushDelivered={pushDelivered}
               onRequestEmailOtp={
                 emailOtpFallbackAllowed ? handleRequestApprovalEmailOtp : undefined
               }
