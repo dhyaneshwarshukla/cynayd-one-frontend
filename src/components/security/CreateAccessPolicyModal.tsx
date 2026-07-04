@@ -32,6 +32,8 @@ export interface CreateAccessPolicyPayload {
   minTrustScore: number;
   blockAction: boolean;
   selectedActions: string[];
+  /** With require_approval: never skip approval for trusted devices. */
+  forceApprovalEveryLogin: boolean;
 }
 
 interface CreateAccessPolicyModalProps {
@@ -51,6 +53,7 @@ const DEFAULT_FORM: CreateAccessPolicyPayload = {
   minTrustScore: 50,
   blockAction: false,
   selectedActions: ['require_mfa'],
+  forceApprovalEveryLogin: false,
 };
 
 export function CreateAccessPolicyModal({
@@ -260,6 +263,24 @@ export function CreateAccessPolicyModal({
                               </span>
                             </label>
                           ))}
+                          {form.selectedActions.includes('require_approval') && (
+                            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3 hover:bg-violet-50">
+                              <input
+                                type="checkbox"
+                                className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={form.forceApprovalEveryLogin}
+                                onChange={(e) => update('forceApprovalEveryLogin', e.target.checked)}
+                              />
+                              <span>
+                                <span className="block text-sm font-medium text-gray-900">
+                                  Require approval every login
+                                </span>
+                                <span className="block text-xs text-gray-500">
+                                  Disable trusted-device skip. Users must approve every sign-in.
+                                </span>
+                              </span>
+                            </label>
+                          )}
                         </div>
                       )}
                     </fieldset>

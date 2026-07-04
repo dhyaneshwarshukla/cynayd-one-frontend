@@ -370,6 +370,10 @@ export default function AccessPoliciesPage() {
           ...(payload.blockIfVpn ? { blockIfVpn: true } : {}),
           ...(payload.blockIfProxy ? { blockIfProxy: true } : {}),
           ...(payload.useMinTrustScore ? { minTrustScore: payload.minTrustScore } : {}),
+          ...(payload.forceApprovalEveryLogin &&
+          payload.selectedActions.includes('require_approval')
+            ? { forceApprovalEveryLogin: true }
+            : {}),
         },
         actions: payload.blockAction
           ? ['block']
