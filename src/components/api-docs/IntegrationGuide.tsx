@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { DocsCodeBlock } from '@/components/api-docs/DocsCodeBlock';
-import { PARTNER_API_BASE_URL } from '@/lib/api-docs/constants';
+import { AUTH_API_BASE_URL, PLATFORM_API_BASE_URL, PUBLIC_SCOPES } from '@/lib/api-docs/constants';
 import type { GuideSectionId } from '@/lib/api-docs/docs-sections';
 
 function MethodBadge({ method }: { method: 'GET' | 'POST' | 'PUT' | 'DELETE' }) {
@@ -65,7 +65,8 @@ function DocsTable({ children }: { children: ReactNode }) {
 }
 
 export function IntegrationGuide() {
-  const baseUrl = PARTNER_API_BASE_URL;
+  const authUrl = AUTH_API_BASE_URL;
+  const platformUrl = PLATFORM_API_BASE_URL;
 
   return (
     <div className="space-y-8">
@@ -84,6 +85,19 @@ export function IntegrationGuide() {
         </ol>
       </Section>
 
+      <Section id="platform-overview" title="Platform Overview">
+        <p>
+          Cynayd One exposes two public API surfaces. Use <InlineCode>{authUrl}</InlineCode> for
+          authentication, SSO, SAML, and webhook configuration. Use{' '}
+          <InlineCode>{platformUrl}</InlineCode> for product APIs (Calendar, Tasks, Docs, Forms,
+          Mail, Drive).
+        </p>
+        <p className="mt-3">
+          All platform routes are under <InlineCode>/api/v1/*</InlineCode>. Internal admin, billing,
+          and security APIs are not published in this developer portal.
+        </p>
+      </Section>
+
       <Section id="flow-browser-sso" title="Flow A — Browser SSO (legacy token)">
         <p className="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           Passing SSO tokens in URL query parameters is deprecated. Prefer{' '}
@@ -97,7 +111,7 @@ export function IntegrationGuide() {
           </li>
           <li>The app receives user claims and app access details.</li>
         </ol>
-        <DocsCodeBlock language="curl">{`curl -X POST ${baseUrl}/api/sso/validate \\
+        <DocsCodeBlock language="curl">{`curl -X POST ${authUrl}/api/sso/validate \\
   -H "Content-Type: application/json" \\
   -d '{
     "token": "sso_token_here",
@@ -126,7 +140,7 @@ export function IntegrationGuide() {
           </li>
         </ol>
         <DocsCodeBlock language="curl">{`# 1. Mint code (authenticated)
-curl -X POST ${baseUrl}/api/sso/exchange-code \\
+curl -X POST ${authUrl}/api/sso/exchange-code \\
   -H "Content-Type: application/json" \\
   -H "Cookie: accessToken=..." \\
   -d '{ "appSlug": "your-app-slug" }'
@@ -134,7 +148,7 @@ curl -X POST ${baseUrl}/api/sso/exchange-code \\
 # Response: { "code": "...", "expiresIn": 120 }
 
 # 2. Redeem code (public — code is the secret)
-curl -X POST ${baseUrl}/api/sso/redeem-code \\
+curl -X POST ${authUrl}/api/sso/redeem-code \\
   -H "Content-Type: application/json" \\
   -d '{
     "code": "opaque_code_from_redirect",
@@ -155,7 +169,7 @@ curl -X POST ${baseUrl}/api/sso/redeem-code \\
           </li>
           <li>The app uses the service token for authorized partner API calls.</li>
         </ol>
-        <DocsCodeBlock language="curl">{`curl -X POST ${baseUrl}/api/sso/service-token \\
+        <DocsCodeBlock language="curl">{`curl -X POST ${authUrl}/api/sso/service-token \\
   -H "Content-Type: application/json" \\
   -d '{
     "client_id": "client_id_here",
@@ -168,10 +182,10 @@ curl -X POST ${baseUrl}/api/sso/redeem-code \\
           Cynayd One supports SAML federation for enterprise apps. Configure metadata,
           login, callback, and logout endpoints from the API Reference tab.
         </p>
-        <DocsCodeBlock language="text">{`${baseUrl}/api/apps/{appSlug}/saml/metadata?organizationId={orgId}
-${baseUrl}/api/saml/login?organizationId={orgId}
-${baseUrl}/api/saml/callback
-${baseUrl}/api/saml/slo`}</DocsCodeBlock>
+        <DocsCodeBlock language="text">{`${authUrl}/api/apps/{appSlug}/saml/metadata?organizationId={orgId}
+${authUrl}/api/saml/login?organizationId={orgId}
+${authUrl}/api/saml/callback
+${authUrl}/api/saml/slo`}</DocsCodeBlock>
       </Section>
 
       <Section id="auth-tokens" title="Authentication and Token Lifecycle">
@@ -224,8 +238,81 @@ ${baseUrl}/api/saml/slo`}</DocsCodeBlock>
         </p>
       </Section>
 
+      <Section id="workspaces" title="Workspaces and Tenancy">
+        <p>
+          Every platform API call should include{' '}
+          <InlineCode>X-Cynayd-Workspace-Id</InlineCode> with the organization/workspace ID.
+        </p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+          <li>
+            <Endpoint method="GET" path="/api/v1/workspaces" /> — list workspaces for the
+            authenticated user (platform API)
+          </li>
+          <li>
+            <Endpoint method="GET" path="/api/v1/workspaces/{workspaceId}/members" /> — list
+            members
+          </li>
+          <li>
+            <Endpoint method="GET" path="/api/v1/workspaces/{workspaceId}/apps" /> — enabled Cynayd
+            apps
+          </li>
+        </ul>
+      </Section>
+
+      <Section id="scopes-permissions" title="Scopes and Permissions">
+        <p className="mb-4 text-sm text-gray-600">
+          Platform APIs enforce OAuth-style scopes on each request. Request only the scopes your
+          integration needs when minting tokens via <InlineCode>POST /api/v1/token</InlineCode>.
+        </p>
+        <DocsCodeBlock language="text">{PUBLIC_SCOPES.join('\n')}</DocsCodeBlock>
+        <p className="mt-4 text-sm text-gray-600">
+          Colon aliases (e.g. <InlineCode>mail:read</InlineCode>, <InlineCode>calendar:create</InlineCode>)
+          are accepted during the migration period.
+        </p>
+      </Section>
+
+      <Section id="platform-api" title="Platform API (api.one.cynayd.com)">
+        <p>Standard headers for all platform requests:</p>
+        <DocsCodeBlock language="http">{`Authorization: Bearer <access_token>
+X-Cynayd-Workspace-Id: <workspace_id>
+Content-Type: application/json
+Idempotency-Key: <unique_key>   # recommended on POST/PATCH/DELETE writes`}</DocsCodeBlock>
+        <DocsCodeBlock language="curl">{`curl ${platformUrl}/api/v1/mail/messages?limit=20 \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "X-Cynayd-Workspace-Id: $WORKSPACE_ID"`}</DocsCodeBlock>
+        <p className="mt-4 text-sm text-gray-600">
+          See the API Reference tab for the full app-wise catalog: Platform, Calendar, Tasks, Docs,
+          Forms, Mail, Drive, and Unified APIs.
+        </p>
+      </Section>
+
+      <Section id="pagination" title="Pagination">
+        <p>
+          List endpoints support <InlineCode>limit</InlineCode> and <InlineCode>cursor</InlineCode>{' '}
+          query parameters. Responses include pagination metadata inside <InlineCode>data</InlineCode>{' '}
+          when the upstream service supports it.
+        </p>
+      </Section>
+
+      <Section id="idempotency" title="Idempotency">
+        <p>
+          Send <InlineCode>Idempotency-Key</InlineCode> on write requests (send mail, create
+          webhooks, complete tasks). Retrying with the same key returns the original response
+          without duplicating side effects.
+        </p>
+      </Section>
+
       <Section id="error-format" title="Standard error format">
-        <p>Partner APIs return a consistent JSON error shape:</p>
+        <p>Platform APIs return a consistent JSON envelope:</p>
+        <DocsCodeBlock language="json">{`{
+  "success": false,
+  "error": {
+    "code": "permission_denied",
+    "message": "Missing required scope: mail.read"
+  },
+  "requestId": "req_01HZY..."
+}`}</DocsCodeBlock>
+        <p className="mt-4">Auth APIs on {authUrl} use a partner error shape:</p>
         <DocsCodeBlock language="json">{`{
   "error": "Invalid token",
   "code": "INVALID_TOKEN",
@@ -244,6 +331,22 @@ ${baseUrl}/api/saml/slo`}</DocsCodeBlock>
           <li><InlineCode>WEBHOOK_SECRET_INVALID</InlineCode> — webhook signature validation failed</li>
           <li><InlineCode>INTERNAL_ERROR</InlineCode> — unexpected server error</li>
         </ul>
+      </Section>
+
+      <Section id="webhooks" title="Webhooks">
+        <p>
+          Configure webhooks via <InlineCode>POST {authUrl}/api/webhooks</InlineCode> or the platform
+          alias <InlineCode>POST /api/v1/webhooks</InlineCode>. Subscribe to events such as:
+        </p>
+        <DocsCodeBlock language="text">{`calendar.event.created | calendar.event.updated | calendar.event.deleted
+task.created | task.updated | task.completed | task.deleted
+doc.created | doc.updated | doc.shared | doc.deleted
+form.submitted | form.response.updated
+mail.received | mail.sent | mail.thread.updated
+drive.file.created | drive.file.updated | drive.file.deleted | drive.file.shared`}</DocsCodeBlock>
+        <p className="mt-4 text-sm text-gray-600">
+          Full catalog: <InlineCode>GET {platformUrl}/api/v1/webhooks/events</InlineCode>
+        </p>
       </Section>
 
       <Section id="rate-limits" title="Limits and Retry Behavior">
@@ -394,7 +497,8 @@ ${baseUrl}/api/saml/slo`}</DocsCodeBlock>
           to enable production credentials.
         </p>
         <p className="mt-3 text-sm text-amber-800">
-          Environment: production API at {baseUrl}. Sandbox environment coming in a future release.
+          Auth API: {authUrl}. Platform API: {platformUrl}. Sandbox environment coming in a future
+          release.
         </p>
       </section>
     </div>

@@ -21,7 +21,7 @@ export function DocsShell() {
   const [activeTab, setActiveTab] = useState<DocsTab>(() => parseTab(searchParams.get('tab')));
 
   useEffect(() => {
-    document.title = 'Partner API Documentation | CYNAYD One';
+    document.title = 'Cynayd One Developer API | CYNAYD One';
   }, []);
 
   useEffect(() => {

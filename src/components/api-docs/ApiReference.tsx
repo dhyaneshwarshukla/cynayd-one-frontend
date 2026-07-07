@@ -7,7 +7,7 @@ import '@scalar/api-reference-react/style.css';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
-const OPENAPI_URL = '/api/openapi/partner';
+const OPENAPI_URL = '/api/openapi/developer';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -45,7 +45,7 @@ export function ApiReference() {
     return (
       <div className="flex min-h-[80vh] flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white shadow-sm">
         <LoadingSpinner size="lg" />
-        <p className="mt-4 text-sm text-gray-600">Loading API reference…</p>
+        <p className="mt-4 text-sm text-gray-600">Loading Cynayd One Developer API reference…</p>
       </div>
     );
   }

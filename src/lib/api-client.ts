@@ -390,6 +390,61 @@ export interface Permission {
   updatedAt: Date;
 }
 
+export interface WorkingHoursDay {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isClosed: boolean;
+}
+
+export interface OrgLocation {
+  id: string;
+  organizationId: string;
+  name: string;
+  timezone: string;
+  isDefault: boolean;
+  isActive: boolean;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  phoneNumber?: string | null;
+  workingHours: WorkingHoursDay[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrgLocationsSnapshot {
+  locations: OrgLocation[];
+  defaultLocationId: string | null;
+  defaultTimezone: string;
+}
+
+export interface CreateOrgLocationInput {
+  name: string;
+  timezone: string;
+  isDefault?: boolean;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  phoneNumber?: string;
+  workingHours?: WorkingHoursDay[];
+}
+
+export interface UpdateOrgLocationInput {
+  name?: string;
+  timezone?: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  phoneNumber?: string | null;
+}
+
 export interface UserSettings {
   profile: {
     name: string;
@@ -398,6 +453,8 @@ export interface UserSettings {
     avatar?: string;
     timezone: string;
     language: string;
+    primaryLocationId?: string | null;
+    effectiveTimezone?: string;
   };
   notifications: {
     email: boolean;
@@ -434,6 +491,7 @@ export interface SystemSettings {
     timezone: string;
     language: string;
     theme: string;
+    defaultLocationId?: string | null;
   };
   features: {
     hr: boolean;
@@ -2396,6 +2454,57 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  async getOrgLocations(): Promise<OrgLocationsSnapshot> {
+    return this.request<OrgLocationsSnapshot>('/api/settings/locations');
+  }
+
+  async getOrgLocation(locationId: string): Promise<{ location: OrgLocation }> {
+    return this.request<{ location: OrgLocation }>(`/api/settings/locations/${locationId}`);
+  }
+
+  async createOrgLocation(data: CreateOrgLocationInput): Promise<{ location: OrgLocation }> {
+    return this.request<{ location: OrgLocation }>('/api/settings/locations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateOrgLocation(
+    locationId: string,
+    data: UpdateOrgLocationInput,
+  ): Promise<{ location: OrgLocation }> {
+    return this.request<{ location: OrgLocation }>(`/api/settings/locations/${locationId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteOrgLocation(locationId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/api/settings/locations/${locationId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setDefaultOrgLocation(locationId: string): Promise<{ location: OrgLocation }> {
+    return this.request<{ location: OrgLocation }>(
+      `/api/settings/locations/${locationId}/default`,
+      { method: 'PUT' },
+    );
+  }
+
+  async updateOrgLocationWorkingHours(
+    locationId: string,
+    workingHours: WorkingHoursDay[],
+  ): Promise<{ location: OrgLocation }> {
+    return this.request<{ location: OrgLocation }>(
+      `/api/settings/locations/${locationId}/working-hours`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ workingHours }),
+      },
+    );
   }
 
   // Health check

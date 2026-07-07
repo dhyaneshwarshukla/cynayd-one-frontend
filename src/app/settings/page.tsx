@@ -10,7 +10,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Alert } from '@/components/common/Alert';
-import { apiClient, UserSettings, SystemSettings } from '@/lib/api-client';
+import { apiClient, UserSettings, SystemSettings, OrgLocation } from '@/lib/api-client';
 import { ResponsiveContainer } from '@/components/layout/ResponsiveLayout';
 import { MFASetupModal } from '@/components/auth/MFASetupModal';
 import { DisableMFAModal } from '@/components/auth/DisableMFAModal';
@@ -18,9 +18,10 @@ import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import { PINSetupModal } from '@/components/auth/PINSetupModal';
 import { PasskeyManager } from '@/components/security/PasskeyManager';
 import PlanManagement from '@/components/admin/PlanManagement';
+import { LocationsSettings } from '@/components/settings/LocationsSettings';
 import { isAdminUser } from '@/utils/tenant';
 
-const VALID_TABS = ['profile', 'security', 'preferences', 'plan', 'organization'] as const;
+const VALID_TABS = ['profile', 'security', 'preferences', 'plan', 'organization', 'locations'] as const;
 type TabId = (typeof VALID_TABS)[number];
 
 type MfaStatus = {
@@ -30,7 +31,15 @@ type MfaStatus = {
 };
 
 const DEFAULT_USER_SETTINGS: UserSettings = {
-  profile: { name: '', email: '', bio: '', timezone: 'UTC', language: 'en' },
+  profile: {
+    name: '',
+    email: '',
+    bio: '',
+    timezone: 'UTC',
+    language: 'en',
+    primaryLocationId: null,
+    effectiveTimezone: 'UTC',
+  },
   notifications: {
     email: true,
     push: true,
@@ -60,7 +69,14 @@ const DEFAULT_USER_SETTINGS: UserSettings = {
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
-  organization: { name: '', slug: '', timezone: 'UTC', language: 'en', theme: 'blue' },
+  organization: {
+    name: '',
+    slug: '',
+    timezone: 'UTC',
+    language: 'en',
+    theme: 'blue',
+    defaultLocationId: null,
+  },
   features: { hr: true, drive: true, connect: true, mail: true },
   limits: { maxUsers: 100, maxTeams: 20, maxStorage: 1000, maxApps: 10 },
 };
@@ -120,6 +136,7 @@ function SettingsPageContent() {
   const [showPINSetup, setShowPINSetup] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<MfaStatus>({ enabled: false, methods: [] });
+  const [orgLocations, setOrgLocations] = useState<OrgLocation[]>([]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -176,6 +193,13 @@ function SettingsPageContent() {
       setMfaStatus(mfaStatus);
       applyPreferences(merged.preferences);
 
+      try {
+        const snapshot = await apiClient.getOrgLocations();
+        setOrgLocations(snapshot.locations);
+      } catch {
+        setOrgLocations([]);
+      }
+
       if (userIsAdmin) {
         try {
           const sys = await apiClient.getSystemSettings();
@@ -203,8 +227,14 @@ function SettingsPageContent() {
     }
     try {
       await apiClient.updateUserSettings(userSettings);
-      setOriginalUser(JSON.parse(JSON.stringify(userSettings)));
-      applyPreferences(userSettings.preferences);
+      const refreshed = await apiClient.getUserSettings();
+      const merged: UserSettings = {
+        ...refreshed,
+        security: { ...userSettings.security, mfaEnabled: userSettings.security.mfaEnabled },
+      };
+      setUserSettings(merged);
+      setOriginalUser(JSON.parse(JSON.stringify(merged)));
+      applyPreferences(merged.preferences);
       flash('Profile saved');
     } catch (err: unknown) {
       flash(err instanceof Error ? err.message : 'Failed to save profile', true);
@@ -316,6 +346,7 @@ function SettingsPageContent() {
       ? [
           { id: 'plan' as TabId, label: 'Plan & billing' },
           { id: 'organization' as TabId, label: 'Organization' },
+          { id: 'locations' as TabId, label: 'Locations & Hours' },
         ]
       : []),
   ];
@@ -450,7 +481,48 @@ function SettingsPageContent() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Timezone
+                      Primary office
+                    </label>
+                    <select
+                      value={userSettings.profile.primaryLocationId || ''}
+                      onChange={(e) =>
+                        setUserSettings({
+                          ...userSettings,
+                          profile: {
+                            ...userSettings.profile,
+                            primaryLocationId: e.target.value || null,
+                          },
+                        })
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Use organization default</option>
+                      {orgLocations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name} ({loc.timezone})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Effective timezone
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={userSettings.profile.effectiveTimezone || userSettings.profile.timezone}
+                      className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Resolved from your primary office, or the org default location.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Personal timezone override
                     </label>
                     <select
                       value={userSettings.profile.timezone}
@@ -468,6 +540,8 @@ function SettingsPageContent() {
                       <option value="America/Denver">Mountain Time</option>
                       <option value="America/Los_Angeles">Pacific Time</option>
                       <option value="Europe/London">London</option>
+                      <option value="Asia/Kolkata">India</option>
+                      <option value="Asia/Singapore">Singapore</option>
                     </select>
                   </div>
                   <div>
@@ -732,25 +806,25 @@ function SettingsPageContent() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Timezone
+                      Default timezone
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      readOnly
                       value={systemSettings.organization.timezone}
-                      onChange={(e) =>
-                        setSystemSettings({
-                          ...systemSettings,
-                          organization: {
-                            ...systemSettings.organization,
-                            timezone: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                    >
-                      <option value="UTC">UTC</option>
-                      <option value="America/New_York">Eastern Time</option>
-                      <option value="America/Los_Angeles">Pacific Time</option>
-                    </select>
+                      className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Managed via the{' '}
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline"
+                        onClick={() => selectTab('locations')}
+                      >
+                        Locations & Hours
+                      </button>{' '}
+                      tab (set a default office location).
+                    </p>
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -777,6 +851,8 @@ function SettingsPageContent() {
                   </div>
                 </div>
               </div>
+            ) : activeTab === 'locations' ? (
+              <LocationsSettings onMessage={flash} />
             ) : null}
           </Card>
         </div>
