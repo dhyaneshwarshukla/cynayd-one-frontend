@@ -10,10 +10,10 @@ import {
   markMobileApprovalSetupPrompt,
   useLoginChallengePolling,
 } from '@/hooks/useLoginChallengePolling';
-import { Input } from '@/components/common/Input';
+import { authStatusUserMessage, handleAuthStatusCode } from '@/lib/auth-status.util';
 import { Button } from '@/components/common/Button';
 
-type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'email_otp';
+type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'email_otp' | 'blocked';
 
 export default function MagicLinkPage() {
   const searchParams = useSearchParams();
@@ -39,6 +39,7 @@ export default function MagicLinkPage() {
   const [passkeyMfaAllowed, setPasskeyMfaAllowed] = useState(false);
   const [pushDelivered, setPushDelivered] = useState<boolean | undefined>(undefined);
   const [bootstrapNoDevices, setBootstrapNoDevices] = useState(false);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const completeLogin = async (accessToken: string) => {
     apiClient.storeAuthToken(accessToken);
@@ -50,6 +51,16 @@ export default function MagicLinkPage() {
   };
 
   const handleVerifyResponse = (data: Record<string, unknown>) => {
+    const statusHandling = handleAuthStatusCode(data.code as string | undefined, {
+      message: data.message as string | undefined,
+      retryAfterSeconds: data.retryAfterSeconds as number | undefined,
+    });
+    if (statusHandling.kind === 'blocked' || statusHandling.kind === 'unknown') {
+      setBlockedMessage(authStatusUserMessage(statusHandling));
+      setStatus('blocked');
+      return;
+    }
+
     if (data.code === 'MFA_REQUIRED') {
       setUserId((data.userId as string) || null);
       setMfaMethods((data.mfaMethods as string[]) || ['totp']);
@@ -214,6 +225,14 @@ export default function MagicLinkPage() {
     <div className="flex min-h-screen items-center justify-center p-4">
       {status === 'loading' && <p>Signing you in…</p>}
       {status === 'error' && <p>Invalid, denied, or expired magic link.</p>}
+      {status === 'blocked' && (
+        <div className="max-w-md text-center">
+          <p className="text-gray-800">{blockedMessage ?? 'Sign-in could not be completed.'}</p>
+          <Button type="button" className="mt-4" onClick={() => router.push('/auth/login')}>
+            Back to sign in
+          </Button>
+        </div>
+      )}
       {status === 'approval' && (
         <div className="w-full max-w-md">
           <AwaitingApprovalPanel {...approvalPanelProps} />

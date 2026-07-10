@@ -19,6 +19,7 @@ import {
   useLoginChallengePolling,
 } from '../../hooks/useLoginChallengePolling';
 import type { AuthResponse } from '../../lib/api-client';
+import { authStatusUserMessage, handleAuthStatusCode } from '../../lib/auth-status.util';
 import {
   addRecentAccount,
   getAccountInitials,
@@ -213,6 +214,32 @@ export const LoginForm: React.FC = () => {
     rememberMe: boolean,
     email: string
   ) => {
+    const statusHandling = handleAuthStatusCode(result.code, {
+      message: (result as AuthResponse & { message?: string }).message,
+      retryAfterSeconds: (result as AuthResponse & { retryAfterSeconds?: number }).retryAfterSeconds,
+    });
+    if (statusHandling.kind === 'blocked' || statusHandling.kind === 'unknown') {
+      setError(authStatusUserMessage(statusHandling));
+      if (
+        statusHandling.kind === 'blocked' &&
+        statusHandling.code === 'SECURITY_REVIEW_REQUIRED'
+      ) {
+        setLoginStep('password');
+      }
+      return;
+    }
+
+    if (result.code === 'LOCAL_DEVICE_APPROVAL_REQUIRED') {
+      if (result.challengeId) setChallengeId(result.challengeId);
+      if (result.nonce) setChallengeNonce(result.nonce);
+      setPendingPassword(password);
+      setPendingRememberMe(rememberMe);
+      setPendingEmail(email);
+      setLoginStep('awaiting_approval');
+      setApprovalMessage('Confirm this sign-in on this device.');
+      return;
+    }
+
     if (result.code === 'APPROVAL_REQUIRED' || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
       if (result.challengeId) setChallengeId(result.challengeId);
       if (result.nonce) setChallengeNonce(result.nonce);

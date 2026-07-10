@@ -5,6 +5,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 import type { SecuritySettingsFormState } from '@/components/security/SecuritySettingsPanel';
+import { getOrCreateWebDeviceId } from '@/lib/device-identity.service';
 
 // App types
 export interface App {
@@ -701,6 +702,11 @@ class ApiClient {
     const sessionId = this.getStoredSessionId();
     if (sessionId) {
       headers['X-Current-Session-Id'] = sessionId;
+    }
+
+    const deviceId = getOrCreateWebDeviceId();
+    if (deviceId) {
+      headers['X-Cynayd-Device-Id'] = deviceId;
     }
 
     const mutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
@@ -1680,6 +1686,8 @@ class ApiClient {
     baseline: Record<string, unknown>;
     rules: Array<Record<string, unknown>>;
     appliedTemplateIds: string[];
+    templateId?: string | null;
+    effectiveSsoPolicy?: Record<string, unknown>;
   }> {
     return this.request('/api/org-security');
   }
@@ -1689,11 +1697,48 @@ class ApiClient {
   }
 
   async updateOrgSecurityBaseline(
-    baseline: SecuritySettingsFormState
+    baseline: SecuritySettingsFormState | Record<string, unknown>
   ): Promise<{ baseline: Record<string, unknown> }> {
     return this.request('/api/org-security/baseline', {
       method: 'PUT',
       body: JSON.stringify(baseline),
+    });
+  }
+
+  async getPendingSecurityReviews(): Promise<{ reviews: Array<Record<string, unknown>> }> {
+    return this.request('/api/security-reviews/pending');
+  }
+
+  async approveSecurityReview(
+    reviewId: string,
+    approvedAction?: 'allow_once' | 'trust_device' | 'force_mfa' | 'force_password_reset'
+  ): Promise<{ review: Record<string, unknown>; resumeToken?: string }> {
+    return this.request(`/api/security-reviews/${reviewId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approvedAction }),
+    });
+  }
+
+  async denySecurityReview(reviewId: string): Promise<{ review: Record<string, unknown> }> {
+    return this.request(`/api/security-reviews/${reviewId}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async resumeSecurityReview(
+    reviewId: string,
+    userId: string,
+    resumeToken: string
+  ): Promise<{
+    ok: boolean;
+    challengeSessionId?: string;
+    loginAttemptId?: string;
+    approvedAction?: string;
+  }> {
+    return this.request(`/api/security-reviews/${reviewId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, resumeToken }),
     });
   }
 

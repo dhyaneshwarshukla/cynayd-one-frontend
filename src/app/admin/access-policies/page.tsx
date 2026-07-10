@@ -40,25 +40,12 @@ import {
 import {
   SecuritySettingsPanel,
   mapApiToSecuritySettings,
+  mapSecuritySettingsToBaselinePayload,
   type SecuritySettingsFormState,
 } from '@/components/security/SecuritySettingsPanel';
+import { SecurityReviewQueue } from '@/components/security/SecurityReviewQueue';
 
-const DEFAULT_BASELINE: SecuritySettingsFormState = {
-  mfaRequired: false,
-  passkeySatisfiesMfa: true,
-  passwordMinLength: 8,
-  passwordRequireUppercase: true,
-  passwordRequireLowercase: true,
-  passwordRequireNumbers: true,
-  passwordRequireSymbols: false,
-  sessionTimeout: 30,
-  failedLoginLimit: 5,
-  accountLockoutDuration: 15,
-  maxConcurrentSessions: 10,
-  botDetectionEnabled: true,
-  credentialStuffingEnabled: true,
-  impossibleTravelMaxKmh: 900,
-};
+const DEFAULT_BASELINE: SecuritySettingsFormState = mapApiToSecuritySettings({});
 
 interface Policy {
   id: string;
@@ -203,7 +190,13 @@ export default function AccessPoliciesPage() {
     try {
       const snap = await apiClient.getOrgSecurity();
       setPolicies(normalizePolicies(snap.rules as Array<Record<string, unknown>>));
-      setBaseline(mapApiToSecuritySettings(snap.baseline as Record<string, unknown>));
+      setBaseline(
+        mapApiToSecuritySettings({
+          baseline: snap.baseline as Record<string, unknown>,
+          templateId: snap.templateId,
+          effectiveSsoPolicy: snap.effectiveSsoPolicy as Record<string, unknown> | undefined,
+        })
+      );
       setAppliedTemplateIds(snap.appliedTemplateIds ?? []);
     } catch {
       if (!hasLoadedOnce.current) {
@@ -296,7 +289,7 @@ export default function AccessPoliciesPage() {
     if (!canManage) return;
     setBaselineSaving(true);
     try {
-      await apiClient.updateOrgSecurityBaseline(baseline);
+      await apiClient.updateOrgSecurityBaseline(mapSecuritySettingsToBaselinePayload(baseline));
       notifySuccess('Organization baseline saved');
       await load({ background: true });
     } catch {
@@ -539,6 +532,8 @@ export default function AccessPoliciesPage() {
                 onSave={() => void saveBaseline()}
                 saving={baselineSaving}
               />
+
+              <SecurityReviewQueue />
 
               <h2 className="text-lg font-semibold text-gray-900 pt-2">Quick setup templates</h2>
 
