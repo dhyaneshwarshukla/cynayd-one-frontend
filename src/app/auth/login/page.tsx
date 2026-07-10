@@ -1,8 +1,7 @@
 "use client";
 
 import { LoginForm } from '@/components/auth/LoginForm';
-import { Lock, Users, Zap } from 'lucide-react';
-import { BrandLink } from '@/components/common/BrandLink';
+import { Shield, Lock, Users, Zap } from 'lucide-react';
 import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -53,8 +52,11 @@ export default function LoginPage() {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center px-12 text-white slide-in-left">
           <div className="max-w-md">
-            <div className="mb-8">
-              <BrandLink variant="light" name="CYNAYD" />
+            <div className="flex items-center mb-8">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mr-4 glass-morphism glow-effect">
+                <Shield className="w-7 h-7" />
+              </div>
+              <h1 className="text-3xl font-bold">CYNAYD</h1>
             </div>
             
             <h2 className="text-4xl font-bold mb-6 leading-tight">
@@ -96,7 +98,12 @@ export default function LoginPage() {
         <div className="mx-auto w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden flex justify-center mb-8 mobile-logo">
-            <BrandLink variant="compact" name="CYNAYD" />
+            <div className="flex items-center">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3 glow-effect">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900">CYNAYD</h1>
+            </div>
           </div>
 
           <div className="text-center mb-8 slide-in-right">
