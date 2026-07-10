@@ -98,7 +98,9 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
   }, [isLocked, completeUnlock]);
 
   const handleLoginSuccessBridge = useCallback(() => {
-    // Login clears stale no-PIN lock; PIN users still lock on next checkPINStatus
+    clearSessionLocked();
+    touchUserInteraction();
+    setIsLocked(false);
   }, []);
 
   useEffect(() => {

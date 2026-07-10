@@ -11,6 +11,7 @@ import {
   useLoginChallengePolling,
 } from '@/hooks/useLoginChallengePolling';
 import { authStatusUserMessage, handleAuthStatusCode } from '@/lib/auth-status.util';
+import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 
