@@ -24,10 +24,13 @@ export interface SecuritySettingsFormState {
   passwordRequireNumbers: boolean;
   passwordRequireSymbols: boolean;
   sessionTimeout: number;
+  webIdleTimeoutMinutes: number;
+  mobileIdleTimeoutMinutes: number;
   accessTokenTtlMinutes: number;
   defaultWebSessionTtlDays: number;
   rememberMeWebSessionTtlDays: number;
   defaultMobileSessionTtlDays: number;
+  rememberMeMobileSessionTtlDays: number;
   trustedDeviceMaxSkipRisk: 'low' | 'medium' | 'high';
   failedLoginLimit: number;
   accountLockoutDuration: number;
@@ -173,7 +176,19 @@ export function SecuritySettingsPanel({
               min={5}
             />
             <NumberField
-              label="Idle timeout (minutes)"
+              label="Web idle timeout (minutes)"
+              value={settings.webIdleTimeoutMinutes}
+              onChange={(v) => set('webIdleTimeoutMinutes', v)}
+              min={5}
+            />
+            <NumberField
+              label="Mobile idle timeout (minutes)"
+              value={settings.mobileIdleTimeoutMinutes}
+              onChange={(v) => set('mobileIdleTimeoutMinutes', v)}
+              min={5}
+            />
+            <NumberField
+              label="Legacy idle timeout fallback (minutes)"
               value={settings.sessionTimeout}
               onChange={(v) => set('sessionTimeout', v)}
               min={5}
@@ -188,6 +203,12 @@ export function SecuritySettingsPanel({
               label="Remember-me web session (days)"
               value={settings.rememberMeWebSessionTtlDays}
               onChange={(v) => set('rememberMeWebSessionTtlDays', v)}
+              min={1}
+            />
+            <NumberField
+              label="Remember-me mobile session (days)"
+              value={settings.rememberMeMobileSessionTtlDays}
+              onChange={(v) => set('rememberMeMobileSessionTtlDays', v)}
               min={1}
             />
             <NumberField
@@ -387,10 +408,13 @@ const DEFAULT_FORM: SecuritySettingsFormState = {
   passwordRequireNumbers: true,
   passwordRequireSymbols: false,
   sessionTimeout: 720,
+  webIdleTimeoutMinutes: 720,
+  mobileIdleTimeoutMinutes: 10080,
   accessTokenTtlMinutes: 15,
   defaultWebSessionTtlDays: 7,
   rememberMeWebSessionTtlDays: 30,
   defaultMobileSessionTtlDays: 30,
+  rememberMeMobileSessionTtlDays: 90,
   trustedDeviceMaxSkipRisk: 'medium',
   failedLoginLimit: 5,
   accountLockoutDuration: 15,
@@ -428,10 +452,17 @@ export function mapApiToSecuritySettings(api: Record<string, unknown>): Security
     passwordRequireNumbers: legacy.passwordRequireNumbers !== false,
     passwordRequireSymbols: Boolean(legacy.passwordRequireSymbols),
     sessionTimeout: Number(session.idleTimeoutMinutes ?? legacy.sessionTimeout ?? 720),
+    webIdleTimeoutMinutes: Number(
+      session.webIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? legacy.sessionTimeout ?? 720
+    ),
+    mobileIdleTimeoutMinutes: Number(
+      session.mobileIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 10080
+    ),
     accessTokenTtlMinutes: Number(session.accessTokenTtlMinutes ?? 15),
     defaultWebSessionTtlDays: Number(session.defaultWebSessionTtlDays ?? 7),
     rememberMeWebSessionTtlDays: Number(session.rememberMeWebSessionTtlDays ?? 30),
     defaultMobileSessionTtlDays: Number(session.defaultMobileSessionTtlDays ?? 30),
+    rememberMeMobileSessionTtlDays: Number(session.rememberMeMobileSessionTtlDays ?? 90),
     trustedDeviceMaxSkipRisk: (risk.trustedDeviceMaxSkipRisk as SecuritySettingsFormState['trustedDeviceMaxSkipRisk']) ?? 'medium',
     failedLoginLimit: Number(legacy.failedLoginLimit ?? 5),
     accountLockoutDuration: Number(legacy.accountLockoutDuration ?? 15),
@@ -464,9 +495,12 @@ export function mapSecuritySettingsToBaselinePayload(
     session: {
       accessTokenTtlMinutes: form.accessTokenTtlMinutes,
       idleTimeoutMinutes: form.sessionTimeout,
+      webIdleTimeoutMinutes: form.webIdleTimeoutMinutes,
+      mobileIdleTimeoutMinutes: form.mobileIdleTimeoutMinutes,
       defaultWebSessionTtlDays: form.defaultWebSessionTtlDays,
       rememberMeWebSessionTtlDays: form.rememberMeWebSessionTtlDays,
       defaultMobileSessionTtlDays: form.defaultMobileSessionTtlDays,
+      rememberMeMobileSessionTtlDays: form.rememberMeMobileSessionTtlDays,
     },
     mfa: {
       enabled: form.mfaRequired,

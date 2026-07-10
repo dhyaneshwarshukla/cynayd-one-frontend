@@ -177,6 +177,8 @@ export default function AccessPoliciesPage() {
   const [scheduleStart, setScheduleStart] = useState(9);
   const [scheduleEnd, setScheduleEnd] = useState(18);
   const [baseline, setBaseline] = useState<SecuritySettingsFormState>(DEFAULT_BASELINE);
+  const [effectiveSsoPolicy, setEffectiveSsoPolicy] = useState<Record<string, unknown> | null>(null);
+  const [baselineTemplateId, setBaselineTemplateId] = useState<string | null>(null);
   const [baselineSaving, setBaselineSaving] = useState(false);
   const [appliedTemplateIds, setAppliedTemplateIds] = useState<string[]>([]);
 
@@ -197,6 +199,8 @@ export default function AccessPoliciesPage() {
           effectiveSsoPolicy: snap.effectiveSsoPolicy as Record<string, unknown> | undefined,
         })
       );
+      setEffectiveSsoPolicy((snap.effectiveSsoPolicy as Record<string, unknown>) ?? null);
+      setBaselineTemplateId((snap.templateId as string) ?? null);
       setAppliedTemplateIds(snap.appliedTemplateIds ?? []);
     } catch {
       if (!hasLoadedOnce.current) {
@@ -235,6 +239,64 @@ export default function AccessPoliciesPage() {
       );
     });
   }, [policies, search]);
+
+  const approvalRuleBaselineMismatch = useMemo(() => {
+    const mobile = (effectiveSsoPolicy?.mobileApproval ?? {}) as Record<string, unknown>;
+    const baselineMobileEnabled = mobile.enabled !== false;
+    return policies.some(
+      (policy) =>
+        policy.enabled &&
+        (hasAction(policy, 'require_approval') || hasConditionFlag(policy, 'forceApprovalEveryLogin')) &&
+        !baselineMobileEnabled
+    );
+  }, [policies, effectiveSsoPolicy]);
+
+  const effectivePolicyRows = useMemo(() => {
+    const session = (effectiveSsoPolicy?.session ?? {}) as Record<string, unknown>;
+    const mfa = (effectiveSsoPolicy?.mfa ?? {}) as Record<string, unknown>;
+    const mobile = (effectiveSsoPolicy?.mobileApproval ?? {}) as Record<string, unknown>;
+    const risk = (effectiveSsoPolicy?.risk ?? {}) as Record<string, unknown>;
+    const actions = (risk.actions ?? {}) as Record<string, string>;
+    const approvalRule = policies.find(
+      (p) => p.enabled && hasAction(p, 'require_approval')
+    );
+    const mfaRule = policies.find((p) => p.enabled && hasAction(p, 'require_mfa'));
+    const source = (ruleName?: string) => (ruleName ? `access rule: ${ruleName}` : 'baseline');
+    return [
+      {
+        setting: 'MFA',
+        value: mfa.enabled ? 'Required' : 'Optional',
+        source: mfaRule ? source(mfaRule.name) : 'baseline',
+      },
+      {
+        setting: 'Mobile approval',
+        value: mobile.enabled ? 'Enabled' : 'Disabled',
+        source: approvalRule ? source(approvalRule.name) : 'baseline',
+      },
+      {
+        setting: 'Session TTL (web)',
+        value: `${session.defaultWebSessionTtlDays ?? 7}d (remember-me ${session.rememberMeWebSessionTtlDays ?? 30}d)`,
+        source: 'baseline',
+      },
+      {
+        setting: 'Session TTL (mobile)',
+        value: `${session.defaultMobileSessionTtlDays ?? 30}d (remember-me ${session.rememberMeMobileSessionTtlDays ?? 90}d)`,
+        source: 'baseline',
+      },
+      {
+        setting: 'Risk high action',
+        value: actions.high ?? 'challenge_plus_review',
+        source: 'baseline',
+      },
+      {
+        setting: 'Idle timeout (web / mobile)',
+        value: `${session.webIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 720}m / ${session.mobileIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 10080}m`,
+        source: 'baseline',
+      },
+    ];
+  }, [effectiveSsoPolicy, policies]);
+
+  const isCustomBaseline = baseline.policyPreset !== (baselineTemplateId ?? baseline.policyPreset);
 
   const usedTemplateIds = useMemo(() => {
     const used = new Set<string>(appliedTemplateIds);
@@ -526,6 +588,52 @@ export default function AccessPoliciesPage() {
                 Password rules, lockout, MFA requirement, and platform threat controls apply to all
                 users in your organization.
               </p>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Effective login policy</CardTitle>
+                  <CardDescription>
+                    Resolved values after merging baseline preset, saved overrides, and enabled access rules.
+                    {isCustomBaseline ? (
+                      <span className="mt-1 block font-medium text-amber-800">
+                        Custom preset: saved baseline overrides differ from the selected template defaults.
+                      </span>
+                    ) : null}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {approvalRuleBaselineMismatch ? (
+                    <Alert variant="warning">
+                      <AlertTitle>Mobile approval mismatch</AlertTitle>
+                      <AlertDescription>
+                        An enabled access rule requires mobile approval while baseline mobile approval is
+                        disabled. Users may see inconsistent challenge behavior until these are aligned.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-gray-500">
+                          <th className="py-2 pr-4 font-medium">Setting</th>
+                          <th className="py-2 pr-4 font-medium">Effective value</th>
+                          <th className="py-2 font-medium">Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {effectivePolicyRows.map((row) => (
+                          <tr key={row.setting} className="border-b border-gray-100">
+                            <td className="py-2 pr-4 text-gray-900">{row.setting}</td>
+                            <td className="py-2 pr-4 text-gray-700">{row.value}</td>
+                            <td className="py-2 text-gray-500">{row.source}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
               <SecuritySettingsPanel
                 settings={baseline}
                 onChange={setBaseline}

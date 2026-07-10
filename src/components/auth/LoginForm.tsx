@@ -14,10 +14,12 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield, X } from 'lucide-react';
 import { LegalFooterLinks } from '../legal/LegalFooterLinks';
 import { MFAVerificationModal } from './MFAVerificationModal';
 import { AwaitingApprovalPanel } from './AwaitingApprovalPanel';
+import { AwaitingSecurityReviewPanel } from './AwaitingSecurityReviewPanel';
 import {
   markMobileApprovalSetupPrompt,
   useLoginChallengePolling,
 } from '../../hooks/useLoginChallengePolling';
+import { useSecurityReviewPolling } from '../../hooks/useSecurityReviewPolling';
 import type { AuthResponse } from '../../lib/api-client';
 import { authStatusUserMessage, handleAuthStatusCode } from '../../lib/auth-status.util';
 import {
@@ -90,7 +92,9 @@ export const LoginForm: React.FC = () => {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [magicLinkBusy, setMagicLinkBusy] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
-  const [loginStep, setLoginStep] = useState<'email' | 'password' | 'email_otp' | 'awaiting_approval'>('email');
+  const [loginStep, setLoginStep] = useState<
+    'email' | 'password' | 'email_otp' | 'awaiting_approval' | 'awaiting_security_review'
+  >('email');
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challengeNonce, setChallengeNonce] = useState<string | null>(null);
   const [showMfaModal, setShowMfaModal] = useState(false);
@@ -118,6 +122,12 @@ export const LoginForm: React.FC = () => {
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [selectedAccountEmail, setSelectedAccountEmail] = useState('');
+  const [securityReviewId, setSecurityReviewId] = useState<string | null>(null);
+  const [securityReviewUserId, setSecurityReviewUserId] = useState<string | null>(null);
+  const [securityChallengeSessionId, setSecurityChallengeSessionId] = useState<string | null>(null);
+  const [securityReviewMessage, setSecurityReviewMessage] = useState<string | null>(null);
+  const [securityRiskLevel, setSecurityRiskLevel] = useState<string | undefined>();
+  const [securityRiskReasons, setSecurityRiskReasons] = useState<string[]>([]);
 
   const { register, handleSubmit, setValue, getValues, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -127,6 +137,59 @@ export const LoginForm: React.FC = () => {
   useEffect(() => {
     errorRef.current = error;
   }, [error]);
+
+  useSecurityReviewPolling({
+    reviewId: securityReviewId,
+    nonce: challengeNonce,
+    loginAttemptId: challengeId,
+    enabled: loginStep === 'awaiting_security_review',
+    poll: async (id, nonce, loginAttemptId) => {
+      const { apiClient } = await import('../../lib/api-client');
+      return apiClient.getSecurityReviewStatus(id, nonce, loginAttemptId);
+    },
+    onApproved: async (status) => {
+      const { apiClient } = await import('../../lib/api-client');
+      const result = await apiClient.resumeSecurityReview({
+        reviewId: securityReviewId!,
+        userId: status.userId ?? securityReviewUserId!,
+        resumeToken: status.resumeToken!,
+        challengeSessionId: status.challengeSessionId ?? securityChallengeSessionId!,
+        nonce: challengeNonce ?? undefined,
+        rememberMe: pendingRememberMe,
+      });
+      if (result.accessToken) {
+        apiClient.storeAuthToken(result.accessToken);
+        await completeLoginRedirect();
+        return;
+      }
+      const next = handleAuthStatusCode(result.code as string | undefined, {
+        message: (result as { message?: string }).message,
+      });
+      if (next.kind === 'challenge' && next.code === 'APPROVAL_REQUIRED') {
+        setLoginStep('awaiting_approval');
+        setApprovalMessage('Approve this login from your Cynayd One Auth app');
+        return;
+      }
+      if (next.kind === 'challenge' && next.code === 'MFA_REQUIRED') {
+        setMfaUserId(result.userId ?? securityReviewUserId);
+        setShowMfaModal(true);
+        return;
+      }
+      if (next.kind === 'challenge' && next.code === 'SECURITY_REVIEW_REQUIRED') {
+        return;
+      }
+      setError(authStatusUserMessage(next) || 'Sign-in could not be completed after review.');
+      setLoginStep('password');
+    },
+    onTerminal: (status) => {
+      setError(
+        status.status === 'denied'
+          ? 'This sign-in request was denied by your administrator.'
+          : 'Security review expired. Please try again.'
+      );
+      setLoginStep('password');
+    },
+  });
 
   useLoginChallengePolling({
     challengeId,
@@ -218,14 +281,34 @@ export const LoginForm: React.FC = () => {
       message: (result as AuthResponse & { message?: string }).message,
       retryAfterSeconds: (result as AuthResponse & { retryAfterSeconds?: number }).retryAfterSeconds,
     });
+    if (statusHandling.kind === 'challenge' && statusHandling.code === 'SECURITY_REVIEW_REQUIRED') {
+      const body = result as AuthResponse & {
+        reviewId?: string;
+        userId?: string;
+        challengeSessionId?: string;
+        challengeId?: string;
+        nonce?: string;
+        riskLevel?: string;
+        riskReasons?: string[];
+        message?: string;
+      };
+      if (body.challengeId) setChallengeId(body.challengeId);
+      if (body.nonce) setChallengeNonce(body.nonce);
+      if (body.reviewId) setSecurityReviewId(body.reviewId);
+      if (body.userId) setSecurityReviewUserId(body.userId);
+      if (body.challengeSessionId) setSecurityChallengeSessionId(body.challengeSessionId);
+      setSecurityReviewMessage(body.message ?? null);
+      setSecurityRiskLevel(body.riskLevel);
+      setSecurityRiskReasons(Array.isArray(body.riskReasons) ? body.riskReasons : []);
+      setPendingPassword(password);
+      setPendingRememberMe(rememberMe);
+      setPendingEmail(email);
+      setLoginStep('awaiting_security_review');
+      setError(null);
+      return;
+    }
     if (statusHandling.kind === 'blocked' || statusHandling.kind === 'unknown') {
       setError(authStatusUserMessage(statusHandling));
-      if (
-        statusHandling.kind === 'blocked' &&
-        statusHandling.code === 'SECURITY_REVIEW_REQUIRED'
-      ) {
-        setLoginStep('password');
-      }
       return;
     }
 
@@ -1125,6 +1208,14 @@ export const LoginForm: React.FC = () => {
                 Verify OTP
               </Button>
             </div>
+          )}
+
+          {loginStep === 'awaiting_security_review' && (
+            <AwaitingSecurityReviewPanel
+              message={securityReviewMessage ?? undefined}
+              riskLevel={securityRiskLevel}
+              riskReasons={securityRiskReasons}
+            />
           )}
 
           {loginStep === 'awaiting_approval' && (

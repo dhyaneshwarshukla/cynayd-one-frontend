@@ -1,30 +1,7 @@
 import { NextResponse } from 'next/server';
+import { resolvePlatformApiUrls } from '@/lib/api-docs/resolve-api-urls';
 
 export const revalidate = 300;
-
-const PRODUCTION_PLATFORM_API_URL = 'https://api.one.cynayd.com';
-const LOCAL_PLATFORM_API_URL = 'http://localhost:4100';
-
-function resolvePlatformApiUrls(): string[] {
-  const configured = process.env.NEXT_PUBLIC_PLATFORM_API_URL?.trim();
-  const urls: string[] = [];
-
-  if (configured) {
-    urls.push(configured.replace(/\/$/, ''));
-  }
-
-  if (process.env.NODE_ENV === 'development') {
-    if (!urls.includes(LOCAL_PLATFORM_API_URL)) {
-      urls.push(LOCAL_PLATFORM_API_URL);
-    }
-  }
-
-  if (!urls.includes(PRODUCTION_PLATFORM_API_URL)) {
-    urls.push(PRODUCTION_PLATFORM_API_URL);
-  }
-
-  return urls;
-}
 
 async function fetchDeveloperSpec(baseUrl: string): Promise<Response> {
   return fetch(`${baseUrl}/api-docs/developer.json`, {

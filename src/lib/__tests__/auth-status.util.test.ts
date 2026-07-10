@@ -1,12 +1,12 @@
 import { handleAuthStatusCode, authStatusUserMessage } from '../auth-status.util';
 
 describe('auth-status.util', () => {
-  it('maps SECURITY_REVIEW_REQUIRED to blocked handling', () => {
+  it('maps SECURITY_REVIEW_REQUIRED to challenge handling', () => {
     const h = handleAuthStatusCode('SECURITY_REVIEW_REQUIRED', {
       message: 'Needs review',
     });
-    expect(h.kind).toBe('blocked');
-    if (h.kind === 'blocked') {
+    expect(h.kind).toBe('challenge');
+    if (h.kind === 'challenge') {
       expect(authStatusUserMessage(h)).toContain('review');
     }
   });

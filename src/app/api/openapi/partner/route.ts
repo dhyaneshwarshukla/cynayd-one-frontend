@@ -1,44 +1,55 @@
 import { NextResponse } from 'next/server';
+import { resolveAuthApiUrls } from '@/lib/api-docs/resolve-api-urls';
 
 export const revalidate = 300;
 
+async function fetchPartnerSpec(baseUrl: string): Promise<Response> {
+  return fetch(`${baseUrl}/api-docs/partner.json`, {
+    next: { revalidate: 300 },
+    headers: { Accept: 'application/json' },
+  });
+}
+
 export async function GET() {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  const candidates = resolveAuthApiUrls();
+  let lastStatus = 500;
+  let lastError: string | null = null;
 
-  if (!apiBaseUrl) {
-    return NextResponse.json(
-      { error: 'NEXT_PUBLIC_API_URL is not configured' },
-      { status: 500 },
-    );
-  }
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetchPartnerSpec(baseUrl);
 
-  try {
-    const response = await fetch(`${apiBaseUrl}/api-docs/partner.json`, {
-      next: { revalidate: 300 },
-      headers: { Accept: 'application/json' },
-    });
+      if (!response.ok) {
+        lastStatus = response.status;
+        lastError = `Failed to fetch partner OpenAPI spec from ${baseUrl}`;
+        continue;
+      }
 
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error: 'Failed to fetch partner OpenAPI spec',
-          status: response.status,
+      const spec = await response.json();
+
+      return NextResponse.json(spec, {
+        headers: {
+          'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
+          'X-OpenAPI-Source': baseUrl,
         },
-        { status: response.status },
-      );
+      });
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? `Unable to reach ${baseUrl}: ${error.message}`
+          : `Unable to reach ${baseUrl}`;
     }
-
-    const spec = await response.json();
-
-    return NextResponse.json(spec, {
-      headers: {
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: 'Unable to load partner OpenAPI spec' },
-      { status: 500 },
-    );
   }
+
+  return NextResponse.json(
+    {
+      error: lastError ?? 'Unable to load partner OpenAPI spec',
+      hint:
+        process.env.NODE_ENV === 'development'
+          ? 'Start standalone-backend: cd workspace/v2/standalone-backend && npm run dev'
+          : 'Set NEXT_PUBLIC_API_URL to your auth API URL',
+      tried: candidates,
+    },
+    { status: lastStatus },
+  );
 }

@@ -65,42 +65,50 @@ export function SecurityReviewQueue() {
       <CardHeader>
         <CardTitle className="text-base">Pending security reviews</CardTitle>
         <CardDescription>
-          High-risk sign-ins awaiting admin approval. Users resume with a token — sessions are not issued directly.
+          Risk-based security reviews awaiting admin approval. Users resume with a token — sessions are not issued from this queue.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {reviews.length === 0 ? (
           <p className="text-sm text-gray-500">No pending reviews.</p>
         ) : (
-          reviews.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="text-sm">
-                <p className="font-medium text-gray-900">User {r.userId}</p>
-                <p className="text-gray-600">
-                  Risk {r.riskLevel} ({r.riskScore}) · {parseReasons(r.riskReasons).join(', ') || '—'}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {r.ipAddress ?? 'unknown IP'} · expires {new Date(r.expiresAt).toLocaleString()}
-                </p>
+          reviews.map((r) => {
+            const reasons = parseReasons(r.riskReasons);
+            return (
+              <div
+                key={r.id}
+                className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="text-sm space-y-1">
+                  <p className="font-medium text-gray-900">User {r.userId}</p>
+                  <p className="text-gray-700">
+                    Review type: <span className="font-medium">Risk-based security review</span>
+                  </p>
+                  <p className="text-gray-600">
+                    Risk {r.riskLevel} ({r.riskScore})
+                    {reasons.length ? ` · ${reasons.join(', ')}` : ''}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Device: {r.deviceId ?? 'unknown'} · {r.ipAddress ?? 'unknown IP'} · expires{' '}
+                    {new Date(r.expiresAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={acting === r.id}
+                    onClick={() => void deny(r.id)}
+                  >
+                    Deny
+                  </Button>
+                  <Button size="sm" loading={acting === r.id} onClick={() => void approve(r.id)}>
+                    Approve
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  loading={acting === r.id}
-                  onClick={() => void deny(r.id)}
-                >
-                  Deny
-                </Button>
-                <Button size="sm" loading={acting === r.id} onClick={() => void approve(r.id)}>
-                  Approve
-                </Button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>

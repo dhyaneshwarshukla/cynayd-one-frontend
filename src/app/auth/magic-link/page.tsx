@@ -6,15 +6,17 @@ import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { MFAVerificationModal } from '@/components/auth/MFAVerificationModal';
 import { AwaitingApprovalPanel } from '@/components/auth/AwaitingApprovalPanel';
+import { AwaitingSecurityReviewPanel } from '@/components/auth/AwaitingSecurityReviewPanel';
 import {
   markMobileApprovalSetupPrompt,
   useLoginChallengePolling,
 } from '@/hooks/useLoginChallengePolling';
+import { useSecurityReviewPolling } from '@/hooks/useSecurityReviewPolling';
 import { authStatusUserMessage, handleAuthStatusCode } from '@/lib/auth-status.util';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 
-type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'email_otp' | 'blocked';
+type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'security_review' | 'email_otp' | 'blocked';
 
 export default function MagicLinkPage() {
   const searchParams = useSearchParams();
@@ -41,6 +43,12 @@ export default function MagicLinkPage() {
   const [pushDelivered, setPushDelivered] = useState<boolean | undefined>(undefined);
   const [bootstrapNoDevices, setBootstrapNoDevices] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+  const [securityReviewId, setSecurityReviewId] = useState<string | null>(null);
+  const [securityReviewUserId, setSecurityReviewUserId] = useState<string | null>(null);
+  const [securityChallengeSessionId, setSecurityChallengeSessionId] = useState<string | null>(null);
+  const [securityReviewMessage, setSecurityReviewMessage] = useState<string | null>(null);
+  const [securityRiskLevel, setSecurityRiskLevel] = useState<string | undefined>();
+  const [securityRiskReasons, setSecurityRiskReasons] = useState<string[]>([]);
 
   const completeLogin = async (accessToken: string) => {
     apiClient.storeAuthToken(accessToken);
@@ -70,6 +78,21 @@ export default function MagicLinkPage() {
       setAttemptId((data.challengeId as string) || null);
       setAttemptNonce((data.nonce as string) || null);
       setStatus('mfa');
+      return;
+    }
+
+    if (data.code === 'SECURITY_REVIEW_REQUIRED') {
+      setAttemptId((data.challengeId as string) || null);
+      setAttemptNonce((data.nonce as string) || null);
+      setSecurityReviewId((data.reviewId as string) || null);
+      setSecurityReviewUserId((data.userId as string) || null);
+      setSecurityChallengeSessionId((data.challengeSessionId as string) || null);
+      setSecurityReviewMessage((data.message as string) || null);
+      setSecurityRiskLevel(data.riskLevel as string | undefined);
+      setSecurityRiskReasons(
+        Array.isArray(data.riskReasons) ? (data.riskReasons as string[]) : []
+      );
+      setStatus('security_review');
       return;
     }
 
@@ -120,6 +143,50 @@ export default function MagicLinkPage() {
       .then(handleVerifyResponse)
       .catch(() => setStatus('error'));
   }, [searchParams]);
+
+  useSecurityReviewPolling({
+    reviewId: securityReviewId,
+    nonce: attemptNonce,
+    loginAttemptId: attemptId,
+    enabled: status === 'security_review',
+    poll: (id, nonce, loginAttemptId) =>
+      apiClient.getSecurityReviewStatus(id, nonce, loginAttemptId),
+    onApproved: async (pollStatus) => {
+      const result = await apiClient.resumeSecurityReview({
+        reviewId: securityReviewId!,
+        userId: pollStatus.userId ?? securityReviewUserId!,
+        resumeToken: pollStatus.resumeToken!,
+        challengeSessionId: pollStatus.challengeSessionId ?? securityChallengeSessionId!,
+        nonce: attemptNonce ?? undefined,
+        rememberMe: false,
+      });
+      if (result.accessToken) {
+        await completeLogin(result.accessToken);
+        return;
+      }
+      if (result.code === 'APPROVAL_REQUIRED' || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
+        setAttemptId((result.challengeId as string) || attemptId);
+        setAttemptNonce((result.nonce as string) || attemptNonce);
+        setApprovalMessage('Approve this login from your Cynayd One Auth app');
+        setStatus(result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' ? 'email_otp' : 'approval');
+        return;
+      }
+      if (result.code === 'MFA_REQUIRED') {
+        setUserId((result.userId as string) || null);
+        setMfaMethods((result.mfaMethods as string[]) || ['totp']);
+        setStatus('mfa');
+        return;
+      }
+      setBlockedMessage(
+        (result as { message?: string }).message ?? 'Sign-in could not be completed after review.'
+      );
+      setStatus('blocked');
+    },
+    onTerminal: () => {
+      setBlockedMessage('This sign-in request was denied or expired during security review.');
+      setStatus('blocked');
+    },
+  });
 
   useLoginChallengePolling({
     challengeId: attemptId,
@@ -232,6 +299,15 @@ export default function MagicLinkPage() {
           <Button type="button" className="mt-4" onClick={() => router.push('/auth/login')}>
             Back to sign in
           </Button>
+        </div>
+      )}
+      {status === 'security_review' && (
+        <div className="w-full max-w-md">
+          <AwaitingSecurityReviewPanel
+            message={securityReviewMessage ?? undefined}
+            riskLevel={securityRiskLevel}
+            riskReasons={securityRiskReasons}
+          />
         </div>
       )}
       {status === 'approval' && (

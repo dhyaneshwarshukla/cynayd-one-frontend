@@ -1739,19 +1739,42 @@ class ApiClient {
     });
   }
 
-  async resumeSecurityReview(
+  async getSecurityReviewStatus(
     reviewId: string,
-    userId: string,
-    resumeToken: string
+    nonce: string,
+    loginAttemptId?: string
   ): Promise<{
-    ok: boolean;
+    status: string;
+    resumeToken?: string;
     challengeSessionId?: string;
+    userId?: string;
     loginAttemptId?: string;
-    approvedAction?: string;
+    pollAfterMs?: number;
+    message?: string;
+    code?: string;
   }> {
-    return this.request(`/api/security-reviews/${reviewId}/resume`, {
+    const params = new URLSearchParams({ nonce });
+    if (loginAttemptId) params.set('loginAttemptId', loginAttemptId);
+    return this.request(`/api/security-reviews/${reviewId}/status?${params.toString()}`);
+  }
+
+  async resumeSecurityReview(input: {
+    reviewId: string;
+    userId: string;
+    resumeToken: string;
+    challengeSessionId: string;
+    nonce?: string;
+    rememberMe?: boolean;
+  }): Promise<AuthResponse & Record<string, unknown>> {
+    return this.request(`/api/security-reviews/${input.reviewId}/resume`, {
       method: 'POST',
-      body: JSON.stringify({ userId, resumeToken }),
+      body: JSON.stringify({
+        userId: input.userId,
+        resumeToken: input.resumeToken,
+        challengeSessionId: input.challengeSessionId,
+        nonce: input.nonce,
+        rememberMe: input.rememberMe,
+      }),
     });
   }
 

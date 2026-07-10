@@ -22,10 +22,10 @@ const KNOWN_CHALLENGE_CODES = new Set<string>([
   'APPROVAL_REQUIRED',
   'APPROVAL_EMAIL_OTP_REQUIRED',
   'LOCAL_DEVICE_APPROVAL_REQUIRED',
+  'SECURITY_REVIEW_REQUIRED',
 ]);
 
 const KNOWN_BLOCK_CODES = new Set<string>([
-  'SECURITY_REVIEW_REQUIRED',
   'TEMPORARILY_LOCKED',
   'HARD_BLOCK',
   'LOGIN_BLOCKED',
@@ -69,7 +69,7 @@ export function authStatusUserMessage(handling: AuthStatusHandling): string {
     case 'SECURITY_REVIEW_REQUIRED':
       return (
         handling.message ??
-        'Your sign-in requires administrator review. You will be notified when it is approved.'
+        'This sign-in needs administrator security review. Waiting for approval…'
       );
     case 'TEMPORARILY_LOCKED':
       return (

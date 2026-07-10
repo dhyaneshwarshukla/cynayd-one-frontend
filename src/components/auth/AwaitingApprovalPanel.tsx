@@ -89,7 +89,7 @@ export function AwaitingApprovalPanel({
           <Smartphone className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <p className="text-base font-semibold text-violet-950">Check your mobile app</p>
+          <p className="text-base font-semibold text-violet-950">Approve this login from your Cynayd One Auth app</p>
           <p className="mt-1 text-sm text-violet-900">
             {message || 'We sent an approval request to your registered device.'}
           </p>
