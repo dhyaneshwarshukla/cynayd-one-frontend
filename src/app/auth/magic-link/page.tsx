@@ -12,6 +12,7 @@ import {
 } from '@/hooks/useLoginChallengePolling';
 import { authStatusUserMessage, handleAuthStatusCode } from '@/lib/auth-status.util';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
 
 type MagicLinkStatus = 'loading' | 'ok' | 'error' | 'mfa' | 'approval' | 'email_otp' | 'blocked';
 

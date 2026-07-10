@@ -43,22 +43,7 @@ interface ThreatAlert {
 type TabId = 'events' | 'threats' | 'sessions' | 'settings';
 const VALID_TABS: TabId[] = ['events', 'threats', 'sessions', 'settings'];
 
-const DEFAULT_SETTINGS: SecuritySettingsFormState = {
-  mfaRequired: false,
-  passkeySatisfiesMfa: true,
-  passwordMinLength: 8,
-  passwordRequireUppercase: true,
-  passwordRequireLowercase: true,
-  passwordRequireNumbers: true,
-  passwordRequireSymbols: false,
-  sessionTimeout: 30,
-  failedLoginLimit: 5,
-  accountLockoutDuration: 15,
-  maxConcurrentSessions: 10,
-  botDetectionEnabled: true,
-  credentialStuffingEnabled: true,
-  impossibleTravelMaxKmh: 900,
-};
+const DEFAULT_SETTINGS: SecuritySettingsFormState = mapApiToSecuritySettings({});
 
 function countBySeverity(events: SecurityEvent[], level: string): number {
   return events.filter((e) => normalizeSeverity(e.severity) === level).length;

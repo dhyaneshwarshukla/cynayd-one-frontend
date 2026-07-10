@@ -1,23 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, type SecurityReview } from '@/lib/api-client';
 import { Button } from '@/components/common/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
 import { Skeleton } from '@/components/common/LoadingSpinner';
-
-type SecurityReview = {
-  id: string;
-  userId: string;
-  status: string;
-  riskScore: number;
-  riskLevel: string;
-  riskReasons: string;
-  ipAddress?: string | null;
-  deviceId?: string | null;
-  createdAt: string;
-  expiresAt: string;
-};
 
 function parseReasons(raw: string): string[] {
   try {

@@ -324,6 +324,19 @@ export interface SecurityEvent {
   };
 }
 
+export interface SecurityReview {
+  id: string;
+  userId: string;
+  status: string;
+  riskScore: number;
+  riskLevel: string;
+  riskReasons: string;
+  ipAddress?: string | null;
+  deviceId?: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 export interface RiskInsightsSummaryV2 {
@@ -1705,7 +1718,7 @@ class ApiClient {
     });
   }
 
-  async getPendingSecurityReviews(): Promise<{ reviews: Array<Record<string, unknown>> }> {
+  async getPendingSecurityReviews(): Promise<{ reviews: SecurityReview[] }> {
     return this.request('/api/security-reviews/pending');
   }
 
