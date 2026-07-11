@@ -63,6 +63,10 @@ export type LoginResponseBody = {
   bootstrapNoDevices?: boolean;
   pushDelivered?: boolean;
   mfaMethods?: string[];
+  availableMethods?: string[];
+  schemaVersion?: number;
+  publicReasonCodes?: string[];
+  canEnroll?: boolean;
   emailOtpSent?: boolean;
   pollAfterMs?: number;
   matchCode?: string;
@@ -91,6 +95,7 @@ export type LoginChallengeContext = {
   pushDelivered?: boolean;
   bootstrapNoDevices?: boolean;
   mfaMethods?: string[];
+  availableMethods?: string[];
   emailOtpSent?: boolean;
   passkeyMfaAllowed?: boolean;
   pollAfterMs?: number;
@@ -117,10 +122,14 @@ export type LoginFlowHandling =
 
 const LEGACY_CODE_TO_CHALLENGE: Record<string, LoginChallengeType> = {
   MFA_REQUIRED: 'mfa',
+  MFA_REQUIRED_BY_POLICY: 'mfa',
+  MFA_ENROLLMENT_REQUIRED: 'mfa',
   APPROVAL_REQUIRED: 'mobile_approval',
+  APPROVAL_UNAVAILABLE: 'mobile_approval',
   APPROVAL_EMAIL_OTP_REQUIRED: 'mobile_approval',
   LOCAL_DEVICE_APPROVAL_REQUIRED: 'local_device',
   SECURITY_REVIEW_REQUIRED: 'security_review',
+  SECURITY_REVIEW_UNAVAILABLE: 'security_review',
 };
 
 const CHALLENGE_TO_LEGACY_CODE: Record<LoginChallengeType, AuthStatusCode> = {
@@ -215,8 +224,11 @@ function extractChallengeContext(body: LoginResponseBody): LoginChallengeContext
       body.bootstrapNoDevices === true ||
       body.code === 'APPROVAL_EMAIL_OTP_REQUIRED',
     mfaMethods: body.mfaMethods,
+    availableMethods: body.availableMethods,
     emailOtpSent: body.emailOtpSent,
-    passkeyMfaAllowed: body.passkeyMfaAllowed,
+    passkeyMfaAllowed:
+      body.passkeyMfaAllowed ??
+      (Array.isArray(body.availableMethods) && body.availableMethods.includes('passkey')),
     pollAfterMs: body.pollAfterMs,
     matchCode: body.matchCode,
   };
@@ -526,20 +538,46 @@ export function isSecurityReviewLoginError(err: unknown): boolean {
 export const MFA_ENROLLMENT_REQUIRED_MESSAGE =
   'MFA is required by your organization. Contact an administrator or enroll MFA after access is restored.';
 
+const TERMINAL_LOGIN_CODES = new Set([
+  'MFA_ENROLLMENT_REQUIRED',
+  'MFA_REQUIRED_BY_POLICY',
+  'SECURITY_REVIEW_UNAVAILABLE',
+  'APPROVAL_UNAVAILABLE',
+]);
+
+export function isTerminalLoginBlock(data: LoginResponseBody | undefined): boolean {
+  if (!data?.code) return false;
+  return TERMINAL_LOGIN_CODES.has(data.code);
+}
+
+function mapAvailableMethodToLegacy(method: string): string {
+  if (method === 'email_otp') return 'email';
+  if (method === 'backup_code') return 'backup';
+  return method;
+}
+
+export function resolveAvailableMethods(data: LoginResponseBody): string[] {
+  if (Array.isArray(data.availableMethods) && data.availableMethods.length > 0) {
+    return data.availableMethods.map(mapAvailableMethodToLegacy);
+  }
+  if (Array.isArray(data.mfaMethods) && data.mfaMethods.length > 0) {
+    return data.mfaMethods as string[];
+  }
+  return [];
+}
+
 /** MFA challenge cannot be satisfied (policy enrollment or no methods/passkey). */
 export function isUnfulfillableMfaChallenge(data: LoginResponseBody | undefined): boolean {
   if (!data) return false;
-  if (data.code === 'MFA_REQUIRED_BY_POLICY') return true;
+  if (isTerminalLoginBlock(data)) return true;
   const handling = parseLoginResponse(data);
-  if (handling.kind === 'blocked' && handling.code === 'MFA_REQUIRED_BY_POLICY') {
+  if (handling.kind === 'blocked' && TERMINAL_LOGIN_CODES.has(handling.code)) {
     return true;
   }
   if (handling.kind !== 'challenge' || handling.challenge !== 'mfa') {
     return false;
   }
-  const methods =
-    handling.context.mfaMethods ??
-    (Array.isArray(data.mfaMethods) ? (data.mfaMethods as string[]) : []);
+  const methods = resolveAvailableMethods(data);
   const passkeyAllowed = Boolean(
     handling.context.passkeyMfaAllowed ?? data.passkeyMfaAllowed
   );
@@ -550,10 +588,9 @@ export function resolveLoginMfaMethods(
   data: LoginResponseBody,
   contextMfaMethods?: string[]
 ): string[] {
+  const fromAvailable = resolveAvailableMethods(data);
+  if (fromAvailable.length > 0) return fromAvailable;
   if (contextMfaMethods?.length) return contextMfaMethods;
-  if (Array.isArray(data.mfaMethods) && data.mfaMethods.length > 0) {
-    return data.mfaMethods as string[];
-  }
   return [];
 }
 

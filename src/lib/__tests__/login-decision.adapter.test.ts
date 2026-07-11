@@ -4,9 +4,11 @@ import {
   isLoginPollApproved,
   isLoginPollTerminal,
   isSecurityReviewLoginError,
+  isTerminalLoginBlock,
   isUnfulfillableMfaChallenge,
   loginApprovalStepForHandling,
   parseLoginResponse,
+  resolveAvailableMethods,
   resolveLoginMfaMethods,
   toAuthStatusHandling,
 } from '../login-decision.adapter';
@@ -169,6 +171,22 @@ describe('login-decision.adapter', () => {
   it('resolves MFA methods without totp default', () => {
     expect(resolveLoginMfaMethods({ mfaMethods: ['email'] })).toEqual(['email']);
     expect(resolveLoginMfaMethods({})).toEqual([]);
+    expect(
+      resolveLoginMfaMethods({
+        availableMethods: ['passkey', 'email_otp'],
+      })
+    ).toEqual(['passkey', 'email']);
+  });
+
+  it('detects terminal login blocks and resolves availableMethods', () => {
+    expect(isTerminalLoginBlock({ code: 'MFA_ENROLLMENT_REQUIRED' })).toBe(true);
+    expect(isTerminalLoginBlock({ code: 'SECURITY_REVIEW_UNAVAILABLE' })).toBe(true);
+    expect(isTerminalLoginBlock({ code: 'MFA_REQUIRED' })).toBe(false);
+    expect(
+      resolveAvailableMethods({
+        availableMethods: ['passkey', 'email_otp', 'backup_code'],
+      })
+    ).toEqual(['passkey', 'email', 'backup']);
   });
 
   it('extracts login error body from apiClient thrown errors', () => {

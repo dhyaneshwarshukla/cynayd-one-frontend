@@ -17,6 +17,7 @@ interface MFAVerificationModalProps {
   attemptId?: string;
   attemptNonce?: string;
   mfaMethods?: string[];
+  availableMethods?: string[];
   emailOtpSent?: boolean;
   mode?: 'legacy' | 'challenge' | 'passkey' | 'magic_link';
   passkeyMfaAllowed?: boolean;
@@ -33,21 +34,31 @@ export function MFAVerificationModal({
   password,
   attemptId,
   attemptNonce,
-  mfaMethods = ['totp'],
+  mfaMethods,
+  availableMethods,
   emailOtpSent = false,
   mode = 'legacy',
   passkeyMfaAllowed = false,
   rememberMe = false,
   onChallengeVerify,
 }: MFAVerificationModalProps) {
+  const resolvedMethods =
+    mfaMethods ??
+    (availableMethods?.map((method) => {
+      if (method === 'email_otp') return 'email';
+      if (method === 'backup_code') return 'backup';
+      return method;
+    }) ??
+      []);
+  const effectiveMfaMethods = resolvedMethods.length > 0 ? resolvedMethods : [];
   const [mfaCode, setMfaCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
 
-  const emailMfaAvailable = mfaMethods.includes('email');
-  const totpAvailable = mfaMethods.includes('totp');
+  const emailMfaAvailable = effectiveMfaMethods.includes('email');
+  const totpAvailable = effectiveMfaMethods.includes('totp');
 
   useEffect(() => {
     if (isOpen) {

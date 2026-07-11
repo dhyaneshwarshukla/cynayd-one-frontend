@@ -112,6 +112,10 @@ export interface AuthResponse {
   userId?: string;
   email?: string;
   mfaMethods?: string[];
+  availableMethods?: string[];
+  schemaVersion?: number;
+  canEnroll?: boolean;
+  publicReasonCodes?: string[];
   challengeId?: string;
   nonce?: string;
   mustEnrollMfa?: boolean;

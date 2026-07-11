@@ -16,6 +16,7 @@ import {
   approvalMessageForHandling,
   getLoginErrorResponseBody,
   isUnfulfillableMfaChallenge,
+  isTerminalLoginBlock,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
   MFA_ENROLLMENT_REQUIRED_MESSAGE,
@@ -40,7 +41,7 @@ export default function MagicLinkPage() {
   const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
-  const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [mfaMethods, setMfaMethods] = useState<string[]>([]);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
   const [approvalMatchCode, setApprovalMatchCode] = useState<string | null>(null);
@@ -84,7 +85,11 @@ export default function MagicLinkPage() {
     }
 
     if (handling.kind === 'blocked' || handling.kind === 'unknown') {
-      setBlockedMessage(loginFlowUserMessage(handling));
+      setBlockedMessage(
+        isTerminalLoginBlock(data)
+          ? ((data.message as string | undefined) ?? MFA_ENROLLMENT_REQUIRED_MESSAGE)
+          : loginFlowUserMessage(handling)
+      );
       setStatus('blocked');
       return;
     }

@@ -25,6 +25,7 @@ import {
   approvalMessageForHandling,
   getLoginErrorResponseBody,
   isSecurityReviewLoginBody,
+  isTerminalLoginBlock,
   isUnfulfillableMfaChallenge,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
@@ -111,7 +112,7 @@ export const LoginForm: React.FC = () => {
   const [challengeNonce, setChallengeNonce] = useState<string | null>(null);
   const [showMfaModal, setShowMfaModal] = useState(false);
   const [mfaUserId, setMfaUserId] = useState<string | null>(null);
-  const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [mfaMethods, setMfaMethods] = useState<string[]>([]);
   const [mfaEmailOtpSent, setMfaEmailOtpSent] = useState(false);
   const [mfaModalMode, setMfaModalMode] = useState<'challenge' | 'passkey'>('challenge');
   const [mfaAttemptId, setMfaAttemptId] = useState<string | null>(null);
@@ -259,6 +260,12 @@ export const LoginForm: React.FC = () => {
     setLoginStep('email');
   };
 
+  const hasActiveChallengeSession =
+    Boolean(securityChallengeSessionId) ||
+    showMfaModal ||
+    loginStep === 'awaiting_security_review' ||
+    loginStep === 'awaiting_approval';
+
   const getActiveLoginEmail = (): string => {
     const fromState = selectedAccountEmail || getValues('email')?.trim();
     if (fromState) return fromState.toLowerCase();
@@ -308,7 +315,11 @@ export const LoginForm: React.FC = () => {
     if (handling.kind === 'blocked' || handling.kind === 'unknown') {
       setShowMfaModal(false);
       setLoginStep('password');
-      setError(loginFlowUserMessage(handling));
+      const msg =
+        isTerminalLoginBlock(result) || result.code === 'SECURITY_REVIEW_UNAVAILABLE'
+          ? result.message ?? MFA_ENROLLMENT_REQUIRED_MESSAGE
+          : loginFlowUserMessage(handling);
+      setError(msg);
       return;
     }
 
@@ -536,19 +547,13 @@ export const LoginForm: React.FC = () => {
             };
             const errData = apiErr.response?.data;
             const mfaHandling = errData ? parseLoginResponse(errData) : null;
-            if (mfaHandling?.kind === 'challenge' && mfaHandling.challenge === 'mfa') {
-              const ctx = mfaHandling.context;
-              setPendingEmail(normalizedEmail);
-              setPendingPassword(data.password);
-              setPendingRememberMe(Boolean(data.rememberMe));
-              setMfaUserId(ctx.userId ?? errData?.userId ?? null);
-              setMfaMethods(ctx.mfaMethods ?? ['totp']);
-              setMfaEmailOtpSent(Boolean(ctx.emailOtpSent));
-              setPasskeyMfaAllowed(Boolean(ctx.passkeyMfaAllowed));
-              setMfaModalMode('challenge');
-              setMfaAttemptId(ctx.challengeId ?? challengeId);
-              setMfaAttemptNonce(ctx.nonce ?? challengeNonce);
-              setShowMfaModal(true);
+            if (mfaHandling?.kind === 'challenge' && mfaHandling.challenge === 'mfa' && errData) {
+              await handleLoginPasswordResult(
+                errData,
+                data.password,
+                Boolean(data.rememberMe),
+                normalizedEmail
+              );
               return;
             }
             if (
@@ -870,7 +875,11 @@ export const LoginForm: React.FC = () => {
         setMfaModalMode('passkey');
         setMfaAttemptId(passkeyHandling.context.challengeId ?? response.challengeId ?? null);
         setMfaAttemptNonce(passkeyHandling.context.nonce ?? response.nonce ?? null);
-        setPasskeyMfaAllowed(Boolean(passkeyHandling.context.passkeyMfaAllowed ?? response.passkeyMfaAllowed));
+        setPasskeyMfaAllowed(Boolean(
+        passkeyHandling.context.passkeyMfaAllowed ??
+        response.passkeyMfaAllowed ??
+        (Array.isArray(response.availableMethods) && response.availableMethods.includes('passkey'))
+      ));
         setLoginStep('password');
         setShowMfaModal(true);
         return;
@@ -1343,7 +1352,12 @@ export const LoginForm: React.FC = () => {
           <button
             type="button"
             onClick={handlePasskeyLogin}
-            disabled={passkeyBusy || isFormLoading}
+            disabled={passkeyBusy || isFormLoading || hasActiveChallengeSession}
+            title={
+              hasActiveChallengeSession
+                ? 'Complete the current sign-in step before starting a new passkey login'
+                : undefined
+            }
             className="text-sm text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
           >
             {passkeyBusy ? 'Waiting for passkey…' : 'Sign in with passkey'}
