@@ -14,6 +14,7 @@ import {
 import { useSecurityReviewPolling } from '@/hooks/useSecurityReviewPolling';
 import {
   approvalMessageForHandling,
+  getLoginErrorResponseBody,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
   parseLoginResponse,
@@ -149,7 +150,19 @@ export default function MagicLinkPage() {
           deviceBindingHash,
         });
         handleVerifyResponse(data);
-      } catch {
+      } catch (err) {
+        const errData = getLoginErrorResponseBody(err);
+        if (errData) {
+          const handling = parseLoginResponse(errData);
+          if (
+            handling.kind === 'challenge' ||
+            handling.kind === 'blocked' ||
+            handling.kind === 'complete'
+          ) {
+            handleVerifyResponse(errData);
+            return;
+          }
+        }
         setStatus('error');
       }
     })();

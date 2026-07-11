@@ -504,4 +504,23 @@ export function isLoginPollApproved(body: LoginChallengePollBody): boolean {
   return parsed.kind === 'complete' && Boolean(body.accessToken);
 }
 
+/** Reads LoginDecision body from an apiClient thrown error (non-OK HTTP). */
+export function getLoginErrorResponseBody(err: unknown): LoginResponseBody | undefined {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (!data || typeof data !== 'object') return undefined;
+  return data as LoginResponseBody;
+}
+
+export function isSecurityReviewLoginBody(
+  data: LoginResponseBody | undefined
+): boolean {
+  if (!data) return false;
+  const handling = parseLoginResponse(data);
+  return handling.kind === 'challenge' && handling.challenge === 'security_review';
+}
+
+export function isSecurityReviewLoginError(err: unknown): boolean {
+  return isSecurityReviewLoginBody(getLoginErrorResponseBody(err));
+}
+
 export { authStatusUserMessage, handleAuthStatusCode };

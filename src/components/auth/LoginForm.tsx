@@ -23,10 +23,11 @@ import { useSecurityReviewPolling } from '../../hooks/useSecurityReviewPolling';
 import type { AuthResponse } from '../../lib/api-client';
 import {
   approvalMessageForHandling,
+  getLoginErrorResponseBody,
+  isSecurityReviewLoginBody,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
   parseLoginResponse,
-  type LoginResponseBody,
 } from '../../lib/login-decision.adapter';
 import {
   addRecentAccount,
@@ -44,12 +45,6 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
-
-function isSecurityReviewResponse(data: LoginResponseBody | AuthResponse | undefined): boolean {
-  if (!data) return false;
-  const handling = parseLoginResponse(data);
-  return handling.kind === 'challenge' && handling.challenge === 'security_review';
-}
 
 function isEmailNotVerifiedError(err: unknown, errorMessage: string): boolean {
   const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
@@ -552,7 +547,7 @@ export const LoginForm: React.FC = () => {
               );
               return;
             }
-            if (isSecurityReviewResponse(errData)) {
+            if (isSecurityReviewLoginBody(errData)) {
               await handleLoginPasswordResult(
                 errData!,
                 data.password,
@@ -596,7 +591,7 @@ export const LoginForm: React.FC = () => {
 
       const errData = errAny.response?.data as AuthResponse | undefined;
       if (
-        isSecurityReviewResponse(errData) &&
+        isSecurityReviewLoginBody(errData) &&
         (loginStep === 'password' || loginStep === 'email')
       ) {
         const emailForReview = (data.email ?? pendingEmail).trim().toLowerCase();
@@ -877,6 +872,14 @@ export const LoginForm: React.FC = () => {
         router.push('/dashboard');
       }
     } catch (err) {
+      const errData = getLoginErrorResponseBody(err);
+      if (errData) {
+        const handling = parseLoginResponse(errData);
+        if (handling.kind === 'challenge' || handling.kind === 'blocked') {
+          await handleLoginPasswordResult(errData as AuthResponse, '', false, email);
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : 'Passkey sign-in failed');
     } finally {
       setPasskeyBusy(false);

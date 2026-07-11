@@ -1,7 +1,9 @@
 import {
   approvalMessageForHandling,
+  getLoginErrorResponseBody,
   isLoginPollApproved,
   isLoginPollTerminal,
+  isSecurityReviewLoginError,
   loginApprovalStepForHandling,
   parseLoginResponse,
   toAuthStatusHandling,
@@ -141,5 +143,21 @@ describe('login-decision.adapter', () => {
     expect(isLoginPollTerminal({ code: 'CHALLENGE_EXPIRED' })).toBe(true);
     expect(isLoginPollApproved({ status: 'approved', accessToken: 't' })).toBe(true);
     expect(isLoginPollApproved({ decision: 'ALLOW', accessToken: 't' })).toBe(true);
+  });
+
+  it('extracts login error body from apiClient thrown errors', () => {
+    const body = {
+      code: 'SECURITY_REVIEW_REQUIRED',
+      reviewId: 'r1',
+      challengeId: 'c1',
+      nonce: 'n1',
+    };
+    const err = { response: { status: 403, data: body } };
+    expect(getLoginErrorResponseBody(err)).toEqual(body);
+    expect(getLoginErrorResponseBody(new Error('network'))).toBeUndefined();
+    expect(isSecurityReviewLoginError(err)).toBe(true);
+    expect(
+      isSecurityReviewLoginError({ response: { data: { code: 'MFA_REQUIRED' } } })
+    ).toBe(false);
   });
 });
