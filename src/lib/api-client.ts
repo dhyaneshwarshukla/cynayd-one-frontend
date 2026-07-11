@@ -358,6 +358,7 @@ export interface SecurityReview {
   riskReasons: string;
   ipAddress?: string | null;
   deviceId?: string | null;
+  canCurrentAdminReview?: boolean;
   createdAt: string;
   expiresAt: string;
 }

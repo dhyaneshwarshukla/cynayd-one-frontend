@@ -82,8 +82,9 @@ export function SecurityReviewQueue() {
             <AlertTitle>Single administrator organization</AlertTitle>
             <AlertDescription>
               Your organization has {adminCount ?? 1} admin
-              {adminCount === 1 ? '' : 's'}. Security reviews require approval from a second admin — add
-              another administrator so locked-out users can recover access.
+              {adminCount === 1 ? '' : 's'}. Reviews for regular users can still be handled, but an
+              administrator cannot approve their own login unless self-approval is enabled. Add another
+              active administrator to avoid administrator lockout.
             </AlertDescription>
           </Alert>
         )}
@@ -117,7 +118,7 @@ export function SecurityReviewQueue() {
                     size="sm"
                     variant="outline"
                     loading={acting === r.id}
-                    disabled={singleAdminWarning}
+                    disabled={acting !== null || r.canCurrentAdminReview === false}
                     onClick={() => void deny(r.id)}
                   >
                     Deny
@@ -125,7 +126,7 @@ export function SecurityReviewQueue() {
                   <Button
                     size="sm"
                     loading={acting === r.id}
-                    disabled={singleAdminWarning}
+                    disabled={acting !== null || r.canCurrentAdminReview === false}
                     onClick={() => void approve(r.id)}
                   >
                     Approve
