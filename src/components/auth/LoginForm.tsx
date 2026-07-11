@@ -29,6 +29,7 @@ import {
   removeRecentAccount,
   type RecentAccount,
 } from '../../lib/recent-accounts';
+import { formatInstantForDisplay } from '../../utils/datetime';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -417,10 +418,8 @@ export const LoginForm: React.FC = () => {
     ) {
       const lockedUntil = apiErr.response?.data?.lockedUntil;
       const lockMessage = lockedUntil
-        ? `Account is locked until ${new Date(lockedUntil).toLocaleString()}.`
-        : errorMessage.includes('locked')
-          ? errorMessage
-          : 'Account is locked.';
+        ? `Account is locked until ${formatInstantForDisplay(lockedUntil)}.`
+        : 'Account is locked due to too many failed attempts.';
       setError(lockMessage);
       setShowUnlockOption(true);
       setUserEmail(apiErr.response?.data?.userEmail || email);
@@ -612,9 +611,9 @@ export const LoginForm: React.FC = () => {
       if (errAny.response?.data?.code === 'ACCOUNT_LOCKED' || errorMessage.toLowerCase().includes('account is locked') || errorMessage.toLowerCase().includes('locked until')) {
         const lockedUntil = errAny.response?.data?.lockedUntil;
         const userEmail = errAny.response?.data?.userEmail || data.email;
-        const lockMessage = lockedUntil 
-          ? `Account is locked until ${new Date(lockedUntil).toLocaleString()}.`
-          : errorMessage.includes('locked') ? errorMessage : 'Account is locked.';
+        const lockMessage = lockedUntil
+          ? `Account is locked until ${formatInstantForDisplay(lockedUntil)}.`
+          : 'Account is locked due to too many failed attempts.';
         setError(lockMessage);
         // Always show unlock option if account is locked
         setShowUnlockOption(true);

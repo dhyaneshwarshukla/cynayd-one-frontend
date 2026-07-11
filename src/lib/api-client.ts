@@ -162,6 +162,8 @@ export interface PinLock {
   unlocked: boolean;
   lastActivity?: string | Date | null;
   inactivityTimeoutMs?: number;
+  accountLocked?: boolean;
+  lockedUntil?: string;
 }
 
 export interface LogoutResult {
