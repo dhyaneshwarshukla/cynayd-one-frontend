@@ -523,4 +523,38 @@ export function isSecurityReviewLoginError(err: unknown): boolean {
   return isSecurityReviewLoginBody(getLoginErrorResponseBody(err));
 }
 
+export const MFA_ENROLLMENT_REQUIRED_MESSAGE =
+  'MFA is required by your organization. Contact an administrator or enroll MFA after access is restored.';
+
+/** MFA challenge cannot be satisfied (policy enrollment or no methods/passkey). */
+export function isUnfulfillableMfaChallenge(data: LoginResponseBody | undefined): boolean {
+  if (!data) return false;
+  if (data.code === 'MFA_REQUIRED_BY_POLICY') return true;
+  const handling = parseLoginResponse(data);
+  if (handling.kind === 'blocked' && handling.code === 'MFA_REQUIRED_BY_POLICY') {
+    return true;
+  }
+  if (handling.kind !== 'challenge' || handling.challenge !== 'mfa') {
+    return false;
+  }
+  const methods =
+    handling.context.mfaMethods ??
+    (Array.isArray(data.mfaMethods) ? (data.mfaMethods as string[]) : []);
+  const passkeyAllowed = Boolean(
+    handling.context.passkeyMfaAllowed ?? data.passkeyMfaAllowed
+  );
+  return methods.length === 0 && !passkeyAllowed;
+}
+
+export function resolveLoginMfaMethods(
+  data: LoginResponseBody,
+  contextMfaMethods?: string[]
+): string[] {
+  if (contextMfaMethods?.length) return contextMfaMethods;
+  if (Array.isArray(data.mfaMethods) && data.mfaMethods.length > 0) {
+    return data.mfaMethods as string[];
+  }
+  return [];
+}
+
 export { authStatusUserMessage, handleAuthStatusCode };

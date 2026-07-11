@@ -15,9 +15,12 @@ import { useSecurityReviewPolling } from '@/hooks/useSecurityReviewPolling';
 import {
   approvalMessageForHandling,
   getLoginErrorResponseBody,
+  isUnfulfillableMfaChallenge,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
+  MFA_ENROLLMENT_REQUIRED_MESSAGE,
   parseLoginResponse,
+  resolveLoginMfaMethods,
   type LoginResponseBody,
 } from '@/lib/login-decision.adapter';
 import { getMagicLinkDeviceBindingHash } from '@/lib/device-identity.service';
@@ -91,8 +94,17 @@ export default function MagicLinkPage() {
     if (context.nonce) setAttemptNonce(context.nonce);
 
     if (challenge === 'mfa') {
+      if (isUnfulfillableMfaChallenge(data)) {
+        setBlockedMessage(
+          (data.message as string | undefined) ??
+            loginFlowUserMessage(parseLoginResponse(data)) ??
+            MFA_ENROLLMENT_REQUIRED_MESSAGE
+        );
+        setStatus('blocked');
+        return;
+      }
       setUserId(context.userId ?? (data.userId as string) ?? null);
-      setMfaMethods(context.mfaMethods ?? (data.mfaMethods as string[]) ?? ['totp']);
+      setMfaMethods(resolveLoginMfaMethods(data, context.mfaMethods));
       setEmailOtpSent(Boolean(context.emailOtpSent ?? data.emailOtpSent));
       setPasskeyMfaAllowed(Boolean(context.passkeyMfaAllowed ?? data.passkeyMfaAllowed));
       setStatus('mfa');
@@ -176,45 +188,31 @@ export default function MagicLinkPage() {
     poll: (id, nonce, loginAttemptId) =>
       apiClient.getSecurityReviewStatus(id, nonce, loginAttemptId),
     onApproved: async (pollStatus) => {
-      const result = await apiClient.resumeSecurityReview({
-        reviewId: securityReviewId!,
-        userId: pollStatus.userId ?? securityReviewUserId!,
-        resumeToken: pollStatus.resumeToken!,
-        challengeSessionId: pollStatus.challengeSessionId ?? securityChallengeSessionId!,
-        nonce: attemptNonce ?? undefined,
-        rememberMe: false,
-      });
-      if (result.accessToken) {
-        await completeLogin(result.accessToken);
-        return;
-      }
-      const next = parseLoginResponse(result);
-      if (next.kind === 'complete' && result.accessToken) {
-        await completeLogin(result.accessToken);
-        return;
-      }
-      if (next.kind === 'challenge') {
-        if (next.context.challengeId) setAttemptId(next.context.challengeId);
-        if (next.context.nonce) setAttemptNonce(next.context.nonce);
-        if (next.challenge === 'security_review') {
+      try {
+        const result = await apiClient.resumeSecurityReview({
+          reviewId: securityReviewId!,
+          userId: pollStatus.userId ?? securityReviewUserId!,
+          resumeToken: pollStatus.resumeToken!,
+          challengeSessionId: pollStatus.challengeSessionId ?? securityChallengeSessionId!,
+          nonce: attemptNonce ?? undefined,
+          rememberMe: false,
+        });
+        if (result.accessToken) {
+          await completeLogin(result.accessToken);
           return;
         }
-        if (next.challenge === 'mfa') {
-          setUserId((result.userId as string) ?? null);
-          setMfaMethods((result.mfaMethods as string[]) ?? ['totp']);
-          setStatus('mfa');
+        handleVerifyResponse(result as LoginResponseBody);
+      } catch (err) {
+        const errData = getLoginErrorResponseBody(err);
+        if (errData) {
+          handleVerifyResponse(errData);
           return;
         }
-        setApprovalMessage(approvalMessageForHandling(next));
-        setStatus(
-          loginApprovalStepForHandling(next) === 'email_otp' ? 'email_otp' : 'approval'
+        setBlockedMessage(
+          err instanceof Error ? err.message : 'Sign-in could not be completed after review.'
         );
-        return;
+        setStatus('blocked');
       }
-      setBlockedMessage(
-        loginFlowUserMessage(next) || 'Sign-in could not be completed after review.'
-      );
-      setStatus('blocked');
     },
     onTerminal: (status) => {
       setBlockedMessage(

@@ -25,9 +25,12 @@ import {
   approvalMessageForHandling,
   getLoginErrorResponseBody,
   isSecurityReviewLoginBody,
+  isUnfulfillableMfaChallenge,
   loginApprovalStepForHandling,
   loginFlowUserMessage,
+  MFA_ENROLLMENT_REQUIRED_MESSAGE,
   parseLoginResponse,
+  resolveLoginMfaMethods,
 } from '../../lib/login-decision.adapter';
 import {
   addRecentAccount,
@@ -45,6 +48,7 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
+type PendingPrimaryMethod = 'password' | 'passkey' | 'magic_link';
 
 function isEmailNotVerifiedError(err: unknown, errorMessage: string): boolean {
   const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
@@ -115,6 +119,7 @@ export const LoginForm: React.FC = () => {
   const [pendingEmail, setPendingEmail] = useState('');
   const [pendingPassword, setPendingPassword] = useState('');
   const [pendingRememberMe, setPendingRememberMe] = useState(false);
+  const [pendingPrimaryMethod, setPendingPrimaryMethod] = useState<PendingPrimaryMethod>('password');
   const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [approvalExpiresAt, setApprovalExpiresAt] = useState<string | null>(null);
@@ -158,45 +163,41 @@ export const LoginForm: React.FC = () => {
     },
     onApproved: async (status) => {
       const { apiClient } = await import('../../lib/api-client');
-      const result = await apiClient.resumeSecurityReview({
-        reviewId: securityReviewId!,
-        userId: status.userId ?? securityReviewUserId!,
-        resumeToken: status.resumeToken!,
-        challengeSessionId: status.challengeSessionId ?? securityChallengeSessionId!,
-        nonce: challengeNonce ?? undefined,
-        rememberMe: pendingRememberMe,
-      });
-      if (result.accessToken) {
-        apiClient.storeAuthToken(result.accessToken);
-        await completeLoginRedirect();
-        return;
-      }
-      const next = parseLoginResponse(result);
-      if (next.kind === 'complete' && result.accessToken) {
-        await completeLoginRedirect();
-        return;
-      }
-      if (next.kind === 'challenge') {
-        if (next.context.challengeId) setChallengeId(next.context.challengeId);
-        if (next.context.nonce) setChallengeNonce(next.context.nonce);
-        if (next.challenge === 'security_review') {
+      const emailForFlow = pendingEmail || getActiveLoginEmail();
+      try {
+        const result = await apiClient.resumeSecurityReview({
+          reviewId: securityReviewId!,
+          userId: status.userId ?? securityReviewUserId!,
+          resumeToken: status.resumeToken!,
+          challengeSessionId: status.challengeSessionId ?? securityChallengeSessionId!,
+          nonce: challengeNonce ?? undefined,
+          rememberMe: pendingRememberMe,
+        });
+        if (result.accessToken) {
+          apiClient.storeAuthToken(result.accessToken);
+          await completeLoginRedirect();
           return;
         }
-        if (next.challenge === 'mfa') {
-          setMfaUserId(result.userId ?? securityReviewUserId);
-          setShowMfaModal(true);
-          return;
-        }
-        setLoginStep(
-          loginApprovalStepForHandling(next) === 'email_otp'
-            ? 'email_otp'
-            : 'awaiting_approval'
+        await handleLoginPasswordResult(
+          result as AuthResponse,
+          pendingPassword,
+          pendingRememberMe,
+          emailForFlow
         );
-        setApprovalMessage(approvalMessageForHandling(next));
-        return;
+      } catch (err) {
+        const errData = getLoginErrorResponseBody(err);
+        if (errData) {
+          await handleLoginPasswordResult(
+            errData as AuthResponse,
+            pendingPassword,
+            pendingRememberMe,
+            emailForFlow
+          );
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'Sign-in could not be completed after review.');
+        setLoginStep('password');
       }
-      setError(loginFlowUserMessage(next) || 'Sign-in could not be completed after review.');
-      setLoginStep('password');
     },
     onTerminal: (status) => {
       setError(
@@ -305,6 +306,8 @@ export const LoginForm: React.FC = () => {
     }
 
     if (handling.kind === 'blocked' || handling.kind === 'unknown') {
+      setShowMfaModal(false);
+      setLoginStep('password');
       setError(loginFlowUserMessage(handling));
       return;
     }
@@ -323,6 +326,8 @@ export const LoginForm: React.FC = () => {
       setSecurityReviewMessage(context.message ?? null);
       setSecurityRiskLevel(context.riskLevel);
       setSecurityRiskReasons(context.riskReasons ?? []);
+      setShowMfaModal(false);
+      setMfaEmailOtpSent(false);
       setLoginStep('awaiting_security_review');
       errorRef.current = null;
       if (typeof window !== 'undefined') {
@@ -333,13 +338,24 @@ export const LoginForm: React.FC = () => {
     }
 
     if (challenge === 'mfa') {
+      if (isUnfulfillableMfaChallenge(result)) {
+        setShowMfaModal(false);
+        setLoginStep('password');
+        setError(
+          result.message ??
+            loginFlowUserMessage(parseLoginResponse(result)) ??
+            MFA_ENROLLMENT_REQUIRED_MESSAGE
+        );
+        return;
+      }
       setMfaUserId(context.userId ?? result.userId ?? null);
-      setMfaMethods(context.mfaMethods ?? ['totp']);
+      setMfaMethods(resolveLoginMfaMethods(result, context.mfaMethods));
       setMfaEmailOtpSent(Boolean(context.emailOtpSent));
       setPasskeyMfaAllowed(Boolean(context.passkeyMfaAllowed));
-      setMfaModalMode('challenge');
+      setMfaModalMode(pendingPrimaryMethod === 'passkey' ? 'passkey' : 'challenge');
       setMfaAttemptId(context.challengeId ?? challengeId);
       setMfaAttemptNonce(context.nonce ?? challengeNonce);
+      setLoginStep('password');
       setShowMfaModal(true);
       setError(null);
       return;
@@ -494,6 +510,7 @@ export const LoginForm: React.FC = () => {
       const { apiClient } = await import('../../lib/api-client');
 
       if (loginStep === 'password') {
+        setPendingPrimaryMethod('password');
         if (!data.password) {
           setError('Password is required');
           return;
@@ -828,6 +845,7 @@ export const LoginForm: React.FC = () => {
       return;
     }
     setPasskeyBusy(true);
+    setPendingPrimaryMethod('passkey');
     try {
       const { apiClient } = await import('../../lib/api-client');
       const { authenticateWithPasskey } = await import('../../lib/webauthn');
@@ -837,13 +855,23 @@ export const LoginForm: React.FC = () => {
 
       const passkeyHandling = parseLoginResponse(response);
       if (passkeyHandling.kind === 'challenge' && passkeyHandling.challenge === 'mfa') {
+        if (isUnfulfillableMfaChallenge(response)) {
+          setError(
+            response.message ??
+              loginFlowUserMessage(passkeyHandling) ??
+              MFA_ENROLLMENT_REQUIRED_MESSAGE
+          );
+          return;
+        }
         setPendingEmail(email);
         setMfaUserId(passkeyHandling.context.userId ?? response.userId ?? null);
-        setMfaMethods(passkeyHandling.context.mfaMethods ?? ['totp']);
+        setMfaMethods(resolveLoginMfaMethods(response, passkeyHandling.context.mfaMethods));
         setMfaEmailOtpSent(Boolean(passkeyHandling.context.emailOtpSent));
         setMfaModalMode('passkey');
         setMfaAttemptId(passkeyHandling.context.challengeId ?? response.challengeId ?? null);
         setMfaAttemptNonce(passkeyHandling.context.nonce ?? response.nonce ?? null);
+        setPasskeyMfaAllowed(Boolean(passkeyHandling.context.passkeyMfaAllowed ?? response.passkeyMfaAllowed));
+        setLoginStep('password');
         setShowMfaModal(true);
         return;
       }

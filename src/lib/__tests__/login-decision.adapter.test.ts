@@ -4,8 +4,10 @@ import {
   isLoginPollApproved,
   isLoginPollTerminal,
   isSecurityReviewLoginError,
+  isUnfulfillableMfaChallenge,
   loginApprovalStepForHandling,
   parseLoginResponse,
+  resolveLoginMfaMethods,
   toAuthStatusHandling,
 } from '../login-decision.adapter';
 
@@ -143,6 +145,30 @@ describe('login-decision.adapter', () => {
     expect(isLoginPollTerminal({ code: 'CHALLENGE_EXPIRED' })).toBe(true);
     expect(isLoginPollApproved({ status: 'approved', accessToken: 't' })).toBe(true);
     expect(isLoginPollApproved({ decision: 'ALLOW', accessToken: 't' })).toBe(true);
+  });
+
+  it('detects unfulfillable MFA when no methods and no passkey fallback', () => {
+    expect(
+      isUnfulfillableMfaChallenge({
+        code: 'MFA_REQUIRED',
+        challengeId: 'c1',
+        nonce: 'n1',
+        mfaMethods: [],
+        passkeyMfaAllowed: false,
+      })
+    ).toBe(true);
+    expect(
+      isUnfulfillableMfaChallenge({
+        code: 'MFA_REQUIRED',
+        mfaMethods: ['totp'],
+      })
+    ).toBe(false);
+    expect(isUnfulfillableMfaChallenge({ code: 'MFA_REQUIRED_BY_POLICY' })).toBe(true);
+  });
+
+  it('resolves MFA methods without totp default', () => {
+    expect(resolveLoginMfaMethods({ mfaMethods: ['email'] })).toEqual(['email']);
+    expect(resolveLoginMfaMethods({})).toEqual([]);
   });
 
   it('extracts login error body from apiClient thrown errors', () => {
