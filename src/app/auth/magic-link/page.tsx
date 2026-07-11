@@ -182,8 +182,11 @@ export default function MagicLinkPage() {
       );
       setStatus('blocked');
     },
-    onTerminal: () => {
-      setBlockedMessage('This sign-in request was denied or expired during security review.');
+    onTerminal: (status) => {
+      setBlockedMessage(
+        status.message ??
+          'This sign-in request was denied or expired during security review.'
+      );
       setStatus('blocked');
     },
   });

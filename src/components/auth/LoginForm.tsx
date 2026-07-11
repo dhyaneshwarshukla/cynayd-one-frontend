@@ -183,9 +183,10 @@ export const LoginForm: React.FC = () => {
     },
     onTerminal: (status) => {
       setError(
-        status.status === 'denied'
-          ? 'This sign-in request was denied by your administrator.'
-          : 'Security review expired. Please try again.'
+        status.message ??
+          (status.status === 'denied'
+            ? 'This sign-in request was denied by your administrator.'
+            : 'Security review expired. Please try again.')
       );
       setLoginStep('password');
     },
@@ -546,6 +547,15 @@ export const LoginForm: React.FC = () => {
               setMfaAttemptId(mfaData.challengeId || challengeId);
               setMfaAttemptNonce(mfaData.nonce || challengeNonce);
               setShowMfaModal(true);
+              return;
+            }
+            if (apiErr.response?.data?.code === 'SECURITY_REVIEW_REQUIRED') {
+              await handleLoginPasswordResult(
+                apiErr.response.data as AuthResponse,
+                data.password,
+                Boolean(data.rememberMe),
+                normalizedEmail
+              );
               return;
             }
             throw err;

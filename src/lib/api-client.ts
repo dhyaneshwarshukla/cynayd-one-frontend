@@ -632,7 +632,8 @@ class ApiClient {
       endpoint.endsWith('/api/auth/activity') ||
       endpoint.endsWith('/api/auth/pin/verify') ||
       endpoint.includes('/api/auth/login/challenge/') ||
-      endpoint.endsWith('/api/auth/login/password')
+      endpoint.endsWith('/api/auth/login/password') ||
+      endpoint.includes('/api/security-reviews/')
     ) {
       return false;
     }
@@ -778,7 +779,8 @@ class ApiClient {
         !endpoint.includes('/api/auth/refresh-token') &&
         !endpoint.includes('/api/auth/login') &&
         !endpoint.includes('/api/auth/logout') &&
-        !endpoint.includes('/api/auth/register')
+        !endpoint.includes('/api/auth/register') &&
+        !endpoint.includes('/api/security-reviews/')
       ) {
         const restored = await this.restoreSession();
         if (restored) {
