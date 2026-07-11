@@ -91,6 +91,13 @@ export interface SecuritySettingsFormState {
   minimumFactorStrength: MinimumFactorStrengthStub;
   passkeyOnlyWhenEnrolled: boolean;
   mfaSignedApprovalRequired: boolean;
+  adminReviewMinRiskScore: number;
+  allowHighRiskEmailOtpFallback: boolean;
+  allowPasskeyApprovalFallback: boolean;
+  allowEnrollmentDuringLogin: boolean;
+  securityReviewMinimumEligibleApprovers: number;
+  securityReviewEmergencyRecoveryEnabled: boolean;
+  securityReviewSelfApprovalAllowed: boolean;
 }
 
 interface SecuritySettingsPanelProps {
@@ -106,7 +113,15 @@ const PRESET_LABELS: Record<PolicyPresetId, string> = {
   'maximum-security': 'Maximum Security',
 };
 
-const TABS = ['Session', 'MFA', 'Mobile approval', 'Device trust', 'Login challenges', 'Risk & lockout'] as const;
+const TABS = [
+  'Session',
+  'MFA',
+  'Mobile approval',
+  'Device trust',
+  'Login challenges',
+  'Review & recovery',
+  'Risk & lockout',
+] as const;
 type TabId = (typeof TABS)[number];
 
 function CheckboxRow({
@@ -141,12 +156,14 @@ function NumberField({
   value,
   onChange,
   min,
+  max,
   description,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   min?: number;
+  max?: number;
   description?: string;
 }) {
   return (
@@ -156,6 +173,7 @@ function NumberField({
       <input
         type="number"
         min={min}
+        max={max}
         className="mt-1 w-full rounded-lg border px-3 py-2"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -426,8 +444,8 @@ export function SecuritySettingsPanel({
                   set('minimumFactorStrength', e.target.value as MinimumFactorStrengthStub)
                 }
               >
-                <option value="single_factor">Single factor (password / email OTP)</option>
-                <option value="multi_factor">Multi-factor (TOTP / push)</option>
+                <option value="single_factor">Single factor (backup code where allowed)</option>
+                <option value="multi_factor">Multi-factor (TOTP / email OTP)</option>
                 <option value="phishing_resistant">Phishing-resistant (passkey / signed push)</option>
               </select>
             </label>
@@ -441,10 +459,87 @@ export function SecuritySettingsPanel({
               label="Passkey only when enrolled"
               checked={settings.passkeyOnlyWhenEnrolled}
               onChange={(v) => set('passkeyOnlyWhenEnrolled', v)}
-              description="When enabled, users with a registered passkey must sign in with passkey — password primary auth is rejected."
+              description="Only offer passkey as a challenge when the user already has a registered passkey. Password sign-in remains available unless another rule blocks it."
             />
+            <Alert>
+              <AlertTitle>Challenge lifetime</AlertTitle>
+              <AlertDescription>
+                Login, administrator-review, and MFA challenges remain valid for 15 minutes and renew
+                when the flow advances to review or MFA.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
+      )}
+
+      {tab === 'Review & recovery' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Administrator review threshold</CardTitle>
+              <CardDescription>
+                Scores below this boundary use strong user-controlled verification. Confirmed attack
+                conditions can still be blocked independently.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <NumberField
+                label="Administrator approval starts at score"
+                value={settings.adminReviewMinRiskScore}
+                onChange={(v) => set('adminReviewMinRiskScore', Math.min(100, Math.max(90, v)))}
+                min={90}
+                max={100}
+                description="The production-safe minimum is 90. Scores 75–89 use strong MFA/recovery instead."
+              />
+              <NumberField
+                label="Minimum eligible approvers"
+                value={settings.securityReviewMinimumEligibleApprovers}
+                onChange={(v) => set('securityReviewMinimumEligibleApprovers', Math.max(1, v))}
+                min={1}
+              />
+              <CheckboxRow
+                label="Allow explicit email OTP recovery below review threshold"
+                checked={settings.allowHighRiskEmailOtpFallback}
+                onChange={(v) => set('allowHighRiskEmailOtpFallback', v)}
+                description="At elevated scores below 90, users may explicitly request an email OTP. It is never offered at or above the review threshold."
+              />
+              <CheckboxRow
+                label="Allow passkey recovery below review threshold"
+                checked={settings.allowPasskeyApprovalFallback}
+                onChange={(v) => set('allowPasskeyApprovalFallback', v)}
+                description="Requires a passkey already enrolled on the account and remains subject to minimum factor strength."
+              />
+              <CheckboxRow
+                label="Allow MFA enrollment during login"
+                checked={settings.allowEnrollmentDuringLogin}
+                onChange={(v) => set('allowEnrollmentDuringLogin', v)}
+                description="Lets users without a usable factor enter the resumable MFA enrollment flow instead of reaching an unsatisfiable challenge."
+              />
+              <CheckboxRow
+                label="Emergency recovery when no approver is available"
+                checked={settings.securityReviewEmergencyRecoveryEnabled}
+                onChange={(v) => set('securityReviewEmergencyRecoveryEnabled', v)}
+                description="Use only as a break-glass tenant policy. Every use emits a high-severity security event."
+              />
+              <CheckboxRow
+                label="Allow administrators to approve their own login"
+                checked={settings.securityReviewSelfApprovalAllowed}
+                onChange={(v) => set('securityReviewSelfApprovalAllowed', v)}
+                description="Not recommended. Keep disabled to preserve separation of duties."
+              />
+            </CardContent>
+          </Card>
+
+          <Alert>
+            <AlertTitle>Effective sign-in behavior</AlertTitle>
+            <AlertDescription>
+              Scores below 50 follow normal or standard MFA policy; 50–74 require strong MFA; 75–89
+              require strong MFA with configured email/passkey recovery; 90–100 require administrator
+              review. Disabled users, suspended organizations, revoked devices, known attack IPs, and
+              confirmed compromised accounts remain hard-block conditions.
+            </AlertDescription>
+          </Alert>
+        </div>
       )}
 
       {tab === 'Risk & lockout' && (
@@ -556,9 +651,16 @@ const DEFAULT_FORM: SecuritySettingsFormState = {
   credentialStuffingEnabled: true,
   impossibleTravelMaxKmh: 900,
   challengeOrder: [...DEFAULT_CHALLENGE_ORDER],
-  minimumFactorStrength: 'multi_factor',
+  minimumFactorStrength: 'single_factor',
   passkeyOnlyWhenEnrolled: true,
   mfaSignedApprovalRequired: true,
+  adminReviewMinRiskScore: 90,
+  allowHighRiskEmailOtpFallback: true,
+  allowPasskeyApprovalFallback: true,
+  allowEnrollmentDuringLogin: true,
+  securityReviewMinimumEligibleApprovers: 1,
+  securityReviewEmergencyRecoveryEnabled: false,
+  securityReviewSelfApprovalAllowed: false,
 };
 
 export function mapApiToSecuritySettings(api: Record<string, unknown>): SecuritySettingsFormState {
@@ -569,6 +671,7 @@ export function mapApiToSecuritySettings(api: Record<string, unknown>): Security
   const risk = (sso?.risk ?? {}) as Record<string, unknown>;
   const legacy = (sso?.legacy ?? api.baseline ?? api) as Record<string, unknown>;
   const baselineRaw = (api.baseline ?? api) as Record<string, unknown>;
+  const securityReview = (baselineRaw.securityReview ?? legacy.securityReview ?? {}) as Record<string, unknown>;
   const challengeRaw = baselineRaw.challengeOrder ?? api.challengeOrder;
   const challengeOrder = normalizeChallengeOrder(challengeRaw);
 
@@ -618,6 +721,24 @@ export function mapApiToSecuritySettings(api: Record<string, unknown>): Security
     mfaSignedApprovalRequired:
       baselineRaw.mfaSignedApprovalRequired !== false &&
       legacy.mfaSignedApprovalRequired !== false,
+    adminReviewMinRiskScore: Math.min(
+      100,
+      Math.max(90, Number(risk.adminReviewMinRiskScore ?? 90))
+    ),
+    allowHighRiskEmailOtpFallback:
+      baselineRaw.allowHighRiskEmailOtpFallback !== false &&
+      legacy.allowHighRiskEmailOtpFallback !== false,
+    allowPasskeyApprovalFallback:
+      baselineRaw.allowPasskeyApprovalFallback !== false &&
+      legacy.allowPasskeyApprovalFallback !== false,
+    allowEnrollmentDuringLogin:
+      baselineRaw.allowEnrollmentDuringLogin === true || legacy.allowEnrollmentDuringLogin === true,
+    securityReviewMinimumEligibleApprovers: Math.max(
+      1,
+      Number(securityReview.minimumEligibleApprovers ?? 1)
+    ),
+    securityReviewEmergencyRecoveryEnabled: securityReview.emergencyRecoveryEnabled === true,
+    securityReviewSelfApprovalAllowed: securityReview.selfApprovalAllowed === true,
   };
 }
 
@@ -665,11 +786,24 @@ export function mapSecuritySettingsToBaselinePayload(
     },
     risk: {
       trustedDeviceMaxSkipRisk: form.trustedDeviceMaxSkipRisk,
+      adminReviewMinRiskScore: Math.min(100, Math.max(90, form.adminReviewMinRiskScore)),
+      actions: {
+        high: 'challenge',
+        critical: 'review_unless_hard_block',
+      },
     },
     challengeOrder: form.challengeOrder,
     minimumFactorStrength: form.minimumFactorStrength,
     passkeyOnlyWhenEnrolled: form.passkeyOnlyWhenEnrolled,
     mfaSignedApprovalRequired: form.mfaSignedApprovalRequired,
+    allowHighRiskEmailOtpFallback: form.allowHighRiskEmailOtpFallback,
+    allowPasskeyApprovalFallback: form.allowPasskeyApprovalFallback,
+    allowEnrollmentDuringLogin: form.allowEnrollmentDuringLogin,
+    securityReview: {
+      minimumEligibleApprovers: Math.max(1, form.securityReviewMinimumEligibleApprovers),
+      emergencyRecoveryEnabled: form.securityReviewEmergencyRecoveryEnabled,
+      selfApprovalAllowed: form.securityReviewSelfApprovalAllowed,
+    },
   };
 }
 
@@ -720,7 +854,8 @@ export function EffectivePolicyView({
     const mobile = (effectiveSsoPolicy?.mobileApproval ?? {}) as Record<string, unknown>;
     const risk = (effectiveSsoPolicy?.risk ?? {}) as Record<string, unknown>;
     const actions = (risk.actions ?? {}) as Record<string, string>;
-    const challenges = effectiveSsoPolicy?.challengeOrder;
+    const legacy = (effectiveSsoPolicy?.legacy ?? {}) as Record<string, unknown>;
+    const challenges = legacy.challengeOrder;
     const challengeOrderLabel = Array.isArray(challenges)
       ? challenges.map(String).join(' → ')
       : null;
@@ -737,7 +872,12 @@ export function EffectivePolicyView({
       },
       {
         setting: 'MFA',
-        value: mfa.enabled ? 'Required' : 'Optional',
+        value:
+          mfa.requireEveryLogin === true || legacy.mfaRequired === true
+            ? 'Required'
+            : mfa.enabled
+              ? 'Enabled; risk-based'
+              : 'Disabled',
         source: mfaRule ? source(mfaRule.name) : 'baseline',
       },
       {
@@ -756,8 +896,18 @@ export function EffectivePolicyView({
         source: 'baseline',
       },
       {
-        setting: 'Risk high action',
-        value: actions.high ?? 'challenge_plus_review',
+        setting: 'Risk score 50–89',
+        value: actions.high === 'challenge_plus_review' ? 'Strong MFA / recovery (review score-gated)' : 'Strong MFA / recovery',
+        source: 'baseline',
+      },
+      {
+        setting: 'Administrator review threshold',
+        value: `${risk.adminReviewMinRiskScore ?? 90}+`,
+        source: 'baseline',
+      },
+      {
+        setting: 'Email OTP recovery below threshold',
+        value: legacy.allowHighRiskEmailOtpFallback === false ? 'Disabled' : 'Enabled on explicit request',
         source: 'baseline',
       },
       {
