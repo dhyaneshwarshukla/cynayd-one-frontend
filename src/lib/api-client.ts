@@ -132,6 +132,25 @@ export interface AuthResponse {
   bootstrapNoDevices?: boolean;
   pushDelivered?: boolean;
   pushDeliveryWarning?: string;
+  /** LoginDecision v2 (optional; legacy code still sent during transition) */
+  decision?: 'ALLOW' | 'CHALLENGE' | 'BLOCK' | Record<string, unknown>;
+  challenges?: Array<{
+    type: string;
+    priority?: number;
+    status?: 'pending' | 'completed' | 'skipped';
+    strength?: number;
+    onEnter?: string;
+    riskFactors?: string[];
+  }>;
+  requiredChallenges?: string[];
+  nextChallenge?: string | null;
+  reviewId?: string;
+  challengeSessionId?: string;
+  riskReasons?: string[];
+  retryAfterSeconds?: number;
+  hardBlockReasons?: string[];
+  pollAfterMs?: number;
+  block?: { code?: string; message?: string };
 }
 
 function throwMfaRequired(response: AuthResponse): never {
@@ -1722,7 +1741,11 @@ class ApiClient {
     });
   }
 
-  async getPendingSecurityReviews(): Promise<{ reviews: SecurityReview[] }> {
+  async getPendingSecurityReviews(): Promise<{
+    reviews: SecurityReview[];
+    adminCount: number;
+    singleAdminWarning: boolean;
+  }> {
     return this.request('/api/security-reviews/pending');
   }
 
@@ -2898,10 +2921,29 @@ class ApiClient {
     });
   }
 
-  async requestMagicLink(email: string): Promise<{ message: string }> {
+  async requestMagicLink(
+    email: string,
+    options?: { deviceBindingHash?: string }
+  ): Promise<{ message: string }> {
     return this.request('/api/auth/magic-link/request', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+        ...(options?.deviceBindingHash ? { deviceBindingHash: options.deviceBindingHash } : {}),
+      }),
+    });
+  }
+
+  async consumeMagicLink(input: {
+    email: string;
+    token: string;
+    deviceBindingHash?: string;
+    rememberMe?: boolean;
+    mfaToken?: string;
+  }): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/api/auth/magic-link/consume', {
+      method: 'POST',
+      body: JSON.stringify(input),
     });
   }
 

@@ -1,10 +1,58 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/common/Alert';
 
 export type PolicyPresetId = 'balanced-enterprise' | 'strict-enterprise' | 'maximum-security';
+
+/** Challenge types enforced by resolveLogin (matches backend baseline schema). */
+export type ChallengeOrderStep = 'security_review' | 'mfa' | 'mobile_approval';
+
+export type MinimumFactorStrengthStub =
+  | 'single_factor'
+  | 'multi_factor'
+  | 'phishing_resistant';
+
+const LEGACY_MINIMUM_STRENGTH: Record<string, MinimumFactorStrengthStub> = {
+  standard: 'single_factor',
+  strong: 'multi_factor',
+  maximum: 'phishing_resistant',
+  single_factor: 'single_factor',
+  multi_factor: 'multi_factor',
+  phishing_resistant: 'phishing_resistant',
+};
+
+export function normalizeMinimumFactorStrength(
+  raw: unknown
+): MinimumFactorStrengthStub {
+  if (typeof raw !== 'string') return 'multi_factor';
+  return LEGACY_MINIMUM_STRENGTH[raw] ?? 'multi_factor';
+}
+
+export const CHALLENGE_ORDER_LABELS: Record<ChallengeOrderStep, string> = {
+  security_review: 'Security review',
+  mfa: 'MFA (TOTP / passkey / email OTP)',
+  mobile_approval: 'Mobile approval',
+};
+
+export const DEFAULT_CHALLENGE_ORDER: ChallengeOrderStep[] = [
+  'security_review',
+  'mfa',
+  'mobile_approval',
+];
+
+const VALID_CHALLENGE_ORDER = new Set<string>(DEFAULT_CHALLENGE_ORDER);
+
+export function normalizeChallengeOrder(raw: unknown): ChallengeOrderStep[] {
+  if (!Array.isArray(raw)) return [...DEFAULT_CHALLENGE_ORDER];
+  const steps = raw
+    .map(String)
+    .filter((step): step is ChallengeOrderStep => VALID_CHALLENGE_ORDER.has(step));
+  return steps.length ? steps : [...DEFAULT_CHALLENGE_ORDER];
+}
 
 export interface SecuritySettingsFormState {
   policyPreset: PolicyPresetId;
@@ -38,6 +86,11 @@ export interface SecuritySettingsFormState {
   botDetectionEnabled: boolean;
   credentialStuffingEnabled: boolean;
   impossibleTravelMaxKmh: number;
+  /** Ordered login challenge steps (persisted in baseline JSON; enforced by resolveLogin). */
+  challengeOrder: ChallengeOrderStep[];
+  minimumFactorStrength: MinimumFactorStrengthStub;
+  passkeyOnlyWhenEnrolled: boolean;
+  mfaSignedApprovalRequired: boolean;
 }
 
 interface SecuritySettingsPanelProps {
@@ -53,7 +106,7 @@ const PRESET_LABELS: Record<PolicyPresetId, string> = {
   'maximum-security': 'Maximum Security',
 };
 
-const TABS = ['Session', 'MFA', 'Mobile approval', 'Risk & lockout'] as const;
+const TABS = ['Session', 'MFA', 'Mobile approval', 'Device trust', 'Login challenges', 'Risk & lockout'] as const;
 type TabId = (typeof TABS)[number];
 
 function CheckboxRow({
@@ -88,15 +141,18 @@ function NumberField({
   value,
   onChange,
   min,
+  description,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   min?: number;
+  description?: string;
 }) {
   return (
     <label className="text-sm">
       {label}
+      {description ? <span className="mt-0.5 block text-xs text-amber-700">{description}</span> : null}
       <input
         type="number"
         min={min}
@@ -192,6 +248,7 @@ export function SecuritySettingsPanel({
               value={settings.sessionTimeout}
               onChange={(v) => set('sessionTimeout', v)}
               min={5}
+              description="Deprecated — prefer web/mobile idle fields below. Removed when backend snapshot drops this field."
             />
             <NumberField
               label="Default web session (days)"
@@ -248,17 +305,6 @@ export function SecuritySettingsPanel({
               checked={settings.mfaRequireEveryLogin}
               onChange={(v) => set('mfaRequireEveryLogin', v)}
             />
-            <CheckboxRow
-              label="Renew device trust on successful login"
-              checked={settings.mfaRenewTrustOnLogin}
-              onChange={(v) => set('mfaRenewTrustOnLogin', v)}
-            />
-            <NumberField
-              label="Trusted device validity (days)"
-              value={settings.mfaTrustedDeviceDays}
-              onChange={(v) => set('mfaTrustedDeviceDays', v)}
-              min={1}
-            />
           </CardContent>
         </Card>
       )}
@@ -267,6 +313,9 @@ export function SecuritySettingsPanel({
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Mobile approval policy</CardTitle>
+            <CardDescription>
+              Push approval challenges for mobile sign-ins. Device trust duration is configured under Device trust.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <CheckboxRow
@@ -290,11 +339,109 @@ export function SecuritySettingsPanel({
               onChange={(v) => set('mobilePeriodicApprovalHours', v)}
               min={1}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'Device trust' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Device trust</CardTitle>
+            <CardDescription>
+              How long trusted devices can skip MFA, mobile approval, and up to which risk level.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
             <NumberField
-              label="Trusted mobile device (days)"
+              label="MFA trusted device validity (days)"
+              value={settings.mfaTrustedDeviceDays}
+              onChange={(v) => set('mfaTrustedDeviceDays', v)}
+              min={1}
+            />
+            <CheckboxRow
+              label="Renew MFA device trust on successful login"
+              checked={settings.mfaRenewTrustOnLogin}
+              onChange={(v) => set('mfaRenewTrustOnLogin', v)}
+            />
+            <NumberField
+              label="Mobile trusted device validity (days)"
               value={settings.mobileTrustedDeviceDays}
               onChange={(v) => set('mobileTrustedDeviceDays', v)}
               min={1}
+            />
+            <label className="text-sm sm:col-span-2">
+              Max risk level to skip challenges on trusted devices
+              <select
+                className="mt-1 w-full rounded-lg border px-3 py-2"
+                value={settings.trustedDeviceMaxSkipRisk}
+                onChange={(e) =>
+                  set(
+                    'trustedDeviceMaxSkipRisk',
+                    e.target.value as SecuritySettingsFormState['trustedDeviceMaxSkipRisk']
+                  )
+                }
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'Login challenges' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Login challenge order</CardTitle>
+            <CardDescription>
+              Factor order for step-up challenges. Saved to the org baseline and enforced by the login resolver.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="block text-sm">
+              Challenge order (comma-separated)
+              <input
+                type="text"
+                className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm"
+                value={settings.challengeOrder.join(', ')}
+                onChange={(e) => {
+                  const parts = normalizeChallengeOrder(
+                    e.target.value.split(',').map((s) => s.trim())
+                  );
+                  set('challengeOrder', parts);
+                }}
+                placeholder={DEFAULT_CHALLENGE_ORDER.join(', ')}
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Allowed: {Object.keys(CHALLENGE_ORDER_LABELS).join(', ')}
+              </span>
+            </label>
+            <label className="text-sm">
+              Minimum factor strength
+              <select
+                className="mt-1 w-full rounded-lg border px-3 py-2"
+                value={settings.minimumFactorStrength}
+                onChange={(e) =>
+                  set('minimumFactorStrength', e.target.value as MinimumFactorStrengthStub)
+                }
+              >
+                <option value="single_factor">Single factor (password / email OTP)</option>
+                <option value="multi_factor">Multi-factor (TOTP / push)</option>
+                <option value="phishing_resistant">Phishing-resistant (passkey / signed push)</option>
+              </select>
+            </label>
+            <CheckboxRow
+              label="Require signed mobile approval"
+              checked={settings.mfaSignedApprovalRequired}
+              onChange={(v) => set('mfaSignedApprovalRequired', v)}
+              description="When enabled, approve/reject requests must include a device signature (default on)."
+            />
+            <CheckboxRow
+              label="Passkey only when enrolled"
+              checked={settings.passkeyOnlyWhenEnrolled}
+              onChange={(v) => set('passkeyOnlyWhenEnrolled', v)}
+              description="When enabled, users with a registered passkey must sign in with passkey — password primary auth is rejected."
             />
           </CardContent>
         </Card>
@@ -336,20 +483,6 @@ export function SecuritySettingsPanel({
               <CardTitle className="text-base">Risk & lockout</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm">
-                Trusted device max skip risk
-                <select
-                  className="mt-1 w-full rounded-lg border px-3 py-2"
-                  value={settings.trustedDeviceMaxSkipRisk}
-                  onChange={(e) =>
-                    set('trustedDeviceMaxSkipRisk', e.target.value as SecuritySettingsFormState['trustedDeviceMaxSkipRisk'])
-                  }
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
               <NumberField
                 label="Failed login limit"
                 value={settings.failedLoginLimit}
@@ -422,6 +555,10 @@ const DEFAULT_FORM: SecuritySettingsFormState = {
   botDetectionEnabled: true,
   credentialStuffingEnabled: true,
   impossibleTravelMaxKmh: 900,
+  challengeOrder: [...DEFAULT_CHALLENGE_ORDER],
+  minimumFactorStrength: 'multi_factor',
+  passkeyOnlyWhenEnrolled: true,
+  mfaSignedApprovalRequired: true,
 };
 
 export function mapApiToSecuritySettings(api: Record<string, unknown>): SecuritySettingsFormState {
@@ -431,6 +568,9 @@ export function mapApiToSecuritySettings(api: Record<string, unknown>): Security
   const mobile = (sso?.mobileApproval ?? {}) as Record<string, unknown>;
   const risk = (sso?.risk ?? {}) as Record<string, unknown>;
   const legacy = (sso?.legacy ?? api.baseline ?? api) as Record<string, unknown>;
+  const baselineRaw = (api.baseline ?? api) as Record<string, unknown>;
+  const challengeRaw = baselineRaw.challengeOrder ?? api.challengeOrder;
+  const challengeOrder = normalizeChallengeOrder(challengeRaw);
 
   return {
     ...DEFAULT_FORM,
@@ -470,6 +610,14 @@ export function mapApiToSecuritySettings(api: Record<string, unknown>): Security
     botDetectionEnabled: legacy.botDetectionEnabled !== false,
     credentialStuffingEnabled: legacy.credentialStuffingEnabled !== false,
     impossibleTravelMaxKmh: Number(legacy.impossibleTravelMaxKmh ?? 900),
+    challengeOrder: challengeOrder.length ? challengeOrder : [...DEFAULT_CHALLENGE_ORDER],
+    minimumFactorStrength: normalizeMinimumFactorStrength(
+      baselineRaw.minimumFactorStrength ?? legacy.minimumFactorStrength
+    ),
+    passkeyOnlyWhenEnrolled: baselineRaw.passkeyOnlyWhenEnrolled !== false,
+    mfaSignedApprovalRequired:
+      baselineRaw.mfaSignedApprovalRequired !== false &&
+      legacy.mfaSignedApprovalRequired !== false,
   };
 }
 
@@ -518,5 +666,184 @@ export function mapSecuritySettingsToBaselinePayload(
     risk: {
       trustedDeviceMaxSkipRisk: form.trustedDeviceMaxSkipRisk,
     },
+    challengeOrder: form.challengeOrder,
+    minimumFactorStrength: form.minimumFactorStrength,
+    passkeyOnlyWhenEnrolled: form.passkeyOnlyWhenEnrolled,
+    mfaSignedApprovalRequired: form.mfaSignedApprovalRequired,
   };
+}
+
+export interface EffectivePolicyRuleRef {
+  name: string;
+  enabled: boolean;
+  actions?: unknown;
+}
+
+function policyHasAction(rule: EffectivePolicyRuleRef, action: string): boolean {
+  if (!rule.enabled) return false;
+  const raw = rule.actions;
+  let parsed: string[] = [];
+  if (Array.isArray(raw)) parsed = raw.map(String);
+  else if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p)) parsed = p.map(String);
+    } catch {
+      parsed = [];
+    }
+  }
+  return parsed.includes(action);
+}
+
+export interface EffectivePolicyViewProps {
+  effectiveSsoPolicy: Record<string, unknown> | null;
+  rules?: EffectivePolicyRuleRef[];
+  templateId?: string | null;
+  appliedTemplateIds?: string[];
+  lastTemplateAppliedAt?: string | null;
+  isCustomBaseline?: boolean;
+  approvalRuleBaselineMismatch?: boolean;
+}
+
+export function EffectivePolicyView({
+  effectiveSsoPolicy,
+  rules = [],
+  templateId,
+  appliedTemplateIds = [],
+  lastTemplateAppliedAt,
+  isCustomBaseline,
+  approvalRuleBaselineMismatch,
+}: EffectivePolicyViewProps) {
+  const rows = useMemo(() => {
+    const session = (effectiveSsoPolicy?.session ?? {}) as Record<string, unknown>;
+    const mfa = (effectiveSsoPolicy?.mfa ?? {}) as Record<string, unknown>;
+    const mobile = (effectiveSsoPolicy?.mobileApproval ?? {}) as Record<string, unknown>;
+    const risk = (effectiveSsoPolicy?.risk ?? {}) as Record<string, unknown>;
+    const actions = (risk.actions ?? {}) as Record<string, string>;
+    const challenges = effectiveSsoPolicy?.challengeOrder;
+    const challengeOrderLabel = Array.isArray(challenges)
+      ? challenges.map(String).join(' → ')
+      : null;
+
+    const approvalRule = rules.find((p) => policyHasAction(p, 'require_approval'));
+    const mfaRule = rules.find((p) => policyHasAction(p, 'require_mfa'));
+    const source = (ruleName?: string) => (ruleName ? `access rule: ${ruleName}` : 'baseline');
+
+    return [
+      {
+        setting: 'Baseline preset',
+        value: templateId ?? 'balanced-enterprise',
+        source: 'baseline',
+      },
+      {
+        setting: 'MFA',
+        value: mfa.enabled ? 'Required' : 'Optional',
+        source: mfaRule ? source(mfaRule.name) : 'baseline',
+      },
+      {
+        setting: 'Mobile approval',
+        value: mobile.enabled ? 'Enabled' : 'Disabled',
+        source: approvalRule ? source(approvalRule.name) : 'baseline',
+      },
+      {
+        setting: 'Session TTL (web)',
+        value: `${session.defaultWebSessionTtlDays ?? 7}d (remember-me ${session.rememberMeWebSessionTtlDays ?? 30}d)`,
+        source: 'baseline',
+      },
+      {
+        setting: 'Session TTL (mobile)',
+        value: `${session.defaultMobileSessionTtlDays ?? 30}d (remember-me ${session.rememberMeMobileSessionTtlDays ?? 90}d)`,
+        source: 'baseline',
+      },
+      {
+        setting: 'Risk high action',
+        value: actions.high ?? 'challenge_plus_review',
+        source: 'baseline',
+      },
+      {
+        setting: 'Idle timeout (web / mobile)',
+        value: `${session.webIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 720}m / ${session.mobileIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 10080}m`,
+        source: 'baseline',
+      },
+      ...(challengeOrderLabel
+        ? [
+            {
+              setting: 'Challenge order',
+              value: challengeOrderLabel,
+              source: 'baseline',
+            },
+          ]
+        : []),
+    ];
+  }, [effectiveSsoPolicy, rules, templateId]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Effective policy</CardTitle>
+        <CardDescription>
+          Resolved values from the org-security snapshot (baseline preset, saved overrides, and enabled
+          access rules).
+          {isCustomBaseline ? (
+            <span className="mt-1 block font-medium text-amber-800">
+              Custom preset: saved baseline overrides differ from the selected template defaults.
+            </span>
+          ) : null}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {appliedTemplateIds.length > 0 && (
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm">
+            <p className="font-medium text-indigo-900">Applied templates</p>
+            <p className="mt-1 flex flex-wrap gap-1.5">
+              {appliedTemplateIds.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex rounded-full bg-white px-2 py-0.5 text-xs font-medium text-indigo-800 ring-1 ring-indigo-200"
+                >
+                  {id}
+                </span>
+              ))}
+            </p>
+            {lastTemplateAppliedAt ? (
+              <p className="mt-1 text-xs text-indigo-700">
+                Last template change: {new Date(lastTemplateAppliedAt).toLocaleString()}
+              </p>
+            ) : null}
+          </div>
+        )}
+
+        {approvalRuleBaselineMismatch ? (
+          <Alert variant="warning">
+            <AlertTitle>Mobile approval mismatch</AlertTitle>
+            <AlertDescription>
+              An enabled access rule requires mobile approval while baseline mobile approval is disabled.
+              Users may see inconsistent challenge behavior until these are aligned.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-gray-500">
+                <th className="py-2 pr-4 font-medium">Setting</th>
+                <th className="py-2 pr-4 font-medium">Effective value</th>
+                <th className="py-2 font-medium">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.setting} className="border-b border-gray-100">
+                  <td className="py-2 pr-4 text-gray-900">{row.setting}</td>
+                  <td className="py-2 pr-4 text-gray-700">{row.value}</td>
+                  <td className="py-2 text-gray-500">{row.source}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

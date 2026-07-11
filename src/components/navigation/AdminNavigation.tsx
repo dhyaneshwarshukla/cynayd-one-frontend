@@ -39,6 +39,7 @@ import {
   BanknotesIcon,
   LifebuoyIcon,
   LinkIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
 interface AdminNavigationProps {
@@ -78,8 +79,8 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
     { name: "Organizations", href: "/organizations", icon: BuildingOfficeIcon, permission: 'organizations' },
     { name: "Plans & Pricing", href: "/admin/plans", icon: BanknotesIcon, permission: 'organizations' },
     { name: "Roles & Permissions", href: "/roles", icon: KeyIcon, permission: 'roles' },
-    { name: "Security", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
-    { name: "Security Policies", href: "/admin/security-policies", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "Security Center", href: "/security", icon: ShieldCheckIcon, permission: 'security' },
+    { name: "Security Policies", href: "/admin/access-policies", icon: LockClosedIcon, permission: 'security' },
     { name: "Risk Insights", href: "/admin/risk-insights", icon: ChartBarIcon, permission: 'security' },
     { name: "SAML Integration", href: "/admin/saml-integration", icon: LinkIcon, permission: 'security' },
     { name: "Audit Logs", href: "/audit", icon: ClipboardDocumentListIcon, permission: 'audit' },
@@ -173,7 +174,10 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
             </h3>
           </div>
           {systemNavigation.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive =
+              pathname === item.href ||
+              (item.href === '/admin/access-policies' &&
+                pathname === '/admin/security-policies');
             
             // Check if user has permission to see this navigation item
             if (item.permission && user?.role && !canSeeNavigationItem(user.role as any, [item.permission])) {

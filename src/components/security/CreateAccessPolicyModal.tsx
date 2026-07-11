@@ -22,16 +22,18 @@ const ACTION_OPTIONS = [
   },
 ] as const;
 
+export type AccessPolicyActionId = (typeof ACTION_OPTIONS)[number]['id'];
+
 export interface CreateAccessPolicyPayload {
   name: string;
+  priority: number;
   countries: string;
   matchUnknownCountry: boolean;
   blockIfVpn: boolean;
   blockIfProxy: boolean;
   useMinTrustScore: boolean;
   minTrustScore: number;
-  blockAction: boolean;
-  selectedActions: string[];
+  primaryAction: AccessPolicyActionId;
   /** With require_approval: never skip approval for trusted devices. */
   forceApprovalEveryLogin: boolean;
 }
@@ -45,14 +47,14 @@ interface CreateAccessPolicyModalProps {
 
 const DEFAULT_FORM: CreateAccessPolicyPayload = {
   name: '',
+  priority: 15,
   countries: '',
   matchUnknownCountry: false,
   blockIfVpn: false,
   blockIfProxy: false,
   useMinTrustScore: false,
   minTrustScore: 50,
-  blockAction: false,
-  selectedActions: ['require_mfa'],
+  primaryAction: 'require_mfa',
   forceApprovalEveryLogin: false,
 };
 
@@ -64,11 +66,13 @@ export function CreateAccessPolicyModal({
 }: CreateAccessPolicyModalProps) {
   const [form, setForm] = useState<CreateAccessPolicyPayload>(DEFAULT_FORM);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [priorityError, setPriorityError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setForm(DEFAULT_FORM);
       setNameError(null);
+      setPriorityError(null);
     }
   }, [isOpen]);
 
@@ -78,6 +82,7 @@ export function CreateAccessPolicyModal({
   ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (key === 'name' && nameError) setNameError(null);
+    if (key === 'priority' && priorityError) setPriorityError(null);
   };
 
   const handleClose = () => {
@@ -88,6 +93,10 @@ export function CreateAccessPolicyModal({
     e.preventDefault();
     if (!form.name.trim()) {
       setNameError('Policy name is required');
+      return;
+    }
+    if (!Number.isFinite(form.priority) || form.priority < 0) {
+      setPriorityError('Priority must be 0 or higher');
       return;
     }
     await onSubmit(form);
@@ -149,6 +158,17 @@ export function CreateAccessPolicyModal({
                       value={form.name}
                       onChange={(e) => update('name', e.target.value)}
                       error={nameError ?? undefined}
+                    />
+
+                    <Input
+                      label="Priority"
+                      type="number"
+                      min={0}
+                      required
+                      helperText="Higher numbers are evaluated first when multiple rules match."
+                      value={form.priority}
+                      onChange={(e) => update('priority', Number(e.target.value))}
+                      error={priorityError ?? undefined}
                     />
 
                     <Input
@@ -222,67 +242,49 @@ export function CreateAccessPolicyModal({
                     </label>
 
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium text-gray-700">Actions when matched</legend>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-red-100 bg-red-50/50 p-3">
-                        <input
-                          type="checkbox"
-                          className="mt-1 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                          checked={form.blockAction}
-                          onChange={(e) => update('blockAction', e.target.checked)}
-                        />
-                        <span>
-                          <span className="block text-sm font-medium text-gray-900">Block sign-in</span>
-                          <span className="block text-xs text-gray-500">
-                            Overrides action checkboxes below.
-                          </span>
-                        </span>
-                      </label>
-                      {!form.blockAction && (
-                        <div className="space-y-2">
-                          {ACTION_OPTIONS.map((opt) => (
-                            <label
-                              key={opt.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
-                            >
-                              <input
-                                type="checkbox"
-                                className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={form.selectedActions.includes(opt.id)}
-                                onChange={(e) => {
-                                  update(
-                                    'selectedActions',
-                                    e.target.checked
-                                      ? [...form.selectedActions, opt.id]
-                                      : form.selectedActions.filter((x) => x !== opt.id)
-                                  );
-                                }}
-                              />
-                              <span>
-                                <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
-                                <span className="block text-xs text-gray-500">{opt.description}</span>
+                      <legend className="text-sm font-medium text-gray-700">Action when matched</legend>
+                      <div className="space-y-2">
+                        {ACTION_OPTIONS.map((opt) => (
+                          <label
+                            key={opt.id}
+                            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-gray-50 ${
+                              form.primaryAction === opt.id
+                                ? 'border-indigo-300 bg-indigo-50/40'
+                                : 'border-gray-200'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="primaryAction"
+                              className="mt-1 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              checked={form.primaryAction === opt.id}
+                              onChange={() => update('primaryAction', opt.id)}
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
+                              <span className="block text-xs text-gray-500">{opt.description}</span>
+                            </span>
+                          </label>
+                        ))}
+                        {form.primaryAction === 'require_approval' && (
+                          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3 hover:bg-violet-50">
+                            <input
+                              type="checkbox"
+                              className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              checked={form.forceApprovalEveryLogin}
+                              onChange={(e) => update('forceApprovalEveryLogin', e.target.checked)}
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-gray-900">
+                                Require approval every login
                               </span>
-                            </label>
-                          ))}
-                          {form.selectedActions.includes('require_approval') && (
-                            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3 hover:bg-violet-50">
-                              <input
-                                type="checkbox"
-                                className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={form.forceApprovalEveryLogin}
-                                onChange={(e) => update('forceApprovalEveryLogin', e.target.checked)}
-                              />
-                              <span>
-                                <span className="block text-sm font-medium text-gray-900">
-                                  Require approval every login
-                                </span>
-                                <span className="block text-xs text-gray-500">
-                                  Disable trusted-device skip. Users must approve every sign-in.
-                                </span>
+                              <span className="block text-xs text-gray-500">
+                                Disable trusted-device skip. Users must approve every sign-in.
                               </span>
-                            </label>
-                          )}
-                        </div>
-                      )}
+                            </span>
+                          </label>
+                        )}
+                      </div>
                     </fieldset>
                   </div>
 

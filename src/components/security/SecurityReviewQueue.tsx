@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiClient, type SecurityReview } from '@/lib/api-client';
 import { Button } from '@/components/common/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/common/Alert';
 import { Skeleton } from '@/components/common/LoadingSpinner';
 
 function parseReasons(raw: string): string[] {
@@ -17,6 +18,8 @@ function parseReasons(raw: string): string[] {
 
 export function SecurityReviewQueue() {
   const [reviews, setReviews] = useState<SecurityReview[]>([]);
+  const [adminCount, setAdminCount] = useState<number | null>(null);
+  const [singleAdminWarning, setSingleAdminWarning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
 
@@ -25,8 +28,12 @@ export function SecurityReviewQueue() {
     try {
       const data = await apiClient.getPendingSecurityReviews();
       setReviews(data.reviews ?? []);
+      setAdminCount(typeof data.adminCount === 'number' ? data.adminCount : null);
+      setSingleAdminWarning(Boolean(data.singleAdminWarning));
     } catch {
       setReviews([]);
+      setAdminCount(null);
+      setSingleAdminWarning(false);
     } finally {
       setLoading(false);
     }
@@ -65,10 +72,22 @@ export function SecurityReviewQueue() {
       <CardHeader>
         <CardTitle className="text-base">Pending security reviews</CardTitle>
         <CardDescription>
-          Risk-based security reviews awaiting admin approval. Users resume with a token — sessions are not issued from this queue.
+          Risk-based security reviews awaiting admin approval. Users resume with a token — sessions are
+          not issued from this queue.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {singleAdminWarning && (
+          <Alert variant="warning">
+            <AlertTitle>Single administrator organization</AlertTitle>
+            <AlertDescription>
+              Your organization has {adminCount ?? 1} admin
+              {adminCount === 1 ? '' : 's'}. Security reviews require approval from a second admin — add
+              another administrator so locked-out users can recover access.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {reviews.length === 0 ? (
           <p className="text-sm text-gray-500">No pending reviews.</p>
         ) : (
@@ -98,11 +117,17 @@ export function SecurityReviewQueue() {
                     size="sm"
                     variant="outline"
                     loading={acting === r.id}
+                    disabled={singleAdminWarning}
                     onClick={() => void deny(r.id)}
                   >
                     Deny
                   </Button>
-                  <Button size="sm" loading={acting === r.id} onClick={() => void approve(r.id)}>
+                  <Button
+                    size="sm"
+                    loading={acting === r.id}
+                    disabled={singleAdminWarning}
+                    onClick={() => void approve(r.id)}
+                  >
                     Approve
                   </Button>
                 </div>

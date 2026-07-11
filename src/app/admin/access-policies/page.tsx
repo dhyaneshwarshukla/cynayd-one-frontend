@@ -39,6 +39,7 @@ import {
 } from '@/components/security/CreateAccessPolicyModal';
 import {
   SecuritySettingsPanel,
+  EffectivePolicyView,
   mapApiToSecuritySettings,
   mapSecuritySettingsToBaselinePayload,
   type SecuritySettingsFormState,
@@ -181,6 +182,7 @@ export default function AccessPoliciesPage() {
   const [baselineTemplateId, setBaselineTemplateId] = useState<string | null>(null);
   const [baselineSaving, setBaselineSaving] = useState(false);
   const [appliedTemplateIds, setAppliedTemplateIds] = useState<string[]>([]);
+  const [lastTemplateAppliedAt, setLastTemplateAppliedAt] = useState<string | null>(null);
 
   const canManage = isAdminUser(user?.role);
 
@@ -202,6 +204,13 @@ export default function AccessPoliciesPage() {
       setEffectiveSsoPolicy((snap.effectiveSsoPolicy as Record<string, unknown>) ?? null);
       setBaselineTemplateId((snap.templateId as string) ?? null);
       setAppliedTemplateIds(snap.appliedTemplateIds ?? []);
+      const templateRules = (snap.rules as Array<Record<string, unknown>>).filter((r) => r.templateId);
+      const latest = templateRules.reduce<string | null>((max, r) => {
+        const ts = r.updatedAt ? String(r.updatedAt) : null;
+        if (!ts) return max;
+        return !max || ts > max ? ts : max;
+      }, null);
+      setLastTemplateAppliedAt(latest);
     } catch {
       if (!hasLoadedOnce.current) {
         setPolicies([]);
@@ -250,51 +259,6 @@ export default function AccessPoliciesPage() {
         !baselineMobileEnabled
     );
   }, [policies, effectiveSsoPolicy]);
-
-  const effectivePolicyRows = useMemo(() => {
-    const session = (effectiveSsoPolicy?.session ?? {}) as Record<string, unknown>;
-    const mfa = (effectiveSsoPolicy?.mfa ?? {}) as Record<string, unknown>;
-    const mobile = (effectiveSsoPolicy?.mobileApproval ?? {}) as Record<string, unknown>;
-    const risk = (effectiveSsoPolicy?.risk ?? {}) as Record<string, unknown>;
-    const actions = (risk.actions ?? {}) as Record<string, string>;
-    const approvalRule = policies.find(
-      (p) => p.enabled && hasAction(p, 'require_approval')
-    );
-    const mfaRule = policies.find((p) => p.enabled && hasAction(p, 'require_mfa'));
-    const source = (ruleName?: string) => (ruleName ? `access rule: ${ruleName}` : 'baseline');
-    return [
-      {
-        setting: 'MFA',
-        value: mfa.enabled ? 'Required' : 'Optional',
-        source: mfaRule ? source(mfaRule.name) : 'baseline',
-      },
-      {
-        setting: 'Mobile approval',
-        value: mobile.enabled ? 'Enabled' : 'Disabled',
-        source: approvalRule ? source(approvalRule.name) : 'baseline',
-      },
-      {
-        setting: 'Session TTL (web)',
-        value: `${session.defaultWebSessionTtlDays ?? 7}d (remember-me ${session.rememberMeWebSessionTtlDays ?? 30}d)`,
-        source: 'baseline',
-      },
-      {
-        setting: 'Session TTL (mobile)',
-        value: `${session.defaultMobileSessionTtlDays ?? 30}d (remember-me ${session.rememberMeMobileSessionTtlDays ?? 90}d)`,
-        source: 'baseline',
-      },
-      {
-        setting: 'Risk high action',
-        value: actions.high ?? 'challenge_plus_review',
-        source: 'baseline',
-      },
-      {
-        setting: 'Idle timeout (web / mobile)',
-        value: `${session.webIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 720}m / ${session.mobileIdleTimeoutMinutes ?? session.idleTimeoutMinutes ?? 10080}m`,
-        source: 'baseline',
-      },
-    ];
-  }, [effectiveSsoPolicy, policies]);
 
   const isCustomBaseline = baseline.policyPreset !== (baselineTemplateId ?? baseline.policyPreset);
 
@@ -416,7 +380,7 @@ export default function AccessPoliciesPage() {
     await createPolicy(
       {
         name: payload.name.trim(),
-        priority: 15,
+        priority: payload.priority,
         conditions: {
           ...(countryList.length ? { countries: countryList } : {}),
           ...(countryList.length && payload.matchUnknownCountry
@@ -425,16 +389,11 @@ export default function AccessPoliciesPage() {
           ...(payload.blockIfVpn ? { blockIfVpn: true } : {}),
           ...(payload.blockIfProxy ? { blockIfProxy: true } : {}),
           ...(payload.useMinTrustScore ? { minTrustScore: payload.minTrustScore } : {}),
-          ...(payload.forceApprovalEveryLogin &&
-          payload.selectedActions.includes('require_approval')
+          ...(payload.forceApprovalEveryLogin && payload.primaryAction === 'require_approval'
             ? { forceApprovalEveryLogin: true }
             : {}),
         },
-        actions: payload.blockAction
-          ? ['block']
-          : payload.selectedActions.length
-            ? payload.selectedActions
-            : ['allow'],
+        actions: [payload.primaryAction],
       },
       { closeModal: true }
     );
@@ -499,10 +458,11 @@ export default function AccessPoliciesPage() {
           </Alert>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard label="Total policies" value={stats.total} />
-          <StatCard label="Active" value={stats.enabled} accent="text-emerald-600" />
-          <StatCard label="Disabled" value={stats.disabled} accent="text-gray-500" />
+        <div className="grid gap-4 sm:grid-cols-4">
+          <StatCard label="Org baseline" valueLabel="Active" accent="text-indigo-600" />
+          <StatCard label="Conditional rules" value={stats.total} />
+          <StatCard label="Active rules" value={stats.enabled} accent="text-emerald-600" />
+          <StatCard label="Disabled rules" value={stats.disabled} accent="text-gray-500" />
         </div>
 
         <InstructionsPanel
@@ -511,10 +471,29 @@ export default function AccessPoliciesPage() {
           canManage={canManage}
         />
 
+        {!loading && (
+          <EffectivePolicyView
+            effectiveSsoPolicy={effectiveSsoPolicy}
+            rules={policies}
+            templateId={baselineTemplateId}
+            appliedTemplateIds={appliedTemplateIds}
+            lastTemplateAppliedAt={lastTemplateAppliedAt}
+            isCustomBaseline={isCustomBaseline}
+            approvalRuleBaselineMismatch={approvalRuleBaselineMismatch}
+          />
+        )}
+
         <div className="grid gap-8 lg:grid-cols-5">
           <section className="lg:col-span-3 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Active policies</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Conditional access rules</h2>
+                <p className="text-sm text-gray-600">
+                  {stats.total === 0
+                    ? '0 conditional rules — org baseline still applies.'
+                    : `${stats.total} rule${stats.total === 1 ? '' : 's'} layered on the org baseline.`}
+                </p>
+              </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="relative w-full sm:w-64">
                   <MagnifyingGlassIcon
@@ -548,18 +527,18 @@ export default function AccessPoliciesPage() {
             ) : filteredPolicies.length === 0 ? (
               <EmptyState
                 icon={<ShieldCheckIcon className="h-full w-full" />}
-                title={search ? 'No matching policies' : 'No access policies yet'}
+                title={search ? 'No matching policies' : 'No conditional access rules'}
                 description={
                   search
                     ? 'Try a different search term or clear the filter.'
                     : canManage
-                      ? 'Create a quick template or custom policy to control who can sign in and under what conditions.'
-                      : 'Your organization has not configured any access policies.'
+                      ? '0 conditional rules — your organization baseline still applies to every sign-in. Add a quick template or custom rule to layer conditions on top.'
+                      : '0 conditional rules — org baseline still applies. Your organization has not added conditional access rules.'
                 }
                 action={
                   canManage && !search
                     ? {
-                        label: 'Create your first policy',
+                        label: 'Create your first rule',
                         onClick: () => setShowCreateModal(true),
                         variant: 'default',
                       }
@@ -588,51 +567,6 @@ export default function AccessPoliciesPage() {
                 Password rules, lockout, MFA requirement, and platform threat controls apply to all
                 users in your organization.
               </p>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Effective login policy</CardTitle>
-                  <CardDescription>
-                    Resolved values after merging baseline preset, saved overrides, and enabled access rules.
-                    {isCustomBaseline ? (
-                      <span className="mt-1 block font-medium text-amber-800">
-                        Custom preset: saved baseline overrides differ from the selected template defaults.
-                      </span>
-                    ) : null}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {approvalRuleBaselineMismatch ? (
-                    <Alert variant="warning">
-                      <AlertTitle>Mobile approval mismatch</AlertTitle>
-                      <AlertDescription>
-                        An enabled access rule requires mobile approval while baseline mobile approval is
-                        disabled. Users may see inconsistent challenge behavior until these are aligned.
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-gray-500">
-                          <th className="py-2 pr-4 font-medium">Setting</th>
-                          <th className="py-2 pr-4 font-medium">Effective value</th>
-                          <th className="py-2 font-medium">Source</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {effectivePolicyRows.map((row) => (
-                          <tr key={row.setting} className="border-b border-gray-100">
-                            <td className="py-2 pr-4 text-gray-900">{row.setting}</td>
-                            <td className="py-2 pr-4 text-gray-700">{row.value}</td>
-                            <td className="py-2 text-gray-500">{row.source}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
 
               <SecuritySettingsPanel
                 settings={baseline}
@@ -928,16 +862,20 @@ function InstructionItem({ title, detail }: { title: string; detail: string }) {
 function StatCard({
   label,
   value,
+  valueLabel,
   accent = 'text-gray-900',
 }: {
   label: string;
-  value: number;
+  value?: number;
+  valueLabel?: string;
   accent?: string;
 }) {
   return (
     <Card className="p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className={`mt-1 text-3xl font-semibold tabular-nums ${accent}`}>{value}</p>
+      <p className={`mt-1 text-3xl font-semibold tabular-nums ${accent}`}>
+        {valueLabel ?? value}
+      </p>
     </Card>
   );
 }
