@@ -26,6 +26,7 @@ import {
   loginApprovalStepForHandling,
   loginFlowUserMessage,
   parseLoginResponse,
+  type LoginResponseBody,
 } from '../../lib/login-decision.adapter';
 import {
   addRecentAccount,
@@ -43,6 +44,12 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
+
+function isSecurityReviewResponse(data: LoginResponseBody | AuthResponse | undefined): boolean {
+  if (!data) return false;
+  const handling = parseLoginResponse(data);
+  return handling.kind === 'challenge' && handling.challenge === 'security_review';
+}
 
 function isEmailNotVerifiedError(err: unknown, errorMessage: string): boolean {
   const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
@@ -322,6 +329,10 @@ export const LoginForm: React.FC = () => {
       setSecurityRiskLevel(context.riskLevel);
       setSecurityRiskReasons(context.riskReasons ?? []);
       setLoginStep('awaiting_security_review');
+      errorRef.current = null;
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('login_error');
+      }
       setError(null);
       return;
     }
@@ -541,6 +552,15 @@ export const LoginForm: React.FC = () => {
               );
               return;
             }
+            if (isSecurityReviewResponse(errData)) {
+              await handleLoginPasswordResult(
+                errData!,
+                data.password,
+                Boolean(data.rememberMe),
+                normalizedEmail
+              );
+              return;
+            }
             throw err;
           }
           return;
@@ -573,6 +593,21 @@ export const LoginForm: React.FC = () => {
         message?: string;
       };
       const errorMessage = errAny.response?.data?.message || errAny.message || 'Failed to login';
+
+      const errData = errAny.response?.data as AuthResponse | undefined;
+      if (
+        isSecurityReviewResponse(errData) &&
+        (loginStep === 'password' || loginStep === 'email')
+      ) {
+        const emailForReview = (data.email ?? pendingEmail).trim().toLowerCase();
+        await handleLoginPasswordResult(
+          errData!,
+          data.password ?? pendingPassword,
+          Boolean(data.rememberMe ?? pendingRememberMe),
+          emailForReview
+        );
+        return;
+      }
       
       // Always set error message to display it
       errorRef.current = errorMessage; // Set ref first
@@ -886,7 +921,7 @@ export const LoginForm: React.FC = () => {
             }
           }
           
-          if (displayError) {
+          if (displayError && loginStep !== 'awaiting_security_review') {
             return (
               <Alert variant="error" className="mb-6 border-red-200 bg-red-50">
                 <div className="flex items-center">
@@ -1063,7 +1098,7 @@ export const LoginForm: React.FC = () => {
           )}
 
           {/* Email field (manual entry or hidden value on password step) */}
-          {loginStep === 'password' ? (
+          {loginStep === 'password' || loginStep === 'awaiting_security_review' ? (
             <>
               <input type="hidden" {...register('email')} />
               <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
@@ -1161,6 +1196,7 @@ export const LoginForm: React.FC = () => {
           )}
 
           {/* Remember Me & Forgot Password */}
+          {(loginStep === 'password' || loginStep === 'email') && (
           <div className="flex items-center justify-between">
             <label className="flex items-center">
               <input
@@ -1178,6 +1214,7 @@ export const LoginForm: React.FC = () => {
               Forgot password?
             </a>
           </div>
+          )}
 
           {loginStep === 'email_otp' && (
             <div className="space-y-2">
