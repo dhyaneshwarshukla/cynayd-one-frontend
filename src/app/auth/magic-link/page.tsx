@@ -17,6 +17,7 @@ import {
   loginApprovalStepForHandling,
   loginFlowUserMessage,
   parseLoginResponse,
+  type LoginResponseBody,
 } from '@/lib/login-decision.adapter';
 import { getMagicLinkDeviceBindingHash } from '@/lib/device-identity.service';
 import { Button } from '@/components/common/Button';
@@ -66,7 +67,7 @@ export default function MagicLinkPage() {
     router.push('/dashboard');
   };
 
-  const handleVerifyResponse = (data: Record<string, unknown>) => {
+  const handleVerifyResponse = (data: LoginResponseBody) => {
     const handling = parseLoginResponse(data);
 
     if (handling.kind === 'complete') {
@@ -147,7 +148,7 @@ export default function MagicLinkPage() {
           token,
           deviceBindingHash,
         });
-        handleVerifyResponse(data as Record<string, unknown>);
+        handleVerifyResponse(data);
       } catch {
         setStatus('error');
       }
