@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/common/Card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/common/Alert';
 import { Skeleton } from '@/components/common/LoadingSpinner';
+import { StepUpModal } from '@/components/auth/StepUpModal';
 
 function parseReasons(raw: string): string[] {
   try {
@@ -22,6 +23,11 @@ export function SecurityReviewQueue() {
   const [singleAdminWarning, setSingleAdminWarning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    id: string;
+    action: 'approve' | 'deny';
+  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +59,22 @@ export function SecurityReviewQueue() {
     }
   };
 
+  const completePendingAction = async () => {
+    const pending = pendingAction;
+    if (!pending) return;
+    setPendingAction(null);
+    setActionError(null);
+    try {
+      if (pending.action === 'approve') {
+        await approve(pending.id);
+      } else {
+        await deny(pending.id);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Security review action failed');
+    }
+  };
+
   const deny = async (id: string) => {
     setActing(id);
     try {
@@ -77,6 +99,12 @@ export function SecurityReviewQueue() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {actionError && (
+          <Alert variant="error">
+            <AlertTitle>Unable to update security review</AlertTitle>
+            <AlertDescription>{actionError}</AlertDescription>
+          </Alert>
+        )}
         {singleAdminWarning && (
           <Alert variant="warning">
             <AlertTitle>Single administrator organization</AlertTitle>
@@ -119,7 +147,7 @@ export function SecurityReviewQueue() {
                     variant="outline"
                     loading={acting === r.id}
                     disabled={acting !== null || r.canCurrentAdminReview === false}
-                    onClick={() => void deny(r.id)}
+                    onClick={() => setPendingAction({ id: r.id, action: 'deny' })}
                   >
                     Deny
                   </Button>
@@ -127,7 +155,7 @@ export function SecurityReviewQueue() {
                     size="sm"
                     loading={acting === r.id}
                     disabled={acting !== null || r.canCurrentAdminReview === false}
-                    onClick={() => void approve(r.id)}
+                    onClick={() => setPendingAction({ id: r.id, action: 'approve' })}
                   >
                     Approve
                   </Button>
@@ -137,6 +165,11 @@ export function SecurityReviewQueue() {
           })
         )}
       </CardContent>
+      <StepUpModal
+        isOpen={pendingAction !== null}
+        onClose={() => setPendingAction(null)}
+        onSuccess={() => void completePendingAction()}
+      />
     </Card>
   );
 }

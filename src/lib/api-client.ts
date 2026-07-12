@@ -1758,14 +1758,14 @@ class ApiClient {
     reviewId: string,
     approvedAction?: 'allow_once' | 'trust_device' | 'force_mfa' | 'force_password_reset'
   ): Promise<{ review: Record<string, unknown>; resumeToken?: string }> {
-    return this.request(`/api/security-reviews/${reviewId}/approve`, {
+    return this.requestWithStepUp(`/api/security-reviews/${reviewId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ approvedAction }),
     });
   }
 
   async denySecurityReview(reviewId: string): Promise<{ review: Record<string, unknown> }> {
-    return this.request(`/api/security-reviews/${reviewId}/deny`, {
+    return this.requestWithStepUp(`/api/security-reviews/${reviewId}/deny`, {
       method: 'POST',
       body: JSON.stringify({}),
     });
@@ -3128,6 +3128,11 @@ class ApiClient {
     return null;
   }
 
+  cacheStepUpToken(token: string): void {
+    this.stepUpToken = token;
+    this.stepUpTokenExpiresAt = Date.now() + ApiClient.STEP_UP_TTL_MS;
+  }
+
   async withStepUp<T>(fn: (stepUpToken: string) => Promise<T>): Promise<T> {
     const token = this.getStepUpToken();
     if (token) {
@@ -3143,8 +3148,7 @@ class ApiClient {
       : null;
     if (!password) throw new Error('Step-up cancelled');
     const newToken = await this.performStepUp(password);
-    this.stepUpToken = newToken;
-    this.stepUpTokenExpiresAt = Date.now() + ApiClient.STEP_UP_TTL_MS;
+    this.cacheStepUpToken(newToken);
     return fn(newToken);
   }
 
