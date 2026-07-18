@@ -7,6 +7,7 @@ import { Smartphone } from 'lucide-react';
 
 interface AwaitingApprovalPanelProps {
   message?: string | null;
+  matchCode?: string | null;
   requestContext?: Record<string, unknown> | null;
   expiresAt?: string | null;
   pushDelivered?: boolean;
@@ -39,6 +40,7 @@ function passkeyButtonLabel(): string {
 
 export function AwaitingApprovalPanel({
   message,
+  matchCode,
   requestContext,
   expiresAt,
   pushDelivered,
@@ -93,6 +95,16 @@ export function AwaitingApprovalPanel({
           <p className="mt-1 text-sm text-violet-900">
             {message || 'We sent an approval request to your registered device.'}
           </p>
+          {matchCode ? (
+            <p className="mt-3 rounded-lg border border-violet-200 bg-white px-4 py-3 text-center">
+              <span className="block text-xs font-medium uppercase tracking-wide text-violet-700">
+                Confirm this number in the app
+              </span>
+              <span className="mt-1 block font-mono text-3xl font-bold tracking-widest text-violet-950">
+                {matchCode}
+              </span>
+            </p>
+          ) : null}
         </div>
       </div>
 

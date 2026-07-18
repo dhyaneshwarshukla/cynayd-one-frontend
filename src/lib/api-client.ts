@@ -112,6 +112,10 @@ export interface AuthResponse {
   userId?: string;
   email?: string;
   mfaMethods?: string[];
+  availableMethods?: string[];
+  schemaVersion?: number;
+  canEnroll?: boolean;
+  publicReasonCodes?: string[];
   challengeId?: string;
   nonce?: string;
   mustEnrollMfa?: boolean;
@@ -132,6 +136,25 @@ export interface AuthResponse {
   bootstrapNoDevices?: boolean;
   pushDelivered?: boolean;
   pushDeliveryWarning?: string;
+  /** LoginDecision v2 (optional; legacy code still sent during transition) */
+  decision?: 'ALLOW' | 'CHALLENGE' | 'BLOCK' | Record<string, unknown>;
+  challenges?: Array<{
+    type: string;
+    priority?: number;
+    status?: 'pending' | 'completed' | 'skipped';
+    strength?: number;
+    onEnter?: string;
+    riskFactors?: string[];
+  }>;
+  requiredChallenges?: string[];
+  nextChallenge?: string | null;
+  reviewId?: string;
+  challengeSessionId?: string;
+  riskReasons?: string[];
+  retryAfterSeconds?: number;
+  hardBlockReasons?: string[];
+  pollAfterMs?: number;
+  block?: { code?: string; message?: string };
 }
 
 function throwMfaRequired(response: AuthResponse): never {
@@ -162,6 +185,8 @@ export interface PinLock {
   unlocked: boolean;
   lastActivity?: string | Date | null;
   inactivityTimeoutMs?: number;
+  accountLocked?: boolean;
+  lockedUntil?: string;
 }
 
 export interface LogoutResult {
@@ -333,6 +358,7 @@ export interface SecurityReview {
   riskReasons: string;
   ipAddress?: string | null;
   deviceId?: string | null;
+  canCurrentAdminReview?: boolean;
   createdAt: string;
   expiresAt: string;
 }
@@ -632,7 +658,8 @@ class ApiClient {
       endpoint.endsWith('/api/auth/activity') ||
       endpoint.endsWith('/api/auth/pin/verify') ||
       endpoint.includes('/api/auth/login/challenge/') ||
-      endpoint.endsWith('/api/auth/login/password')
+      endpoint.endsWith('/api/auth/login/password') ||
+      endpoint.includes('/api/security-reviews/')
     ) {
       return false;
     }
@@ -778,7 +805,8 @@ class ApiClient {
         !endpoint.includes('/api/auth/refresh-token') &&
         !endpoint.includes('/api/auth/login') &&
         !endpoint.includes('/api/auth/logout') &&
-        !endpoint.includes('/api/auth/register')
+        !endpoint.includes('/api/auth/register') &&
+        !endpoint.includes('/api/security-reviews/')
       ) {
         const restored = await this.restoreSession();
         if (restored) {
@@ -1718,7 +1746,11 @@ class ApiClient {
     });
   }
 
-  async getPendingSecurityReviews(): Promise<{ reviews: SecurityReview[] }> {
+  async getPendingSecurityReviews(): Promise<{
+    reviews: SecurityReview[];
+    adminCount: number;
+    singleAdminWarning: boolean;
+  }> {
     return this.request('/api/security-reviews/pending');
   }
 
@@ -1726,14 +1758,14 @@ class ApiClient {
     reviewId: string,
     approvedAction?: 'allow_once' | 'trust_device' | 'force_mfa' | 'force_password_reset'
   ): Promise<{ review: Record<string, unknown>; resumeToken?: string }> {
-    return this.request(`/api/security-reviews/${reviewId}/approve`, {
+    return this.requestWithStepUp(`/api/security-reviews/${reviewId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ approvedAction }),
     });
   }
 
   async denySecurityReview(reviewId: string): Promise<{ review: Record<string, unknown> }> {
-    return this.request(`/api/security-reviews/${reviewId}/deny`, {
+    return this.requestWithStepUp(`/api/security-reviews/${reviewId}/deny`, {
       method: 'POST',
       body: JSON.stringify({}),
     });
@@ -2894,10 +2926,29 @@ class ApiClient {
     });
   }
 
-  async requestMagicLink(email: string): Promise<{ message: string }> {
+  async requestMagicLink(
+    email: string,
+    options?: { deviceBindingHash?: string }
+  ): Promise<{ message: string }> {
     return this.request('/api/auth/magic-link/request', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+        ...(options?.deviceBindingHash ? { deviceBindingHash: options.deviceBindingHash } : {}),
+      }),
+    });
+  }
+
+  async consumeMagicLink(input: {
+    email: string;
+    token: string;
+    deviceBindingHash?: string;
+    rememberMe?: boolean;
+    mfaToken?: string;
+  }): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/api/auth/magic-link/consume', {
+      method: 'POST',
+      body: JSON.stringify(input),
     });
   }
 
@@ -3077,6 +3128,11 @@ class ApiClient {
     return null;
   }
 
+  cacheStepUpToken(token: string): void {
+    this.stepUpToken = token;
+    this.stepUpTokenExpiresAt = Date.now() + ApiClient.STEP_UP_TTL_MS;
+  }
+
   async withStepUp<T>(fn: (stepUpToken: string) => Promise<T>): Promise<T> {
     const token = this.getStepUpToken();
     if (token) {
@@ -3092,8 +3148,7 @@ class ApiClient {
       : null;
     if (!password) throw new Error('Step-up cancelled');
     const newToken = await this.performStepUp(password);
-    this.stepUpToken = newToken;
-    this.stepUpTokenExpiresAt = Date.now() + ApiClient.STEP_UP_TTL_MS;
+    this.cacheStepUpToken(newToken);
     return fn(newToken);
   }
 

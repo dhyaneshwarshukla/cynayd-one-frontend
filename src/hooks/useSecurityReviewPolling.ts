@@ -31,6 +31,7 @@ export type UseSecurityReviewPollingOptions = {
 };
 
 const DEFAULT_POLL_MS = 3000;
+const MAX_CONSECUTIVE_POLL_ERRORS = 5;
 
 export function useSecurityReviewPolling({
   reviewId,
@@ -45,6 +46,7 @@ export function useSecurityReviewPolling({
   const onApprovedRef = useRef(onApproved);
   const onTerminalRef = useRef(onTerminal);
   const pollRef = useRef(poll);
+  const consecutiveErrorsRef = useRef(0);
 
   useEffect(() => {
     onApprovedRef.current = onApproved;
@@ -62,10 +64,12 @@ export function useSecurityReviewPolling({
 
     if (!enabled || !reviewId || !nonce) {
       clearScheduled();
+      consecutiveErrorsRef.current = 0;
       return;
     }
 
     let cancelled = false;
+    consecutiveErrorsRef.current = 0;
 
     const scheduleNext = (delayMs: number) => {
       clearScheduled();
@@ -83,6 +87,8 @@ export function useSecurityReviewPolling({
           loginAttemptId ?? undefined
         );
         if (cancelled) return;
+
+        consecutiveErrorsRef.current = 0;
 
         if (status.status === 'approved' && status.resumeToken) {
           clearScheduled();
@@ -105,10 +111,25 @@ export function useSecurityReviewPolling({
             ? status.pollAfterMs
             : DEFAULT_POLL_MS;
         scheduleNext(nextMs);
-      } catch {
-        if (!cancelled) {
-          scheduleNext(DEFAULT_POLL_MS);
+      } catch (error) {
+        if (cancelled) return;
+        consecutiveErrorsRef.current += 1;
+        const responseStatus = (error as { response?: { status?: number } })?.response?.status;
+        if (
+          consecutiveErrorsRef.current >= MAX_CONSECUTIVE_POLL_ERRORS ||
+          responseStatus === 401 ||
+          responseStatus === 403
+        ) {
+          clearScheduled();
+          onTerminalRef.current({
+            status: 'expired',
+            code: 'SECURITY_REVIEW_POLL_FAILED',
+            message:
+              'Unable to check security review status. Please sign in again or contact your administrator.',
+          });
+          return;
         }
+        scheduleNext(DEFAULT_POLL_MS);
       }
     };
 

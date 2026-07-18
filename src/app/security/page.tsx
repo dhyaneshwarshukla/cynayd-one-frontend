@@ -165,9 +165,15 @@ function SecurityPageContent() {
   }, []);
 
   const loadSettings = useCallback(async () => {
-    const secSettings = await apiClient.getSecuritySettings().catch(() => null);
-    if (secSettings) {
-      setSettings(mapApiToSecuritySettings(secSettings as Record<string, unknown>));
+    const snap = await apiClient.getOrgSecurity().catch(() => null);
+    if (snap) {
+      setSettings(
+        mapApiToSecuritySettings({
+          baseline: snap.baseline,
+          templateId: snap.templateId,
+          effectiveSsoPolicy: snap.effectiveSsoPolicy,
+        })
+      );
     }
   }, []);
 
@@ -469,7 +475,7 @@ function SecurityPageContent() {
                 )}
                 <p className="mt-4 text-sm text-gray-600">
                   To <strong>block</strong> sign-ins (VPN, country, schedule), use{' '}
-                  <Link href="/admin/security-policies" className="text-indigo-600 hover:underline">
+                  <Link href="/admin/access-policies" className="text-indigo-600 hover:underline">
                     security policies
                   </Link>
                   .
@@ -547,7 +553,7 @@ function SecurityPageContent() {
                 in one place.
               </p>
               <Link
-                href="/admin/security-policies"
+                href="/admin/access-policies"
                 className="mt-4 inline-flex text-sm font-medium text-indigo-600 hover:underline"
               >
                 Open Security policies →

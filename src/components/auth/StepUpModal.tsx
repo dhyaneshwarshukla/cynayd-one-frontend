@@ -82,7 +82,7 @@ export function StepUpModal({ isOpen, onClose, onSuccess }: StepUpModalProps) {
         mfaToken || undefined,
         challengeId ?? undefined
       );
-      sessionStorage.setItem('step_up_token', token);
+      apiClient.cacheStepUpToken(token);
       resetForm();
       onSuccess(token);
       onClose();

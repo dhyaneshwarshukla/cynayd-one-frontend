@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import {
+  isLoginPollApproved,
+  isLoginPollTerminal,
+  type LoginChallengePollBody,
+} from '../lib/login-decision.adapter';
 
-export type LoginChallengePollStatus = {
+export type LoginChallengePollStatus = LoginChallengePollBody & {
   status: string;
-  code?: string;
-  accessToken?: string;
-  pollAfterMs?: number;
 };
 
 export type UseLoginChallengePollingOptions = {
@@ -72,20 +74,13 @@ export function useLoginChallengePolling({
         const status = await pollRef.current(challengeId, nonce, rememberMe);
         if (cancelled) return;
 
-        if (status.status === 'approved' && status.accessToken) {
+        if (isLoginPollApproved(status)) {
           clearScheduled();
           await onApprovedRef.current(status);
           return;
         }
 
-        if (
-          status.status === 'rejected' ||
-          status.status === 'cancelled' ||
-          status.status === 'expired' ||
-          status.code === 'CHALLENGE_EXPIRED' ||
-          status.code === 'LOGIN_REJECTED' ||
-          status.code === 'CHALLENGE_CANCELLED'
-        ) {
+        if (isLoginPollTerminal(status)) {
           clearScheduled();
           onTerminalRef.current(status);
           return;

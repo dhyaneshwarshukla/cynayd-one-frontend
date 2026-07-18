@@ -8,6 +8,7 @@ import { LockScreen } from './LockScreen';
 import { NoPinLockOverlay } from './NoPinLockOverlay';
 import { SessionLockProviderBridge } from '../../contexts/SessionLockContext';
 import apiClient, { type PinLock } from '../../lib/api-client';
+import { resolveDisplayTimezone } from '../../utils/datetime';
 import {
   markSessionLocked,
   clearSessionLocked,
@@ -42,6 +43,30 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
   );
   const [isAccountLocked, setIsAccountLocked] = useState(false);
   const [lockedUntil, setLockedUntil] = useState<string | undefined>(undefined);
+  const [displayTimezone, setDisplayTimezone] = useState('UTC');
+
+  const applyAccountLockFromPinStatus = useCallback((pinLock: PinLock) => {
+    if (pinLock.accountLocked) {
+      setIsAccountLocked(true);
+      if (pinLock.lockedUntil) {
+        setLockedUntil(pinLock.lockedUntil);
+      }
+    }
+  }, []);
+
+  const loadDisplayTimezone = useCallback(async () => {
+    try {
+      const settings = await apiClient.getUserSettings();
+      setDisplayTimezone(
+        resolveDisplayTimezone(
+          settings.profile.timezone,
+          settings.profile.effectiveTimezone
+        )
+      );
+    } catch {
+      setDisplayTimezone(resolveDisplayTimezone());
+    }
+  }, []);
 
   const completeUnlock = useCallback(async () => {
     clearSessionLocked();
@@ -136,6 +161,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
         pinLock = await apiClient.getPINStatus();
       }
       setPinStatus(pinLock);
+      applyAccountLockFromPinStatus(pinLock);
 
       if (shouldShowPinLockScreen(pinLock) || shouldShowNoPinLockOverlay(pinLock)) {
         setIsLocked(true);
@@ -148,7 +174,13 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     } finally {
       setCheckingPinStatus(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, applyAccountLockFromPinStatus]);
+
+  useEffect(() => {
+    if (isAuthenticated && isLocked) {
+      void loadDisplayTimezone();
+    }
+  }, [isAuthenticated, isLocked, loadDisplayTimezone]);
 
   // On load and route change: use server pinLock (not only sessionStorage)
   useEffect(() => {
@@ -183,7 +215,7 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
       if (err.response?.data?.code === 'ACCOUNT_LOCKED') {
         setIsAccountLocked(true);
         setLockedUntil(err.response.data.lockedUntil);
-        throw new Error(err.response.data.message || 'Account is locked');
+        return;
       }
 
       if (err.response?.data?.attemptsRemaining !== undefined) {
@@ -229,6 +261,14 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
     return () => clearInterval(activityInterval);
   }, [isAuthenticated, isLocked, checkingPinStatus, pinStatus?.requiresPin, pinStatus?.unlocked]);
 
+  const handleRequestUnlockEmail = async () => {
+    const email = user?.email;
+    if (!email) {
+      throw new Error('No email address available for unlock request.');
+    }
+    await apiClient.requestUnlockEmail(email);
+  };
+
   const handleLogout = async () => {
     clearAllSessionLockData();
     await apiClient.logout();
@@ -263,8 +303,11 @@ export function SessionLockProvider({ children }: SessionLockProviderProps) {
         {pinStatus?.requiresPin ? (
           <LockScreen
             onUnlock={handleUnlock}
+            onRequestUnlockEmail={handleRequestUnlockEmail}
+            onSignOut={handleLogout}
             userName={user?.name || undefined}
             userEmail={user?.email || undefined}
+            displayTimezone={displayTimezone}
             attemptsRemaining={pinAttemptsRemaining}
             isAccountLocked={isAccountLocked}
             lockedUntil={lockedUntil}

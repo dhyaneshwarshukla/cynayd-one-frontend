@@ -12,7 +12,19 @@ import {
   useLoginChallengePolling,
 } from '@/hooks/useLoginChallengePolling';
 import { useSecurityReviewPolling } from '@/hooks/useSecurityReviewPolling';
-import { authStatusUserMessage, handleAuthStatusCode } from '@/lib/auth-status.util';
+import {
+  approvalMessageForHandling,
+  getLoginErrorResponseBody,
+  isUnfulfillableMfaChallenge,
+  isTerminalLoginBlock,
+  loginApprovalStepForHandling,
+  loginFlowUserMessage,
+  MFA_ENROLLMENT_REQUIRED_MESSAGE,
+  parseLoginResponse,
+  resolveLoginMfaMethods,
+  type LoginResponseBody,
+} from '@/lib/login-decision.adapter';
+import { getMagicLinkDeviceBindingHash } from '@/lib/device-identity.service';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 
@@ -29,9 +41,10 @@ export default function MagicLinkPage() {
   const [approvalContext, setApprovalContext] = useState<Record<string, unknown> | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
-  const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  const [mfaMethods, setMfaMethods] = useState<string[]>([]);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
+  const [approvalMatchCode, setApprovalMatchCode] = useState<string | null>(null);
   const [otpCode, setOtpCode] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
   const [passkeyFallbackAllowed, setPasskeyFallbackAllowed] = useState(false);
@@ -59,72 +72,81 @@ export default function MagicLinkPage() {
     router.push('/dashboard');
   };
 
-  const handleVerifyResponse = (data: Record<string, unknown>) => {
-    const statusHandling = handleAuthStatusCode(data.code as string | undefined, {
-      message: data.message as string | undefined,
-      retryAfterSeconds: data.retryAfterSeconds as number | undefined,
-    });
-    if (statusHandling.kind === 'blocked' || statusHandling.kind === 'unknown') {
-      setBlockedMessage(authStatusUserMessage(statusHandling));
+  const handleVerifyResponse = (data: LoginResponseBody) => {
+    const handling = parseLoginResponse(data);
+
+    if (handling.kind === 'complete') {
+      if (data.accessToken) {
+        void completeLogin(data.accessToken as string);
+      } else {
+        setStatus('error');
+      }
+      return;
+    }
+
+    if (handling.kind === 'blocked' || handling.kind === 'unknown') {
+      setBlockedMessage(
+        isTerminalLoginBlock(data)
+          ? ((data.message as string | undefined) ?? MFA_ENROLLMENT_REQUIRED_MESSAGE)
+          : loginFlowUserMessage(handling)
+      );
       setStatus('blocked');
       return;
     }
 
-    if (data.code === 'MFA_REQUIRED') {
-      setUserId((data.userId as string) || null);
-      setMfaMethods((data.mfaMethods as string[]) || ['totp']);
-      setEmailOtpSent(Boolean(data.emailOtpSent));
-      setPasskeyMfaAllowed(Boolean(data.passkeyMfaAllowed));
-      setAttemptId((data.challengeId as string) || null);
-      setAttemptNonce((data.nonce as string) || null);
+    const { context, challenge } = handling;
+    if (context.challengeId) setAttemptId(context.challengeId);
+    if (context.nonce) setAttemptNonce(context.nonce);
+
+    if (challenge === 'mfa') {
+      if (isUnfulfillableMfaChallenge(data)) {
+        setBlockedMessage(
+          (data.message as string | undefined) ??
+            loginFlowUserMessage(parseLoginResponse(data)) ??
+            MFA_ENROLLMENT_REQUIRED_MESSAGE
+        );
+        setStatus('blocked');
+        return;
+      }
+      setUserId(context.userId ?? (data.userId as string) ?? null);
+      setMfaMethods(resolveLoginMfaMethods(data, context.mfaMethods));
+      setEmailOtpSent(Boolean(context.emailOtpSent ?? data.emailOtpSent));
+      setPasskeyMfaAllowed(Boolean(context.passkeyMfaAllowed ?? data.passkeyMfaAllowed));
       setStatus('mfa');
       return;
     }
 
-    if (data.code === 'SECURITY_REVIEW_REQUIRED') {
-      setAttemptId((data.challengeId as string) || null);
-      setAttemptNonce((data.nonce as string) || null);
-      setSecurityReviewId((data.reviewId as string) || null);
-      setSecurityReviewUserId((data.userId as string) || null);
-      setSecurityChallengeSessionId((data.challengeSessionId as string) || null);
-      setSecurityReviewMessage((data.message as string) || null);
-      setSecurityRiskLevel(data.riskLevel as string | undefined);
+    if (challenge === 'security_review') {
+      setSecurityReviewId((context.reviewId ?? data.reviewId) as string | null);
+      setSecurityReviewUserId((context.userId ?? data.userId) as string | null);
+      setSecurityChallengeSessionId(
+        (context.challengeSessionId ?? data.challengeSessionId) as string | null
+      );
+      setSecurityReviewMessage((context.message ?? data.message) as string | null);
+      setSecurityRiskLevel(context.riskLevel ?? (data.riskLevel as string | undefined));
       setSecurityRiskReasons(
-        Array.isArray(data.riskReasons) ? (data.riskReasons as string[]) : []
+        context.riskReasons ??
+          (Array.isArray(data.riskReasons) ? (data.riskReasons as string[]) : [])
       );
       setStatus('security_review');
       return;
     }
 
-    if (data.code === 'APPROVAL_REQUIRED' || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
-      setAttemptId((data.challengeId as string) || null);
-      setAttemptNonce((data.nonce as string) || null);
-      setApprovalExpiresAt((data.expiresAt as string) || null);
-      setApprovalContext((data.requestContext as Record<string, unknown>) || null);
-      setPasskeyFallbackAllowed(data.passkeyFallbackAllowed === true);
-      setEmailOtpFallbackAllowed(
-        data.emailOtpFallbackAllowed === true || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
-      );
-      setBackupApprovalAllowed(data.backupApprovalAllowed === true);
-      setPushDelivered(typeof data.pushDelivered === 'boolean' ? data.pushDelivered : undefined);
-      setBootstrapNoDevices(
-        data.bootstrapNoDevices === true || data.code === 'APPROVAL_EMAIL_OTP_REQUIRED'
-      );
-      const preferred = data.preferredChallenge as string | undefined;
-      setApprovalMessage(
-        data.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email'
-          ? 'Check your email for a verification code.'
-          : 'Approve this sign-in from your CYNAYD mobile app.'
-      );
-      setStatus(data.code === 'APPROVAL_EMAIL_OTP_REQUIRED' || preferred === 'email' ? 'email_otp' : 'approval');
-      return;
-    }
-
-    if (data.accessToken && data.user) {
-      void completeLogin(data.accessToken as string);
-    } else {
-      setStatus('error');
-    }
+    setApprovalExpiresAt((context.expiresAt ?? data.expiresAt) as string | null);
+    setApprovalContext(
+      (context.requestContext ?? data.requestContext) as Record<string, unknown> | null
+    );
+    setPasskeyFallbackAllowed(context.passkeyFallbackAllowed === true);
+    setEmailOtpFallbackAllowed(context.emailOtpFallbackAllowed === true);
+    setBackupApprovalAllowed(context.backupApprovalAllowed === true);
+    setPushDelivered(
+      typeof context.pushDelivered === 'boolean' ? context.pushDelivered : undefined
+    );
+    setApprovalMatchCode(context.matchCode ?? null);
+    setBootstrapNoDevices(context.bootstrapNoDevices === true);
+    setApprovalMessage(approvalMessageForHandling(handling));
+    const approvalStep = loginApprovalStepForHandling(handling);
+    setStatus(approvalStep === 'email_otp' ? 'email_otp' : 'approval');
   };
 
   useEffect(() => {
@@ -135,13 +157,32 @@ export default function MagicLinkPage() {
       return;
     }
     setEmail(emailParam);
-    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    fetch(
-      `${base}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&email=${encodeURIComponent(emailParam)}`
-    )
-      .then((r) => r.json())
-      .then(handleVerifyResponse)
-      .catch(() => setStatus('error'));
+
+    void (async () => {
+      try {
+        const deviceBindingHash = (await getMagicLinkDeviceBindingHash()) ?? undefined;
+        const data = await apiClient.consumeMagicLink({
+          email: emailParam,
+          token,
+          deviceBindingHash,
+        });
+        handleVerifyResponse(data);
+      } catch (err) {
+        const errData = getLoginErrorResponseBody(err);
+        if (errData) {
+          const handling = parseLoginResponse(errData);
+          if (
+            handling.kind === 'challenge' ||
+            handling.kind === 'blocked' ||
+            handling.kind === 'complete'
+          ) {
+            handleVerifyResponse(errData);
+            return;
+          }
+        }
+        setStatus('error');
+      }
+    })();
   }, [searchParams]);
 
   useSecurityReviewPolling({
@@ -152,38 +193,37 @@ export default function MagicLinkPage() {
     poll: (id, nonce, loginAttemptId) =>
       apiClient.getSecurityReviewStatus(id, nonce, loginAttemptId),
     onApproved: async (pollStatus) => {
-      const result = await apiClient.resumeSecurityReview({
-        reviewId: securityReviewId!,
-        userId: pollStatus.userId ?? securityReviewUserId!,
-        resumeToken: pollStatus.resumeToken!,
-        challengeSessionId: pollStatus.challengeSessionId ?? securityChallengeSessionId!,
-        nonce: attemptNonce ?? undefined,
-        rememberMe: false,
-      });
-      if (result.accessToken) {
-        await completeLogin(result.accessToken);
-        return;
+      try {
+        const result = await apiClient.resumeSecurityReview({
+          reviewId: securityReviewId!,
+          userId: pollStatus.userId ?? securityReviewUserId!,
+          resumeToken: pollStatus.resumeToken!,
+          challengeSessionId: pollStatus.challengeSessionId ?? securityChallengeSessionId!,
+          nonce: attemptNonce ?? undefined,
+          rememberMe: false,
+        });
+        if (result.accessToken) {
+          await completeLogin(result.accessToken);
+          return;
+        }
+        handleVerifyResponse(result as LoginResponseBody);
+      } catch (err) {
+        const errData = getLoginErrorResponseBody(err);
+        if (errData) {
+          handleVerifyResponse(errData);
+          return;
+        }
+        setBlockedMessage(
+          err instanceof Error ? err.message : 'Sign-in could not be completed after review.'
+        );
+        setStatus('blocked');
       }
-      if (result.code === 'APPROVAL_REQUIRED' || result.code === 'APPROVAL_EMAIL_OTP_REQUIRED') {
-        setAttemptId((result.challengeId as string) || attemptId);
-        setAttemptNonce((result.nonce as string) || attemptNonce);
-        setApprovalMessage('Approve this login from your Cynayd One Auth app');
-        setStatus(result.code === 'APPROVAL_EMAIL_OTP_REQUIRED' ? 'email_otp' : 'approval');
-        return;
-      }
-      if (result.code === 'MFA_REQUIRED') {
-        setUserId((result.userId as string) || null);
-        setMfaMethods((result.mfaMethods as string[]) || ['totp']);
-        setStatus('mfa');
-        return;
-      }
-      setBlockedMessage(
-        (result as { message?: string }).message ?? 'Sign-in could not be completed after review.'
-      );
-      setStatus('blocked');
     },
-    onTerminal: () => {
-      setBlockedMessage('This sign-in request was denied or expired during security review.');
+    onTerminal: (status) => {
+      setBlockedMessage(
+        status.message ??
+          'This sign-in request was denied or expired during security review.'
+      );
       setStatus('blocked');
     },
   });
@@ -276,6 +316,7 @@ export default function MagicLinkPage() {
 
   const approvalPanelProps = {
     message: approvalMessage,
+    matchCode: approvalMatchCode,
     requestContext: approvalContext,
     expiresAt: approvalExpiresAt,
     pushDelivered,

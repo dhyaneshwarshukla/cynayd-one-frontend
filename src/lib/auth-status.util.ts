@@ -59,6 +59,15 @@ export function handleAuthStatusCode(
   return { kind: 'unknown', code };
 }
 
+export type { LoginFlowHandling, LoginResponseBody } from './login-decision.adapter';
+export {
+  parseLoginResponse,
+  loginFlowUserMessage,
+  toAuthStatusHandling,
+  isLoginPollApproved,
+  isLoginPollTerminal,
+} from './login-decision.adapter';
+
 export function authStatusUserMessage(handling: AuthStatusHandling): string {
   if (handling.kind === 'unknown') {
     return 'Sign-in could not be completed. Please try again or contact support.';

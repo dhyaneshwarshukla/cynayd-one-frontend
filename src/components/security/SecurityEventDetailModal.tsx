@@ -121,7 +121,7 @@ export function SecurityEventDetailModal({
                           View audit logs
                         </Link>
                         <Link
-                          href="/admin/security-policies"
+                          href="/admin/access-policies"
                           className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
                         >
                           Access policies

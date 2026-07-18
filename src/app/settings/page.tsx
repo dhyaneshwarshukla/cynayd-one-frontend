@@ -691,7 +691,7 @@ function SettingsPageContent() {
                       </Link>
                     </div>
                     <p className="mt-3 text-xs text-gray-600">
-                      <Link href="/admin/security-policies" className="text-indigo-600 hover:underline">
+                      <Link href="/admin/access-policies" className="text-indigo-600 hover:underline">
                         Access policies
                       </Link>{' '}
                       — block or require MFA by country, VPN, and schedule.
