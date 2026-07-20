@@ -8,6 +8,7 @@ import { ResponsiveGrid, ResponsiveContainer } from '@/components/layout/Respons
 import { Input } from '@/components/common/Input';
 import { AppIcon } from '@/components/common/AppIcon';
 import { apiClient } from '@/lib/api-client';
+import { accessOpsClient, EffectiveAccessOpsFeatures } from '@/lib/accessops/client';
 import { 
   PlusIcon, 
   PencilIcon, 
@@ -69,6 +70,8 @@ export default function AppManagement() {
   const [selectedApp, setSelectedApp] = useState<App | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [accessOpsFeatures, setAccessOpsFeatures] = useState<EffectiveAccessOpsFeatures | null>(null);
+  const governedByAccessOps = !!accessOpsFeatures?.grants;
 
   const [newApp, setNewApp] = useState({
     name: '',
@@ -123,6 +126,12 @@ export default function AppManagement() {
         console.log('Attempting to fetch user app access...');
         const accessData = await apiClient.getAllUserAppAccess();
         console.log('User app access fetched:', accessData);
+
+        try {
+          setAccessOpsFeatures(await accessOpsClient.getFeatures());
+        } catch {
+          setAccessOpsFeatures(null);
+        }
         
         // Set the data
         setApps(Array.isArray(appsData) ? appsData : []);
@@ -216,11 +225,41 @@ export default function AppManagement() {
     }
   };
 
+  const grantAppAccess = async (
+    appId: string,
+    userId: string,
+    opts?: { quota?: number; expiresAt?: Date }
+  ) => {
+    if (governedByAccessOps) {
+      await accessOpsClient.grantAccess({
+        applicationId: appId,
+        userId,
+        quota: opts?.quota ?? null,
+        expiresAt: opts?.expiresAt ? opts.expiresAt.toISOString() : null,
+      });
+      return;
+    }
+    await apiClient.assignAppAccess(appId, userId, opts);
+  };
+
+  const revokeAppAccessForUser = async (appId: string, userId: string) => {
+    if (governedByAccessOps) {
+      await accessOpsClient.revokeAccess({
+        applicationId: appId,
+        userId,
+        reason: 'admin.apps.revoke',
+        force: true,
+      });
+      return;
+    }
+    await apiClient.revokeAppAccess(appId, userId);
+  };
+
   const handleAssignAccess = async () => {
     if (!selectedApp || !assignmentData.userId) return;
     
     try {
-      await apiClient.assignAppAccess(selectedApp.id, assignmentData.userId, {
+      await grantAppAccess(selectedApp.id, assignmentData.userId, {
         quota: assignmentData.quota ? parseInt(assignmentData.quota) : undefined,
         expiresAt: assignmentData.expiresAt ? new Date(assignmentData.expiresAt) : undefined
       });
@@ -236,7 +275,7 @@ export default function AppManagement() {
 
   const handleRevokeAccess = async (access: UserAppAccessWithDetails) => {
     try {
-      await apiClient.revokeAppAccess(access.appId, access.userId);
+      await revokeAppAccessForUser(access.appId, access.userId);
       fetchData();
     } catch (err) {
       setError('Failed to revoke access');
@@ -280,6 +319,13 @@ export default function AppManagement() {
             Add New App
           </Button>
         </div>
+
+        {governedByAccessOps && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 flex items-center gap-2">
+            <ShieldCheckIcon className="h-5 w-5 shrink-0" />
+            Governed by AccessOps
+          </div>
+        )}
 
         {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row gap-4">

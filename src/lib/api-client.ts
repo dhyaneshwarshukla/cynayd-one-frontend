@@ -3167,6 +3167,64 @@ class ApiClient {
     );
   }
 
+  /** AccessOps API requests with CSRF, session, device headers, and optional idempotency. */
+  async accessOpsRequest<T>(
+    path: string,
+    options: {
+      method?: string;
+      body?: unknown;
+      headers?: Record<string, string>;
+      idempotencyKey?: string;
+    } = {},
+    allowSessionRefresh = true
+  ): Promise<T> {
+    const endpoint = path.startsWith('/api/accessops')
+      ? path
+      : `/api/accessops${path.startsWith('/') ? path : `/${path}`}`;
+    const headers: Record<string, string> = { ...(options.headers || {}) };
+    if (options.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+    return this.request<T>(
+      endpoint,
+      {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      },
+      allowSessionRefresh
+    );
+  }
+
+  /** AccessOps mutation with step-up token (revoke, connector setup, DLQ skip, etc.). */
+  async accessOpsRequestWithStepUp<T>(
+    path: string,
+    options: {
+      method?: string;
+      body?: unknown;
+      headers?: Record<string, string>;
+      idempotencyKey?: string;
+    } = {}
+  ): Promise<T> {
+    return this.withStepUp((stepUpToken) => {
+      const endpoint = path.startsWith('/api/accessops')
+        ? path
+        : `/api/accessops${path.startsWith('/') ? path : `/${path}`}`;
+      const headers: Record<string, string> = {
+        ...(options.headers || {}),
+        'X-Step-Up-Token': stepUpToken,
+      };
+      if (options.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
+      return this.request<T>(endpoint, {
+        method: options.method ?? 'POST',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      });
+    });
+  }
+
   async verifyMfaEmailCode(code: string): Promise<{ valid: boolean }> {
     return this.request('/api/mfa/email/verify', {
       method: 'POST',

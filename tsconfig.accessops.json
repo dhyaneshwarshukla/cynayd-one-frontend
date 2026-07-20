@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/lib/accessops/**/*.ts",
+    "src/lib/api-client.ts",
+    "src/app/accessops/**/*.tsx",
+    "src/components/accessops/**/*.tsx",
+    "src/components/common/Button.tsx"
+  ],
+  "exclude": ["**/__tests__/**", "src/lib/accessops/permissions.ts"]
+}

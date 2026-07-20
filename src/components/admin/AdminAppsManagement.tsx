@@ -10,6 +10,7 @@ import { Input } from '@/components/common/Input';
 import { AppIcon } from '@/components/common/AppIcon';
 import { ResponsiveContainer, ResponsiveGrid } from '@/components/layout/ResponsiveLayout';
 import { apiClient, App } from '@/lib/api-client';
+import { accessOpsClient, EffectiveAccessOpsFeatures } from '@/lib/accessops/client';
 import { filterOrgScopedApps } from '@/lib/app-scope';
 import { launchAppWithFallback } from '@/lib/launch-app';
 import { BulkAssignmentModal } from '@/components/dashboard/BulkAssignmentModal';
@@ -157,6 +158,9 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
   const [editAccessForm, setEditAccessForm] = useState({ quota: '', expiresAt: '' });
   const [revokingAccessId, setRevokingAccessId] = useState<string | null>(null);
   const [bulkRevoking, setBulkRevoking] = useState(false);
+  const [accessOpsFeatures, setAccessOpsFeatures] = useState<EffectiveAccessOpsFeatures | null>(null);
+
+  const governedByAccessOps = !isSuperAdminScope && !!accessOpsFeatures?.grants;
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -196,6 +200,16 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
         apiClient.getUsers(),
         apiClient.getAllUserAppAccess({ superAdminScope: isSuperAdminScope }),
       ]);
+
+      if (!isSuperAdminScope) {
+        try {
+          setAccessOpsFeatures(await accessOpsClient.getFeatures());
+        } catch {
+          setAccessOpsFeatures(null);
+        }
+      } else {
+        setAccessOpsFeatures(null);
+      }
       
       // Handle paginated response for usersData
       const usersArray = Array.isArray(usersData) 
@@ -303,11 +317,46 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     }
   };
 
+  const grantAppAccess = async (
+    appId: string,
+    userId: string,
+    opts?: {
+      quota?: number;
+      expiresAt?: Date;
+      roleTemplateId?: string;
+    }
+  ) => {
+    if (governedByAccessOps) {
+      await accessOpsClient.grantAccess({
+        applicationId: appId,
+        userId,
+        quota: opts?.quota ?? null,
+        expiresAt: opts?.expiresAt ? opts.expiresAt.toISOString() : null,
+        roleTemplateId: opts?.roleTemplateId ?? null,
+      });
+      return;
+    }
+    await apiClient.assignAppAccess(appId, userId, opts);
+  };
+
+  const revokeAppAccessForUser = async (appId: string, userId: string) => {
+    if (governedByAccessOps) {
+      await accessOpsClient.revokeAccess({
+        applicationId: appId,
+        userId,
+        reason: 'admin.apps.revoke',
+        force: true,
+      });
+      return;
+    }
+    await apiClient.revokeAppAccess(appId, userId);
+  };
+
   const handleAssignAccess = async () => {
     if (!selectedApp || !assignmentData.userId) return;
     
     try {
-      await apiClient.assignAppAccess(selectedApp.id, assignmentData.userId, {
+      await grantAppAccess(selectedApp.id, assignmentData.userId, {
         quota: assignmentData.quota ? parseInt(assignmentData.quota) : undefined,
         expiresAt: assignmentData.expiresAt ? new Date(assignmentData.expiresAt) : undefined,
         roleTemplateId: assignmentData.roleTemplateId || undefined,
@@ -331,7 +380,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     }
     setRevokingAccessId(access.id);
     try {
-      await apiClient.revokeAppAccess(access.appId, access.userId);
+      await revokeAppAccessForUser(access.appId, access.userId);
       setSelectedAccessIds((prev) => {
         const next = new Set(prev);
         next.delete(access.id);
@@ -355,7 +404,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
     try {
       const toRevoke = userAppAccess.filter((a) => selectedAccessIds.has(a.id));
       for (const access of toRevoke) {
-        await apiClient.revokeAppAccess(access.appId, access.userId);
+        await revokeAppAccessForUser(access.appId, access.userId);
       }
       setSelectedAccessIds(new Set());
       await fetchData();
@@ -380,7 +429,7 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
   const handleSaveAccessEdit = async () => {
     if (!editingAccess) return;
     try {
-      await apiClient.assignAppAccess(editingAccess.appId, editingAccess.userId, {
+      await grantAppAccess(editingAccess.appId, editingAccess.userId, {
         quota: editAccessForm.quota ? parseInt(editAccessForm.quota, 10) : undefined,
         expiresAt: editAccessForm.expiresAt ? new Date(editAccessForm.expiresAt) : undefined,
       });
@@ -629,6 +678,12 @@ export default function AdminAppsManagement({ superAdminScope = false }: AdminAp
   return (
     <UnifiedLayout title={pageTitle} subtitle={pageSubtitle} variant="dashboard">
       <div>
+        {governedByAccessOps && (
+          <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 flex items-center gap-2">
+            <ShieldCheckIcon className="h-5 w-5 shrink-0" />
+            Governed by AccessOps
+          </div>
+        )}
         {!isSuperAdminScope && user.role === 'SUPER_ADMIN' && (
           <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
             Manage apps across all organizations on the platform?{' '}

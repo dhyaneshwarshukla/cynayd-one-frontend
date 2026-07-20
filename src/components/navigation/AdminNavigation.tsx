@@ -4,6 +4,7 @@ import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAccessOpsNavVisible } from '../accessops/PermissionGuard';
 // Define helper functions locally
 const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): boolean => {
   // Map permissions to roles that can access them
@@ -15,7 +16,8 @@ const canSeeNavigationItem = (userRole: string, requiredPermissions: string[]): 
     'security': ['ADMIN', 'SUPER_ADMIN'],
     'roles': ['SUPER_ADMIN'],
     'settings': ['ADMIN', 'SUPER_ADMIN'],
-    'support': ['ADMIN', 'SUPER_ADMIN']
+    'support': ['ADMIN', 'SUPER_ADMIN'],
+    'accessops': ['ADMIN', 'SUPER_ADMIN', 'USER', 'MANAGER'],
   };
 
   // Check if user's role has any of the required permissions
@@ -40,6 +42,7 @@ import {
   LifebuoyIcon,
   LinkIcon,
   LockClosedIcon,
+  FingerPrintIcon,
 } from '@heroicons/react/24/outline';
 
 interface AdminNavigationProps {
@@ -56,9 +59,10 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
 
   const role = user?.role?.toUpperCase();
   const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const { visible: accessOpsVisible, loading: accessOpsLoading } = useAccessOpsNavVisible();
 
-  // Only show admin navigation for admin users
-  if (!isAdmin) {
+  // Show navigation for admins or AccessOps operators
+  if (!isAdmin && !accessOpsVisible && !accessOpsLoading) {
     return null;
   }
 
@@ -68,8 +72,15 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
   ];
 
   const managementNavigation = [
-    { name: "Users", href: "/users", icon: UsersIcon, permission: 'users' },
-    { name: "Apps", href: "/admin/apps", icon: Squares2X2Icon, permission: 'apps' },
+    ...(isAdmin
+      ? [
+          { name: "Users", href: "/users", icon: UsersIcon, permission: 'users' as const },
+          { name: "Apps", href: "/admin/apps", icon: Squares2X2Icon, permission: 'apps' as const },
+        ]
+      : []),
+    ...((isAdmin || accessOpsVisible)
+      ? [{ name: "AccessOps", href: "/accessops/overview", icon: FingerPrintIcon, permission: 'accessops' as const }]
+      : []),
     ...(role === 'SUPER_ADMIN'
       ? [{ name: "All Apps", href: "/superadmin/apps", icon: CommandLineIcon, permission: 'apps' as const }]
       : []),
@@ -166,7 +177,7 @@ export const AdminNavigation: React.FC<AdminNavigationProps> = ({
       )}
 
       {/* System Section */}
-      {systemNavigation.some(item => !item.permission || (user?.role && canSeeNavigationItem(user.role as any, [item.permission]))) && (
+      {isAdmin && systemNavigation.some(item => !item.permission || (user?.role && canSeeNavigationItem(user.role as any, [item.permission]))) && (
         <>
           <div className="px-2 py-2 mt-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">

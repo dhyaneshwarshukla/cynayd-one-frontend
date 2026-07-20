@@ -11,6 +11,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { BrandLink } from '../common/BrandLink';
 import { ConsentBanner } from '../consent/ConsentBanner';
 import { MFASetupModal } from '../auth/MFASetupModal';
+import { useAccessOpsNavVisible } from '../accessops/PermissionGuard';
 
 interface UnifiedLayoutProps {
   children: React.ReactNode;
@@ -33,8 +34,10 @@ export const UnifiedLayout: React.FC<UnifiedLayoutProps> = ({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isLanding = variant === 'landing';
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'admin' || user?.role === 'super_admin';
-  const shouldShowSidebar = !isLanding && isAdmin;
+  const role = user?.role?.toUpperCase();
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const { visible: accessOpsVisible } = useAccessOpsNavVisible();
+  const shouldShowSidebar = !isLanding && (isAdmin || accessOpsVisible);
 
   // For landing page, show content immediately without waiting for auth
   if (isLanding) {

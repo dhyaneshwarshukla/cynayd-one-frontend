@@ -22,6 +22,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@cynayd/typescript-client": [
+        "../packages/typescript-client/src"
       ]
     },
     "plugins": [

@@ -10,6 +10,7 @@ const PROTECTED_PREFIXES = [
   '/settings',
   '/organizations',
   '/roles',
+  '/accessops',
 ];
 
 const ADMIN_PREFIXES = ['/admin', '/users', '/security', '/audit'];
@@ -145,6 +146,7 @@ export const config = {
     '/settings/:path*',
     '/organizations/:path*',
     '/roles/:path*',
+    '/accessops/:path*',
     '/connect/:path*',
     '/((?!api|_next/static|_next/image|favicon.ico|_next/webpack-hmr).*)',
   ],
